@@ -2,18 +2,18 @@ import { appendFileSync, mkdirSync, readFileSync, readdirSync, statSync } from "
 import { join, dirname, relative } from "node:path";
 import { app, ipcMain } from "electron";
 import { diffLines } from "diff";
+import { SdkAdapter } from "@pidesk/engine/sdk";
+import type { DesktopUiBridge } from "@pidesk/engine";
+import { ENGINE_CHANNELS, PromptCommandSchema } from "@pidesk/ipc-schema";
 
 /**
- * T0.6 门禁端到端演示：Electron 内 "用 Pi 改一个文件" → 工具卡片 + diff 上屏。
+ * T0.6 门禁端到端演示（T1.1 重构版）：改用正式 SdkAdapter + IPC 契约通道。
  * 启动：electron . --probe-e2e（需 DEEPSEEK_API_KEY）
- * 说明：本文件为门禁临时装配（最简实现），T1.1 将重构为正式 EngineAdapter + IPC 层。
+ * 说明：diff 快照对比仍为门禁占位实现，T2.2 正式化为 snapshot-service。
  */
 export function isE2EMode(): boolean {
   return process.argv.includes("--probe-e2e");
 }
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type AnyRec = Record<string, any>;
 
 const E2E_CWD = join(app.getAppPath(), "scratch", "test-project");
 
@@ -47,76 +47,65 @@ export function startE2E(send: (channel: string, data: unknown) => void): void {
       appendFileSync(logFile, line + "\n");
     };
 
-    const {
-      createAgentSessionServices,
-      createAgentSessionFromServices,
-      createAgentSessionRuntime,
-      SessionManager,
-      getAgentDir,
-    }: any = await import("@earendil-works/pi-coding-agent");
-
-    const fwd = (evt: AnyRec): void => {
-      if (evt.type !== "message_update") log(`FWD ${evt.type}${evt.toolName ? `:${evt.toolName}` : ""}`);
-      send("engine:event", evt);
+    const uiBridge: DesktopUiBridge = {
+      notify: (message, type) => send("ui:notify", { message, type: type ?? "info" }),
+      select: async () => undefined,
+      confirm: async () => false,
+      input: async () => undefined,
     };
 
+    const adapter = new SdkAdapter();
     try {
       const before = snapshotDir(E2E_CWD);
-      const runtimeFactory = async (opts: { cwd: string; agentDir: string; sessionManager: any }) => {
-        const services: any = await createAgentSessionServices({ cwd: opts.cwd, agentDir: opts.agentDir });
-        const result: any = await createAgentSessionFromServices({
-          services,
-          sessionManager: opts.sessionManager,
-        });
-        return { ...result, services, diagnostics: services.diagnostics };
-      };
-      const runtime: any = await createAgentSessionRuntime(runtimeFactory, {
-        cwd: E2E_CWD,
-        agentDir: getAgentDir(),
-        sessionManager: SessionManager.create(E2E_CWD),
+
+      await adapter.start({ projectDir: E2E_CWD, uiBridge });
+      adapter.subscribe((event) => {
+        if (event.type !== "message_update") log(`FWD ${event.type}`);
+        if (event.type === "message_end") {
+          const msg = (event as { message?: { content?: Array<{ type: string; text?: string }> } })
+            .message;
+          const texts = (msg?.content ?? [])
+            .filter((c) => c.type === "text")
+            .map((c) => c.text)
+            .join(" | ");
+          if (texts) log(`ASSISTANT_TEXT: ${texts.slice(0, 300)}`);
+          const toolCalls = (msg?.content ?? []).filter((c) => c.type === "toolCall" || c.type === "tool_call");
+          if (toolCalls.length > 0) log(`ASSISTANT_TOOLCALLS: ${toolCalls.length}`);
+        }
+        send(ENGINE_CHANNELS.event, event);
       });
-      const session: any = runtime.session;
-      log(`e2e runtime ok cwd=${E2E_CWD}`);
+      log("e2e: SdkAdapter started");
 
-      session.bindExtensions({
-        uiContext: {
-          notify: (message: string, type?: string) => send("ui:notify", { message, type: type ?? "info" }),
-          select: async () => undefined,
-          confirm: async () => false,
-          input: async () => undefined,
-          onTerminalInput: () => () => {},
-          setStatus: () => {},
-          setWorkingMessage: () => {},
-          setWorkingVisible: () => {},
-          setWorkingIndicator: () => {},
-          setHiddenThinkingLabel: () => {},
-          setWidget: () => {},
-          setFooter: () => {},
-        },
-        mode: "rpc",
+      // 模型选择：chat 优先（工具调用稳定），v4 系兜底；setModel 直连不依赖目录列表（§8）
+      const candidates: Array<[string, string]> = [
+        ["deepseek", "deepseek-chat"],
+        ["deepseek", "deepseek-v4-flash"],
+        ["deepseek", "deepseek-v4-pro"],
+      ];
+      let chosen: [string, string] | undefined;
+      let lastErr: unknown;
+      for (const [p, id] of candidates) {
+        try {
+          await adapter.setModel(p, id);
+          chosen = [p, id];
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (!chosen) throw new Error(`deepseek 无可用模型: ${String(lastErr)}`);
+      log(`model: ${chosen[0]}/${chosen[1]}`);
+
+      // 命令通道：zod 校验入口（渲染层输入框）
+      ipcMain.removeHandler(ENGINE_CHANNELS.prompt);
+      ipcMain.handle(ENGINE_CHANNELS.prompt, (_e, raw: unknown) => {
+        const cmd = PromptCommandSchema.parse(raw);
+        return adapter.prompt(cmd);
       });
-
-      session.subscribe((event: AnyRec) => {
-        fwd(event);
-      });
-
-      const allAvailable: AnyRec[] = await runtime.services.modelRuntime.getAvailable();
-      const preferred = ["deepseek-chat", "deepseek-v4-flash", "deepseek-v4-pro"];
-      const model =
-        allAvailable.find((m) => m.provider === "deepseek" && preferred.includes(m.id)) ??
-        allAvailable.find((m) => m.provider === "deepseek");
-      if (!model) throw new Error("deepseek 无可用模型");
-      await session.setModel(model);
-      log(`model: deepseek/${model.id}`);
-
-      // 暴露手动 prompt 入口（渲染层输入框用）
-      ipcMain.removeHandler("engine:prompt");
-      ipcMain.handle("engine:prompt", (_e, text: string) => session.prompt(text));
 
       log("auto prompt: 把 test.txt 里的 hello 改成 hola");
-      await session.prompt("把 test.txt 里的 hello 改成 hola");
+      await adapter.prompt({ text: "把 test.txt 里的 hello 改成 hola" });
 
-      // diff：前后快照对比
       const after = snapshotDir(E2E_CWD);
       for (const [file, content] of after) {
         const prev = before.get(file);
@@ -125,7 +114,7 @@ export function startE2E(send: (channel: string, data: unknown) => void): void {
             .map((part) => (part.added ? "+ " : part.removed ? "- " : "  ") + part.value)
             .join("");
           log(`DIFF ${file}\n${patch}`);
-          send("engine:diff", { file, patch });
+          send(ENGINE_CHANNELS.diff, { file, patch });
         }
       }
       log("E2E_RESULT: PASS");

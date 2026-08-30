@@ -81,7 +81,13 @@ importers:
       '@pidesk/ipc-schema':
         specifier: workspace:*
         version: link:../ipc-schema
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 0.84.4
+        version: 0.84.4(supports-color@7.2.0)(ws@8.21.3)(zod@3.25.76)
       typescript:
         specifier: ^5.6.3
         version: 5.9.3

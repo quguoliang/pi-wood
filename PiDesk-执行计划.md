@@ -135,7 +135,7 @@
 
 > 目标：日常"改 bug / 加功能"在 GUI 完成，CLI 可 resume 同一会话。
 
-### [ ] T1.1 IPC 契约层（engine 域）
+### [x] T1.1 IPC 契约层（✅ 2026-08-30，schema 全量 + 事件桥单测 4/4 + SdkAdapter 重构后 E2E PASS，记录见 §8）
 - 来源：方案 §2.2、§3.1（**应用 R-3 修订**）
 - 前置：T0.6
 - 步骤：
@@ -384,6 +384,9 @@
 | 2026-08-30 | T0.5 | 偏差 | 机器无 Visual Studio Build Tools：node-pty 1.1.0 与 @homebridge 预编译分支均回退 node-gyp 源码编译 → 失败。**改用 `@lydell/node-pty`（N-API 预编译，可选依赖直发 win32-x64 二进制）**，无需 electron-rebuild | 方案 §2.4 选型变更，T5.3 打包更简 |
 | 2026-08-30 | T0.5 | 完成 | ConPTY 验证通过：Node 运行时与 Electron 运行时（`ELECTRON_RUN_AS_NODE`）下 `pty.spawn(powershell)` 均正常收发输出（exitCode 0 + 标记串命中）。骨架落盘 `electron/main/workbench/terminal-service.ts`。xterm 渲染层集成按计划归 T2.3 | T0.5 ✅ |
 | 2026-08-30 | T0.6 | 完成 | **门禁 E2E PASS（Go 决策）**：Electron 内 `--probe-e2e` 模式，prompt"把 test.txt 里的 hello 改成 hola"→ agent 执行 read→edit（事件全量转发渲染层，工具卡片状态机 running/ok 上屏）→ jsdiff 前后快照对比 → diff 推送右栏上屏 → 文件真实变更 `hello bar`→`hola bar`。证据：`apps/desktop/docs/proofs/T0.6/e2e.log`。工具卡片/diff 为最简 DOM 占位（按门禁口径允许）；窗口视觉截图因用户前台占用延至 T1.3 正式 UI 时补。**Phase 0 高风险路径全部验证通过，Go** | T0.6 ✅，进入 Phase 1（T1.1 起） |
+| 2026-08-30 | T1.1 | 决策 | IPC 方案定为**自研 contextBridge + ipcMain.handle + zod 边界校验**（不用 electron-trpc）：事件流是 main→renderer 推送，trpc subscription 在 Electron 上反而绕；zod schema（@pidesk/ipc-schema）仍是唯一契约源 | 记录备查 |
+| 2026-08-30 | T1.1 | 完成 | 契约层落地：① `packages/ipc-schema` 全量事件/命令 zod schema（25 种事件 + unknown 兜底 + 13 个通道常量）；② `packages/engine`：EngineAdapter 接口（渲染层仅类型，子路径 `@pidesk/engine/sdk` 隔离 Pi SDK）、normalizeEngineEvent 事件桥（未知事件归一化不崩，**单测 4/4 通过**，node:test + TS 类型剥离）、SdkAdapter 正式实现；③ e2e-service 重构为 SdkAdapter 驱动并重跑 E2E PASS（read→edit→diff 全链路） | T1.1 ✅ |
+| 2026-08-30 | T1.1 | 偏差 | **setModel 必须用 registry.getModel() 的完整 Model 对象**：裸 {provider,id} 会被接受但请求退化（模型复读输入、不调工具）。另实测 0.84.4 静态目录已无 deepseek-chat（仅 v4 系），早期看到的 chat 来自远程目录缓存——**模型目录是动态的，chat 可能整体退役**，T3.2 模型管理按"registry 可解析即可用"设计，不依赖静态清单 | T3.2 设计约束 |
 | | | | | |
 
 ---
