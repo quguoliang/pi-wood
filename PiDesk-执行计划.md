@@ -409,6 +409,7 @@
 | 2026-08-31 | T2.3 | 完成 | 终端面板落地：`workbench/terminal-service.ts`（@lydell/node-pty pty 池 + zod 校验 IPC term:create/write/resize/kill + term:onData/onExit 事件）+ 渲染层 TerminalPanel（xterm + fit/web-links addon，跟随项目 cwd，PowerShell ConPTY 实测出 bash 提示符正常回显） | T2.3 ✅ |
 | 2026-08-31 | T2.4 | 完成 | 浏览器面板 + agent 工具落地：`workbench/browser-service.ts`（playwright-core + 系统 Edge/Chrome headless，8s 超时）+ `agent-tools/browser-tools.ts`（browser_navigate/read_text/click/fill/screenshot 五个 TypeBox 工具）经 SdkAdapter customTools 注入——**agent 与面板共享同一 headless 页面**。实测 example.com 截图上屏 | T2.4 ✅（headless 降级版） |
 | 2026-08-31 | T2.x | 决策 | 右栏暂用轻量标签页（文件/终端/浏览器/Diff），dockview 停靠布局推迟到 Phase 3 一并评估（当前四功能 tab 已可用，dockview 引入属布局增强而非功能缺失） | T2.5 调整 |
+| 2026-08-31 | T2.6 | 完成 | **Phase 2 门禁通过**：webapp 项目 GUI 内发任务"改 index.html 的 h1 → browser_navigate 打开 → browser_read_text 验证"→ agent 执行 read→edit→browser_navigate→browser_read_text 四步工具链（全部 ✅）→ 正确回答"改成功了，页面文本显示为 Hello PiDesk"→ 文件真实变更（h1=Hello PiDesk）。验收原文"agent 跑 Web 项目：改代码→浏览器验证，全程桌面内闭环"达成，且浏览器验证走的是自定义 agent 工具首秀 | T2.6 ✅ **Phase 2 核心门禁通过** |
 | | | | | |
 
 ---
