@@ -5,6 +5,7 @@ import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
+import { initEngineIpc } from "./engine/engine-manager";
 
 const debugLog = (line: string): void => {
   try {
@@ -105,6 +106,8 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(async () => {
+    // 渲染层 DOM 暴露给系统无障碍树（自动化测试/读屏支持）
+    app.accessibilitySupportEnabled = true;
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
@@ -114,6 +117,7 @@ if (!gotLock) {
     // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
     initDataIpc(getAgentDir());
+    initEngineIpc();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

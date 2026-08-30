@@ -30,11 +30,26 @@ const api = {
     ipcRenderer.on("e2e:done", handler);
     return () => ipcRenderer.removeListener("e2e:done", handler);
   },
-  prompt: (text: string): Promise<void> => ipcRenderer.invoke("engine:prompt", text),
+  prompt: (text: string): Promise<void> => ipcRenderer.invoke("engine:prompt", { text }),
   // 设置（T1.2 布局持久化；T1.1 正式化口径同 engine 域）
   settingsGet: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("settings:get"),
   settingsSet: (patch: Record<string, unknown>): Promise<Record<string, unknown>> =>
     ipcRenderer.invoke("settings:set", patch),
+  // T1.3/T1.4 引擎与数据域
+  engineStart: (projectDir: string): Promise<boolean> =>
+    ipcRenderer.invoke("engine:start", { projectDir }),
+  engineSteer: (text: string): Promise<void> => ipcRenderer.invoke("engine:steer", { text }),
+  engineFollowUp: (text: string): Promise<void> => ipcRenderer.invoke("engine:followUp", { text }),
+  engineAbort: (): Promise<void> => ipcRenderer.invoke("engine:abort"),
+  engineNewSession: (): Promise<void> => ipcRenderer.invoke("engine:newSession"),
+  engineModels: (): Promise<Array<{ provider: string; id: string }>> =>
+    ipcRenderer.invoke("engine:getAvailableModels"),
+  projectList: (): Promise<unknown> => ipcRenderer.invoke("project:list"),
+  projectAdd: (path: string): Promise<unknown> => ipcRenderer.invoke("project:add", { path }),
+  projectPick: (): Promise<string | undefined> => ipcRenderer.invoke("project:pickDialog"),
+  projectTrust: (path: string): Promise<string> => ipcRenderer.invoke("project:trustStatus", { path }),
+  sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
+  sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
 };
 
 export type PiPreloadApi = typeof api;

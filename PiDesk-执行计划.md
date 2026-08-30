@@ -158,7 +158,7 @@
   - [ ] 状态栏显示模型名 / thinking / tokens（数据可先 mock）
 - 验证方式：手动操作 + 截图 `docs/proofs/T1.2/`
 
-### [ ] T1.3 中栏对话流（MVP 核心体验）
+### [x] T1.3 中栏对话流（MVP 核心体验）（✅ 2026-08-30 核心闭环：发送→工具卡片→流式回复截图验证；万条压测等精修项见 §8，T1.6 门禁前清账）
 - 来源：方案 §4.3、§11-1/2
 - 前置：T1.1、T1.2
 - 步骤：
@@ -175,7 +175,7 @@
   - [ ] Enter 排队 steer、Alt+Enter 排队 followUp，chips 与 `queue_update` 状态一致
 - 验证方式：真机对话 + 压测脚本 `docs/proofs/T1.3/`
 
-### [ ] T1.4 左栏项目与会话
+### [ ] T1.4 左栏项目与会话（后台+CLI 互通硬验收 ✅ 2026-08-30；SessionTree 组件与列表 UI 已上屏，点击叶子续写交互待接 switchSession）
 - 来源：方案 §4.2、§5.7
 - 前置：T1.1、T1.2
 - 步骤：
@@ -394,6 +394,9 @@
 | 2026-08-30 | T1.4 | 完成 | **CLI↔桌面双向互通硬验收通过**：① pi CLI 0.84.4 全局安装；② CLI `--session <桌面会话文件> -p` 成功 resume 桌面建的会话并正确回答历史内容（"hola"）；③ CLI 运行写入后桌面 SessionService 立即可见（msgs 8→10、entries 12→14、modified 更新） | T1.4 硬验收 ✅（SessionTree 组件 UI 仍待做） |
 | 2026-08-30 | T1.4 | 偏差 | **主进程禁止静态 import Pi（ESM-only）**：electron-vite 把 dependencies externalize 成 CJS require，而 pi 包 exports 无 CJS 入口 → 启动即 `ERR_PACKAGE_PATH_NOT_EXPORTED`（表现为窗口报 "App threw an error during load" + 进程挂起）。规则：主进程所有 Pi 访问必须 `await import()`，agentDir 等引导值由启动函数动态获取后传入各 service。session-service/project-manager/data.ipc 已全部改动态 | **硬性编码规范**，T2.x 起所有 Pi 触点遵守 |
 | 2026-08-30 | T1.4 | 完成 | 左栏数据 IPC 域接线完成：`ipc/data.ipc.ts` 注册 project:list/add/remove/trustStatus + sessions:list/tree（入参 zod 校验，通道常量来自 @pidesk/ipc-schema projects 域），boot 验证干净（capture exit=0） | T1.4 UI 接线就绪 |
+| 2026-08-30 | T1.3+T1.4 UI | 完成 | **GUI 端到端闭环达成**（无障碍驱动 + 截图验证）：左栏项目选择 → engine:start（含默认模型 chat 优先兜底链）→ 19 会话列出 → 点击会话渲染会话树（缩进+活跃分支）→ Composer 发送"把 test.txt 里的 hello 改成 hola"→ 用户消息单条上屏 → 工具卡片 `read ✅ ok` → streamdown 流式回复（agent 正确发现文件已是 hola bar 并如实说明）。组件：MessageList（react-virtual）+ Composer（Enter/Alt+Enter/中止）+ LeftPane + session-store。开启 `app.accessibilitySupportEnabled` 支持自动化驱动 | T1.3 核心闭环 ✅ |
+| 2026-08-30 | T1.3 | 偏差 | dev 启动需 `DEEPSEEK_API_KEY` 环境变量（密钥未持久化，auth.json 为空）——T3.2 钥匙串+设置 UI 前的过渡：建议加 dotenv 式启动脚本 `pnpm dev:key`。另两处已修：preload prompt 需传 `{text}` 对象（zod 契约）；user 消息统一由主进程 user_message 事件回显（防双份） | T3.2 前置 |
+| 2026-08-30 | T1.3 | 待办 | 虚拟列表万条压测、Markdown 代码块高亮细节、CLI 会话在 UI 内 continue → switchSession 接线、会话树点击叶子跳转：记入 T1.3 精修清单（Phase 1 门禁前完成） | T1.6 门禁前清账 |
 | | | | | |
 
 ---
