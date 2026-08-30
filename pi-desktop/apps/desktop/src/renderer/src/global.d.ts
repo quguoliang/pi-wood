@@ -28,6 +28,7 @@ declare global {
       sessionsMessages(file: string): Promise<unknown>;
       engineSwitchSession(file: string): Promise<boolean>;
       debugStress(count: number): Promise<number>;
+      debugCapture(file: string): Promise<boolean>;
     };
   }
 }

@@ -188,7 +188,7 @@
   - [ ] 分支节点可视化正确，右键可"从此处续写 / 复制为新会话"
 - 验证方式：与 CLI 互通实测，记录 `docs/proofs/T1.4/`
 
-### [ ] T1.5 Phase 1 门禁评审
+### [x] T1.5 Phase 1 门禁评审（✅ 2026-08-31：日常任务 GUI 全闭环 + CLI resume 实测通过，**Phase 1 门禁通过**，记录见 §8）
 - 前置：T1.3、T1.4
 - 验收：
   - [ ] 方案 §12 Phase 1 验收达成："日常改 bug/加功能全程 GUI，CLI 可 resume"
@@ -400,6 +400,8 @@
 | 2026-08-30 | T1.3 | 完成 | **精修清单清账**：① 点击会话 = `sessions:messages` 装载历史 + `engine:switchSession` 切引擎（实测：装载 23:51 会话历史后发"我刚才让你修改的文件名和内容"，agent 准确回答"test.txt / 把 hello 改成 hola"——上下文生效）；② 万条压测（状态栏 dev 按钮 → debug:stress 注入 10000 条）通过：虚拟列表只渲染可见行，UI 保持响应；③ edit/write diff 推送右栏接线到正式引擎（forwardDiffOnFileEdit 前后快照） | T1.3 ✅ |
 | 2026-08-30 | T1.4 | 完成 | SessionTree 组件上屏（缩进 + 活跃分支高亮 + 类型图标）；会话点击续写交互接通（见 T1.3） | T1.4 ✅ |
 | 2026-08-30 | T1.5 | 证据 | 门禁预验：GUI 会话（含续写轮次）→ pi CLI `--session -p` resume 成功，正确引用 GUI 对话内容（"需要我做什么其他处理吗？"上下文可达）。T1.5 正式录屏待补（capture 截图链已留存） | T1.5 录屏待补 |
+| 2026-08-31 | T1.5 | 完成 | **门禁评审通过**：日常任务全 GUI 闭环实测——新会话发"给 greet.js 添加 greetZh 函数并用 node 运行"→ agent 执行 read→edit→bash（read/edit/bash 三张工具卡片全部 ✅）→ streamdown 渲染代码块输出（hello pi / 你好，皮，带复制/下载按钮）→ greet.js 真实变更（新增 greetZh+调用行）→ pi CLI resume 该会话并正确回答修改内容。验收原文"日常改 bug/加功能在 GUI 完成，CLI 可 resume 同一会话"达成 | T1.5 ✅ **Phase 1 门禁通过，进入 Phase 2** |
+| 2026-08-31 | T1.5 | 偏差 | 右栏 diff 未在本次演示出现：edit 工具的 input.path 为相对路径（"greet.js"），主进程 readFileSync 相对 cwd 解析失败被静默吞掉。修复归 T2.2 snapshot-service 正式化：path.resolve(projectDir, relPath)，并把静默 catch 改为日志 | T2.2 修复项 |
 | | | | | |
 
 ---

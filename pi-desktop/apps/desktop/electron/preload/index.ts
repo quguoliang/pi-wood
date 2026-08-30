@@ -55,6 +55,7 @@ const api = {
   engineSwitchSession: (file: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:switchSession", { file }),
   debugStress: (count: number): Promise<number> => ipcRenderer.invoke("debug:stress", { count }),
+  debugCapture: (file: string): Promise<boolean> => ipcRenderer.invoke("debug:capture", { file }),
 };
 
 export type PiPreloadApi = typeof api;

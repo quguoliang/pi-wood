@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from "electron";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { z } from "zod";
 import { diffLines } from "diff";
 import { ENGINE_CHANNELS, PromptCommandSchema } from "@pidesk/ipc-schema";
@@ -129,6 +130,16 @@ export function initEngineIpc(): void {
       send(ENGINE_CHANNELS.event, { type: "user_message", text: `压测消息 #${i + 1}` });
     }
     return count;
+  });
+  // ---- T1.5 门禁：窗口截图留证 ----
+  ipcMain.handle("debug:capture", async (_e, raw: unknown) => {
+    const { file } = z.object({ file: z.string().min(1) }).parse(raw);
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return false;
+    const image = await win.webContents.capturePage();
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, image.toPNG());
+    return true;
   });
 
   ipcMain.handle("engine:start", async (_e, raw: unknown) => {
