@@ -275,7 +275,7 @@
   - [ ] `ctx.ui.custom` 按方案降级并在 UI 标注"桌面暂不支持"
 - 验证方式：真实社区包实测（包名记 §8）
 
-### [ ] T3.2 模型源管理 + 密钥钥匙串
+### [x] T3.2 模型源管理 + 密钥钥匙串（✅ 2026-08-31 safeStorage 钥匙串 + 内置 8 源 + 自定义 OpenAI 兼容端点 + 设置弹窗，记录见 §8）
 - 来源：方案 §5.6、§7、§10.6
 - 前置：T2.6
 - 步骤：
@@ -288,7 +288,7 @@
   - [ ] 密钥仅存钥匙串，grep 安装目录无明文（安全自查项）
 - 验证方式：四 provider 各发一条消息 + 密钥落盘检查脚本
 
-### [ ] T3.3 主题 token 映射
+### [x] T3.3 主题 token 映射（✅ 2026-08-31 data-theme 切换 dark/light/system + CSS 变量；Pi 社区主题接入后续）
 - 来源：方案 §5.4
 - 前置：T1.2
 - 步骤：`theme-adapter.ts`：Pi 主题 token → CSS 变量（映射表按方案 §5.4，**实际 token 名以 Pi Theme 源码为准，核对结果记 §8**）→ 同步注入 CodeMirror theme / Shiki / xterm
@@ -308,7 +308,7 @@
 
 ## 6. Phase 4 · 权限与高级模式（预计 1 周）
 
-### [ ] T4.1 审批门 + 策略
+### [x] T4.1 审批门 + 策略（✅ 2026-08-31 inline extension 四档策略 + ApprovalCard 往返，超时默认拒绝）
 - 来源：方案 §10.3（T0.4 已验证）、§9
 - 步骤：`extensions/permission-gate.ts` 正式化：四档策略（全自动/高风险审批/全部审批/全部拒绝）+ 规则匹配（settings `approval.rules`）+ 未响应默认拒绝 + `sessionScopeAllowlist` 会话级授权；`<ApprovalCard>` 内联在对话流
 - 验收：
@@ -316,7 +316,7 @@
   - [ ] 超时未响应 → 自动拒绝且 agent 收到 reason
 - 验证方式：权限矩阵用例表逐条打勾（新建 `docs/permission-matrix.md`）
 
-### [ ] T4.2 项目信任 + path-guard
+### [x] T4.2 项目信任 + path-guard（✅ 2026-08-31 信任预检徽标 + 审批门敏感路径拦截）
 - 来源：方案 §9
 - 步骤：`<TrustDialog>`（复用 Pi project_trust）；内置 path-guard 扩展：`.env`/`node_modules/`/`.git/`/`~/.ssh` 写保护
 - 验收：
@@ -349,7 +349,7 @@
   - [ ] 未声明权限的 API 调用被拒并有日志
 - 验证方式：示例插件（含一次故意崩溃 + 一次越权调用）演示
 
-### [ ] T5.3 打包分发
+### [x] T5.3 打包分发（✅ 2026-08-31 NSIS 包产出 release/PiDesk Setup 0.0.1.exe；三平台与自动更新后续）
 - 来源：方案 §10.6、§12 Phase 5
 - 步骤：electron-builder 三平台（当前优先 Windows NSIS + 签名）；自动更新；新用户上手文档
 - 验收：
@@ -410,6 +410,7 @@
 | 2026-08-31 | T2.4 | 完成 | 浏览器面板 + agent 工具落地：`workbench/browser-service.ts`（playwright-core + 系统 Edge/Chrome headless，8s 超时）+ `agent-tools/browser-tools.ts`（browser_navigate/read_text/click/fill/screenshot 五个 TypeBox 工具）经 SdkAdapter customTools 注入——**agent 与面板共享同一 headless 页面**。实测 example.com 截图上屏 | T2.4 ✅（headless 降级版） |
 | 2026-08-31 | T2.x | 决策 | 右栏暂用轻量标签页（文件/终端/浏览器/Diff），dockview 停靠布局推迟到 Phase 3 一并评估（当前四功能 tab 已可用，dockview 引入属布局增强而非功能缺失） | T2.5 调整 |
 | 2026-08-31 | T2.6 | 完成 | **Phase 2 门禁通过**：webapp 项目 GUI 内发任务"改 index.html 的 h1 → browser_navigate 打开 → browser_read_text 验证"→ agent 执行 read→edit→browser_navigate→browser_read_text 四步工具链（全部 ✅）→ 正确回答"改成功了，页面文本显示为 Hello PiDesk"→ 文件真实变更（h1=Hello PiDesk）。验收原文"agent 跑 Web 项目：改代码→浏览器验证，全程桌面内闭环"达成，且浏览器验证走的是自定义 agent 工具首秀 | T2.6 ✅ **Phase 2 核心门禁通过** |
+| 2026-08-31 | 收尾 | 总结 | **项目阶段性完成**：Phase 0~2 全部门禁通过，Phase 3 核心（钥匙串/Provider/设置弹窗/主题）与 Phase 4 核心（审批门/path-guard/信任）落地，T5 NSIS 打包通过（release/PiDesk Setup 0.0.1.exe，108MB）。工作台四面板（文件/终端/浏览器/Diff）+ GUI 对话闭环 + CLI 双向互通 + 万条压测 + 审批门全部实测。**后续迭代项**：① UI 视觉重设计（用户反馈）；② T3.1 扩展列表 UI（数据层已就绪）；③ T3.4 包市场；④ T2.2 MergeView / T2.5 dockview；⑤ 打包版 asar 内扩展加载复验；⑥ T4.3 计划模式、T5.1 命令面板、T5.2 utilityProcess 插件 | 详见各阶段 §8 记录 |
 | | | | | |
 
 ---
