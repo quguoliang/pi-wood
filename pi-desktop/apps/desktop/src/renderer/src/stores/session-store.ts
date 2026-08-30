@@ -18,6 +18,7 @@ interface SessionState {
   engineReady: boolean;
   handleEvent(e: Record<string, unknown>): void;
   addUserMessage(text: string): void;
+  loadMessages(items: Array<{ role: string; text: string }>): void;
   reset(): void;
   setActiveProject(projectDir: string | undefined): void;
   setEngineReady(ready: boolean): void;
@@ -108,6 +109,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   addUserMessage(text) {
     set({ messages: [...get().messages, { id: nextId(), kind: "user", text }], streamBuffer: "" });
+  },
+
+  loadMessages(items) {
+    set({
+      messages: items.map((m) => ({
+        id: nextId(),
+        kind: m.role === "user" ? ("user" as const) : m.role === "assistant" ? ("assistant" as const) : ("system" as const),
+        text: m.text,
+      })),
+      streamBuffer: "",
+      streaming: false,
+    });
   },
 
   reset() {

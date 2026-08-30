@@ -7,7 +7,7 @@ import {
   FileArgSchema,
 } from "@pidesk/ipc-schema";
 import { ProjectManager, DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
-import { listSessions, openSessionTree } from "../engine/session-service.ts";
+import { listSessions, openSessionTree, loadSessionMessages } from "../engine/session-service.ts";
 
 /**
  * 左栏数据域 IPC（T1.4）：project:* / sessions:*。
@@ -38,6 +38,10 @@ export function initDataIpc(agentDir: string): ProjectManager {
   ipcMain.handle(SESSION_CHANNELS.tree, (_e, raw: unknown) => {
     const { file } = FileArgSchema.parse(raw);
     return openSessionTree(file);
+  });
+  ipcMain.handle(SESSION_CHANNELS.messages, (_e, raw: unknown) => {
+    const { file } = FileArgSchema.parse(raw);
+    return loadSessionMessages(file);
   });
 
   return pm;

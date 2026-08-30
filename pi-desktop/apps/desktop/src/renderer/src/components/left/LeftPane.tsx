@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
-import { flattenTree, type SessionTreeNode, type TreeEntry } from "@pidesk/engine";
+import type { TreeEntry } from "@pidesk/engine";
 
 /**
  * T1.4 左栏：ProjectPane + SessionPane（会话列表 + 会话树）。
@@ -38,6 +38,7 @@ export function LeftPane(): React.JSX.Element {
   const setActiveProjectStore = useSessionStore((s) => s.setActiveProject);
   const setEngineReady = useSessionStore((s) => s.setEngineReady);
   const reset = useSessionStore((s) => s.reset);
+  const loadMessages = useSessionStore((s) => s.loadMessages);
 
   const refreshProjects = (): void => {
     void window.pi.projectList().then((list) => setProjects(list as ProjectRec[]));
@@ -69,17 +70,16 @@ export function LeftPane(): React.JSX.Element {
 
   const selectSession = (s: SessionItem): void => {
     setActiveSession(s);
+    // 点击会话 = 切换引擎到该会话 + 装载历史（续写）
     void window.pi.sessionsTree(s.file).then((result) => {
       const rows = (result as { rows: Array<TreeEntry & { depth: number; activeBranch: boolean }> }).rows;
-      const flat = flattenTree({
-        nodes: new Map<string, SessionTreeNode>(),
-        roots: [],
-        leafCandidates: [],
-        orphans: [],
-      });
-      void flat;
       setTreeRows(rows.map((r) => ({ id: r.id, type: r.type, depth: r.depth, activeBranch: r.activeBranch })));
     });
+    void window.pi
+      .sessionsMessages(s.file)
+      .then((items) => loadMessages(items as Array<{ role: string; text: string }>))
+      .then(() => window.pi.engineSwitchSession(s.file))
+      .catch(() => undefined);
   };
 
   return (

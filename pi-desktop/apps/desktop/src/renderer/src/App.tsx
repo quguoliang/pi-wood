@@ -60,9 +60,19 @@ export default function App() {
         </>
       }
       statusbar={
-        versions
-          ? `IPC ✅ · electron ${versions.electron} · node ${versions.node}`
-          : "IPC 检测中…"
+        <>
+          {versions
+            ? `IPC ✅ · electron ${versions.electron} · node ${versions.node}`
+            : "IPC 检测中…"}
+          <button
+            className="ghost-btn"
+            style={{ marginLeft: "auto" }}
+            onClick={() => void window.pi.debugStress(10000)}
+            title="开发工具：注入 1 万条消息验证虚拟列表"
+          >
+            压测1万
+          </button>
+        </>
       }
     />
   );

@@ -50,6 +50,11 @@ const api = {
   projectTrust: (path: string): Promise<string> => ipcRenderer.invoke("project:trustStatus", { path }),
   sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
+  sessionsMessages: (file: string): Promise<unknown> =>
+    ipcRenderer.invoke("sessions:messages", { file }),
+  engineSwitchSession: (file: string): Promise<boolean> =>
+    ipcRenderer.invoke("engine:switchSession", { file }),
+  debugStress: (count: number): Promise<number> => ipcRenderer.invoke("debug:stress", { count }),
 };
 
 export type PiPreloadApi = typeof api;

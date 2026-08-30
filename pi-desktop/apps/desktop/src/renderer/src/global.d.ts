@@ -25,6 +25,9 @@ declare global {
       projectTrust(path: string): Promise<string>;
       sessionsList(path: string): Promise<unknown>;
       sessionsTree(file: string): Promise<unknown>;
+      sessionsMessages(file: string): Promise<unknown>;
+      engineSwitchSession(file: string): Promise<boolean>;
+      debugStress(count: number): Promise<number>;
     };
   }
 }

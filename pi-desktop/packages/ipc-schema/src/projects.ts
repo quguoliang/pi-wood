@@ -53,7 +53,14 @@ export const PROJECT_CHANNELS = {
 export const SESSION_CHANNELS = {
   list: "sessions:list",
   tree: "sessions:tree",
+  messages: "sessions:messages",
 } as const;
+
+export const SessionMessageItemSchema = z.object({
+  role: z.enum(["user", "assistant", "tool"]),
+  text: z.string(),
+});
+export type SessionMessageItem = z.infer<typeof SessionMessageItemSchema>;
 
 // invoke 入参
 export const PathArgSchema = z.object({ path: z.string().min(1) });

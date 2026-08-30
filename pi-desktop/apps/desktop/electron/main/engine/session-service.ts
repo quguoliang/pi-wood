@@ -82,3 +82,33 @@ export async function openSessionTree(file: string): Promise<SessionTreeResult> 
 }
 
 export type { SessionTreeNode };
+
+export interface SessionMessageItem {
+  role: "user" | "assistant" | "tool";
+  text: string;
+}
+
+/** 读取会话历史消息（点击会话续写时加载到 UI） */
+export async function loadSessionMessages(file: string): Promise<SessionMessageItem[]> {
+  const { SessionManager } = await loadPi();
+  const manager = SessionManager.open(file);
+  const out: SessionMessageItem[] = [];
+  for (const entry of manager.getEntries()) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message?: { role?: string; content?: unknown } }).message;
+    if (!msg || typeof msg.role !== "string") continue;
+    const role = msg.role === "assistant" ? "assistant" : msg.role === "user" ? "user" : "tool";
+    const content = msg.content;
+    let text = "";
+    if (typeof content === "string") {
+      text = content;
+    } else if (Array.isArray(content)) {
+      text = content
+        .filter((c: { type?: string }) => c?.type === "text")
+        .map((c: { text?: string }) => c.text ?? "")
+        .join("");
+    }
+    if (text.trim()) out.push({ role: role as SessionMessageItem["role"], text });
+  }
+  return out;
+}

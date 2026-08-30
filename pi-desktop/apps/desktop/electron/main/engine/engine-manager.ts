@@ -1,5 +1,7 @@
 import { ipcMain, BrowserWindow, dialog } from "electron";
+import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { diffLines } from "diff";
 import { ENGINE_CHANNELS, PromptCommandSchema } from "@pidesk/ipc-schema";
 import { SdkAdapter } from "@pidesk/engine/sdk";
 import type { DesktopUiBridge } from "@pidesk/engine";
@@ -36,7 +38,10 @@ export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
   if (adapter) await adapter.stop();
   const next = new SdkAdapter();
   await next.start({ projectDir, uiBridge: uiBridge() });
-  next.subscribe((event) => send(ENGINE_CHANNELS.event, event));
+  next.subscribe((event) => {
+    send(ENGINE_CHANNELS.event, event);
+    forwardDiffOnFileEdit(event, projectDir, send);
+  });
   // 默认模型：chat 优先、v4 兜底（目录随在线刷新变化，见 §8；正式模型 UI 在 T3.2）
   try {
     const models = await next.getAvailableModels();
@@ -68,7 +73,64 @@ async function requireAdapter(): Promise<SdkAdapter> {
   return adapter;
 }
 
+/** edit/write 工具执行前后读文件，diff 推送右栏（门禁版 snapshot 逻辑，T2.2 正式化） */
+const beforeSnapshots = new Map<string, string>();
+
+function forwardDiffOnFileEdit(
+  event: { type?: string; toolName?: string; input?: unknown },
+  projectDir: string,
+  send: (channel: string, data: unknown) => void,
+  snapshots = beforeSnapshots,
+): void {
+  if (event.type === "tool_execution_start" && (event.toolName === "edit" || event.toolName === "write")) {
+    const input = (event.input ?? {}) as { path?: string };
+    if (typeof input.path === "string") {
+      try {
+        beforeSnapshots.set(input.path, readFileSync(input.path, "utf-8"));
+      } catch {
+        beforeSnapshots.set(input.path, "");
+      }
+    }
+    return;
+  }
+  if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
+    const input = (event.input ?? {}) as { path?: string };
+    if (typeof input.path !== "string" || !snapshots.has(input.path)) return;
+    const before = snapshots.get(input.path) ?? "";
+    snapshots.delete(input.path);
+    try {
+      const after = readFileSync(input.path, "utf-8");
+      if (before === after) return;
+      const patch = diffLines(before, after)
+        .map((part) => (part.added ? "+ " : part.removed ? "- " : "  ") + part.value)
+        .join("");
+      send(ENGINE_CHANNELS.diff, {
+        file: input.path.startsWith(projectDir) ? input.path.slice(projectDir.length + 1) : input.path,
+        patch,
+      });
+    } catch {
+      /* 文件可能被删除，忽略 */
+    }
+  }
+}
+
 export function initEngineIpc(): void {
+  // ---- T1.3 diff：edit/write 工具执行前后快照对比，推送右栏（T2.2 正式化为 snapshot-service）----
+  const beforeSnapshots = new Map<string, string>();
+  ipcMain.handle("engine:switchSession", async (_e, raw: unknown) => {
+    const { file } = z.object({ file: z.string().min(1) }).parse(raw);
+    await (await requireAdapter()).switchSession(file);
+    return true;
+  });
+  // ---- T1.3 压测钩子：注入 N 条消息事件验证虚拟列表（保留为 dev 工具）----
+  ipcMain.handle("debug:stress", async (_e, raw: unknown) => {
+    const { count } = z.object({ count: z.number().int().min(1).max(50000) }).parse(raw);
+    for (let i = 0; i < count; i++) {
+      send(ENGINE_CHANNELS.event, { type: "user_message", text: `压测消息 #${i + 1}` });
+    }
+    return count;
+  });
+
   ipcMain.handle("engine:start", async (_e, raw: unknown) => {
     const { projectDir } = StartArgSchema.parse(raw);
     await ensureEngine(projectDir);

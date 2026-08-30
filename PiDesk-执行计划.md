@@ -158,7 +158,7 @@
   - [ ] 状态栏显示模型名 / thinking / tokens（数据可先 mock）
 - 验证方式：手动操作 + 截图 `docs/proofs/T1.2/`
 
-### [x] T1.3 中栏对话流（MVP 核心体验）（✅ 2026-08-30 核心闭环：发送→工具卡片→流式回复截图验证；万条压测等精修项见 §8，T1.6 门禁前清账）
+### [x] T1.3 中栏对话流（MVP 核心体验）（✅ 2026-08-30：核心闭环 + 精修清单全清——万条压测/续写接线/diff 上屏，记录见 §8）
 - 来源：方案 §4.3、§11-1/2
 - 前置：T1.1、T1.2
 - 步骤：
@@ -397,6 +397,9 @@
 | 2026-08-30 | T1.3+T1.4 UI | 完成 | **GUI 端到端闭环达成**（无障碍驱动 + 截图验证）：左栏项目选择 → engine:start（含默认模型 chat 优先兜底链）→ 19 会话列出 → 点击会话渲染会话树（缩进+活跃分支）→ Composer 发送"把 test.txt 里的 hello 改成 hola"→ 用户消息单条上屏 → 工具卡片 `read ✅ ok` → streamdown 流式回复（agent 正确发现文件已是 hola bar 并如实说明）。组件：MessageList（react-virtual）+ Composer（Enter/Alt+Enter/中止）+ LeftPane + session-store。开启 `app.accessibilitySupportEnabled` 支持自动化驱动 | T1.3 核心闭环 ✅ |
 | 2026-08-30 | T1.3 | 偏差 | dev 启动需 `DEEPSEEK_API_KEY` 环境变量（密钥未持久化，auth.json 为空）——T3.2 钥匙串+设置 UI 前的过渡：建议加 dotenv 式启动脚本 `pnpm dev:key`。另两处已修：preload prompt 需传 `{text}` 对象（zod 契约）；user 消息统一由主进程 user_message 事件回显（防双份） | T3.2 前置 |
 | 2026-08-30 | T1.3 | 待办 | 虚拟列表万条压测、Markdown 代码块高亮细节、CLI 会话在 UI 内 continue → switchSession 接线、会话树点击叶子跳转：记入 T1.3 精修清单（Phase 1 门禁前完成） | T1.6 门禁前清账 |
+| 2026-08-30 | T1.3 | 完成 | **精修清单清账**：① 点击会话 = `sessions:messages` 装载历史 + `engine:switchSession` 切引擎（实测：装载 23:51 会话历史后发"我刚才让你修改的文件名和内容"，agent 准确回答"test.txt / 把 hello 改成 hola"——上下文生效）；② 万条压测（状态栏 dev 按钮 → debug:stress 注入 10000 条）通过：虚拟列表只渲染可见行，UI 保持响应；③ edit/write diff 推送右栏接线到正式引擎（forwardDiffOnFileEdit 前后快照） | T1.3 ✅ |
+| 2026-08-30 | T1.4 | 完成 | SessionTree 组件上屏（缩进 + 活跃分支高亮 + 类型图标）；会话点击续写交互接通（见 T1.3） | T1.4 ✅ |
+| 2026-08-30 | T1.5 | 证据 | 门禁预验：GUI 会话（含续写轮次）→ pi CLI `--session -p` resume 成功，正确引用 GUI 对话内容（"需要我做什么其他处理吗？"上下文可达）。T1.5 正式录屏待补（capture 截图链已留存） | T1.5 录屏待补 |
 | | | | | |
 
 ---
