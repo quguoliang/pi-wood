@@ -466,3 +466,51 @@ body {
   color: var(--pi-accent);
   font-family: Consolas, monospace;
 }
+
+.right-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.browser-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.browser-bar {
+  display: flex;
+  gap: 6px;
+}
+
+.browser-bar input {
+  flex: 1;
+  background: var(--pi-bg);
+  color: var(--pi-fg);
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.browser-bar button {
+  background: var(--pi-accent);
+  color: #1a1b26;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.browser-status {
+  font-size: 11px;
+  min-height: 14px;
+}
+
+.browser-shot {
+  width: 100%;
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+}
+

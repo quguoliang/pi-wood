@@ -56,6 +56,7 @@ export class SdkAdapter implements EngineAdapter {
       const result: { session: AgentSessionLike } = await this.pi!.createAgentSessionFromServices({
         services,
         sessionManager: factoryOpts.sessionManager,
+        customTools: opts.customTools as never,
       });
       return { session: result.session, services };
     };

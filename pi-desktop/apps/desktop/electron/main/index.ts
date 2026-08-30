@@ -7,6 +7,13 @@ import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
 import { initEngineIpc, getActiveProjectDir } from "./engine/engine-manager";
 import { initFileIpc } from "./workbench/file-service";
+import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
+import { initBrowserIpc } from "./workbench/browser-service";
+
+let mainWindowRef: BrowserWindow | undefined;
+function sendToRenderer(channel: string, data: unknown): void {
+  mainWindowRef?.webContents.send(channel, data);
+}
 
 const debugLog = (line: string): void => {
   try {
@@ -19,7 +26,7 @@ const debugLog = (line: string): void => {
 };
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 960,
@@ -34,30 +41,31 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+  mainWindowRef = win;
 
-  mainWindow.on("ready-to-show", () => mainWindow.show());
+  win.on("ready-to-show", () => win.show());
 
   // 外链走系统浏览器，不在应用内开新窗
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  win.webContents.setWindowOpenHandler((details) => {
     void shell.openExternal(details.url);
     return { action: "deny" };
   });
 
   if (process.env["ELECTRON_RENDERER_URL"]) {
-    void mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    void win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    void win.loadFile(join(__dirname, "../renderer/index.html"));
   }
 
   // T0.3 探针模式：窗口就绪后在主进程内跑扩展加载 + ctx.ui 桥验证
   if (isExtensionProbeMode()) {
     debugLog("probe mode on, waiting did-finish-load");
-    const send = (channel: string, data: unknown) => mainWindow.webContents.send(channel, data);
-    mainWindow.webContents.on("did-finish-load", () => {
+    const send = (channel: string, data: unknown) => win.webContents.send(channel, data);
+    win.webContents.on("did-finish-load", () => {
       debugLog("did-finish-load fired");
       void runExtensionProbe(send);
     });
-    mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+    win.webContents.on("did-fail-load", (_e, code, desc) => {
       debugLog(`did-fail-load: ${code} ${desc}`);
     });
   }
@@ -65,12 +73,12 @@ function createWindow(): void {
   // T0.6 门禁 E2E：Electron 内 "用 Pi 改一个文件"，事件 + diff 实时上屏
   if (isE2EMode()) {
     debugLog("e2e mode on");
-    const send = (channel: string, data: unknown) => mainWindow.webContents.send(channel, data);
-    mainWindow.webContents.on("did-finish-load", () => {
+    const send = (channel: string, data: unknown) => win.webContents.send(channel, data);
+    win.webContents.on("did-finish-load", () => {
       debugLog("e2e did-finish-load, starting");
       startE2E(send);
     });
-    mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+    win.webContents.on("did-fail-load", (_e, code, desc) => {
       debugLog(`e2e did-fail-load: ${code} ${desc}`);
     });
   }
@@ -79,9 +87,9 @@ function createWindow(): void {
   const captureIdx = process.argv.indexOf("--capture");
   if (captureIdx !== -1 && process.argv[captureIdx + 1]) {
     const file = process.argv[captureIdx + 1] as string;
-    mainWindow.webContents.on("did-finish-load", () => {
+    win.webContents.on("did-finish-load", () => {
       setTimeout(() => {
-        void mainWindow.webContents.capturePage().then((image) => {
+        void win.webContents.capturePage().then((image) => {
           mkdirSync(dirname(file), { recursive: true });
           writeFileSync(file, image.toPNG());
           debugLog(`captured ${file}`);
@@ -120,6 +128,8 @@ if (!gotLock) {
     initDataIpc(getAgentDir());
     initEngineIpc();
     initFileIpc(getActiveProjectDir);
+    initTerminalIpc(sendToRenderer);
+    initBrowserIpc();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -127,6 +137,11 @@ if (!gotLock) {
   });
 
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    killAllTerminals();
+    if (process.platform !== "darwin") {
+      // Pi SDK 静态加载残留句柄可能挂起 quit（§8）；给 1.5s 后强制退出
+      app.quit();
+      setTimeout(() => app.exit(0), 1500);
+    }
   });
 }

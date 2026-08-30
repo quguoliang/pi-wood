@@ -63,6 +63,28 @@ const api = {
   fsWrite: (path: string, content: string): Promise<boolean> =>
     ipcRenderer.invoke("fs:write", { path, content }),
   fsSearch: (query: string): Promise<unknown> => ipcRenderer.invoke("fs:search", { query }),
+  // T2.3 终端 / T2.4 浏览器
+  termCreate: (opts: { cwd: string; shell?: string }): Promise<string> =>
+    ipcRenderer.invoke("term:create", opts),
+  termWrite: (id: string, data: string): Promise<boolean> =>
+    ipcRenderer.invoke("term:write", { id, data }),
+  termResize: (id: string, cols: number, rows: number): Promise<boolean> =>
+    ipcRenderer.invoke("term:resize", { id, cols, rows }),
+  termKill: (id: string): Promise<boolean> => ipcRenderer.invoke("term:kill", { id }),
+  onTermData: (cb: (d: { id: string; data: string }) => void): (() => void) => {
+    const h = (_e: unknown, d: { id: string; data: string }): void => cb(d);
+    ipcRenderer.on("term:onData", h);
+    return () => ipcRenderer.removeListener("term:onData", h);
+  },
+  onTermExit: (cb: (d: { id: string; exitCode: number }) => void): (() => void) => {
+    const h = (_e: unknown, d: { id: string; exitCode: number }): void => cb(d);
+    ipcRenderer.on("term:onExit", h);
+    return () => ipcRenderer.removeListener("term:onExit", h);
+  },
+  browserNavigate: (url: string): Promise<{ title: string }> =>
+    ipcRenderer.invoke("browser:navigate", { url }),
+  browserScreenshot: (): Promise<{ screenshot: string; url: string }> =>
+    ipcRenderer.invoke("browser:screenshot"),
 };
 
 export type PiPreloadApi = typeof api;

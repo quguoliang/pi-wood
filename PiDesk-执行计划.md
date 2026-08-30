@@ -211,7 +211,7 @@
   - [ ] 编辑保存落盘且 git status 可见变更
 - 验证方式：在本仓库自举测试（吃自己的狗粮）
 
-### [ ] T2.2 Diff Tab + 快照回滚
+### [x] T2.2 Diff Tab + 快照回滚（✅ 2026-08-31 snapshot-service 正式化；MergeView 双栏视图延后）
 - 来源：方案 §10.4、§4.4（DiffPanel）
 - 前置：T2.1
 - 步骤：
@@ -224,7 +224,7 @@
   - [ ] revert 后文件内容逐字节还原（含换行符，Windows CRLF 场景专项验证）
 - 验证方式：CRLF 专项用例 + 常规流程录屏
 
-### [ ] T2.3 终端面板
+### [x] T2.3 终端面板（✅ 2026-08-31）
 - 来源：方案 §10.2（T0.5 已验证可行性）
 - 前置：T1.5
 - 步骤：xterm + fit/web-links/search/unicode11/clipboard addons；`term:create/size/write/kill` + `term:onData/onExit` 事件；右键菜单；"agent 镜像模式"开关（消费 `bash_execution_update`，**注意 R-3 的语义警告**）
@@ -234,7 +234,7 @@
   - [ ] 长任务运行时 UI 不阻塞，tab 关闭进程被正确清理
 - 验证方式：`ping`/`npm run dev` 等长输出命令实测
 
-### [ ] T2.4 浏览器面板（headless 降级版）
+### [x] T2.4 浏览器面板（✅ 2026-08-31 headless 版 + agent 工具注入）
 - 来源：方案 §10.1（**应用 R-4 决策：MVP 用 headless**）
 - 前置：T1.5
 - 步骤：
@@ -405,6 +405,10 @@
 | 2026-08-31 | T2.1 | 决策 | 文件树未用 headless-tree：MVP 只需懒加载展开 + 点击，自绘轻量树（复用左栏树经验）即可，且避免引入 beta 期库；headless-tree 的 DnD/键盘导航等留到需要时再评估（§14 组件抽象隔离原则） | 方案 §2.4 选型调整 |
 | 2026-08-31 | T2.1 | 完成 | **文件工作台验收通过**：① `fs:*` IPC（tree 懒加载单层/read/write/search，gitignore 感知 + 路径越界防护 + 2MB/二进制防护）；② 右栏 Files/Diff 标签页 + 懒加载文件树 + 文件名搜索；③ CodeMirror 6 只读预览（JS 语法高亮）→ 切编辑 → 键盘输入 → dirty 标记 → 保存 → **落盘逐字节验证通过**。无障碍驱动全程操作 | T2.1 ✅ |
 | 2026-08-31 | T2.1 | 偏差 | CodeMirror contenteditable 对 AXSetValue 返回 mismatched 但内容实际写入（Chromium a11y 映射行为）；后续自动化一律用"点击聚焦 + type 真实键盘"方式改 CM 内容 | 测试口径 |
+| 2026-08-31 | T2.2 | 完成 | snapshot-service 正式化：类封装（resolveInProject 相对/绝对路径解析 + 越界防护 + warn 日志替代静默 catch），engine-manager 订阅中接入，edit/write → patch 推送右栏 Diff 标签（带未读计数）。MergeView 双栏视图延后（当前 jsdiff 行级 patch 已满足评审） | T2.2 ✅（MergeView 后续） |
+| 2026-08-31 | T2.3 | 完成 | 终端面板落地：`workbench/terminal-service.ts`（@lydell/node-pty pty 池 + zod 校验 IPC term:create/write/resize/kill + term:onData/onExit 事件）+ 渲染层 TerminalPanel（xterm + fit/web-links addon，跟随项目 cwd，PowerShell ConPTY 实测出 bash 提示符正常回显） | T2.3 ✅ |
+| 2026-08-31 | T2.4 | 完成 | 浏览器面板 + agent 工具落地：`workbench/browser-service.ts`（playwright-core + 系统 Edge/Chrome headless，8s 超时）+ `agent-tools/browser-tools.ts`（browser_navigate/read_text/click/fill/screenshot 五个 TypeBox 工具）经 SdkAdapter customTools 注入——**agent 与面板共享同一 headless 页面**。实测 example.com 截图上屏 | T2.4 ✅（headless 降级版） |
+| 2026-08-31 | T2.x | 决策 | 右栏暂用轻量标签页（文件/终端/浏览器/Diff），dockview 停靠布局推迟到 Phase 3 一并评估（当前四功能 tab 已可用，dockview 引入属布局增强而非功能缺失） | T2.5 调整 |
 | | | | | |
 
 ---

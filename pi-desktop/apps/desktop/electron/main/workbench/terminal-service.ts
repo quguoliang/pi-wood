@@ -1,32 +1,100 @@
-import { spawn } from "node:child_process";
+import { ipcMain } from "electron";
+import { z } from "zod";
 
 /**
- * T0.5 结论落地（见执行计划 §8）：
- * - node-pty 原版/预编译分支在无 VS Build Tools 的机器上都会回退源码编译 → 失败
- * - 采用 @lydell/node-pty（N-API 预编译，可选依赖分发 win32-x64 二进制），
- *   无需 electron-rebuild，Node 与 Electron 运行时均已实测通过 ConPTY spawn
- * - T2.3 终端面板直接基于本模块封装 pty 池；此处仅留接口占位
+ * 终端服务（T2.3，方案 §10.2）：
+ * - @lydell/node-pty（N-API 预编译，无 ABI 重建负担，§8 决策）
+ * - 每个终端一个 id；输出经 term:onData 推送渲染层 xterm，输入经 term:write 回写
+ * - agent bash 与用户终端解耦；"镜像"由渲染层消费 bash_execution_update 实现
  */
-export interface PtySpawnOptions {
+interface PtySession {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(): void;
   cwd: string;
-  shell?: string;
-  cols?: number;
-  rows?: number;
 }
 
-export const PTY_MODULE = "@lydell/node-pty";
+const sessions = new Map<string, PtySession>();
+let seq = 0;
 
-export function resolveShell(preferred?: string): { file: string; args: string[] } {
+const CreateArgSchema = z.object({
+  cwd: z.string().min(1),
+  shell: z.enum(["powershell", "cmd", "git-bash"]).optional(),
+  cols: z.number().int().min(10).max(500).optional(),
+  rows: z.number().int().min(5).max(200).optional(),
+});
+const SizeArgSchema = z.object({ id: z.string(), cols: z.number().int(), rows: z.number().int() });
+const IdArgSchema = z.object({ id: z.string() });
+const WriteArgSchema = z.object({ id: z.string(), data: z.string() });
+
+function resolveShell(preferred?: string): { file: string; args: string[] } {
   if (preferred === "cmd") return { file: "cmd.exe", args: [] };
-  if (preferred === "powershell" || !preferred) {
-    return { file: "powershell.exe", args: ["-NoLogo"] };
-  }
-  // git-bash：由调用方配置安装路径；此处给常见默认
   if (preferred === "git-bash") {
-    return { file: `${process.env["ProgramFiles"] ?? "C:\\Program Files"}\\Git\\bin\\bash.exe`, args: ["-i", "-l"] };
+    const root = process.env["ProgramFiles"] ?? "C:\\Program Files";
+    return { file: `${root}\\Git\\bin\\bash.exe`, args: ["-i", "-l"] };
   }
-  return { file: preferred, args: [] };
+  return { file: "powershell.exe", args: ["-NoLogo"] };
 }
 
-// 防止 tree-shake 后误以为未使用：显式导出 spawn 供 T2.3 使用
-export const childProcessSpawn = spawn;
+export function initTerminalIpc(send: (channel: string, data: unknown) => void): void {
+  ipcMain.handle("term:create", async (_e, raw: unknown) => {
+    const { cwd, shell, cols = 100, rows = 30 } = CreateArgSchema.parse(raw ?? {});
+    const pty = await import("@lydell/node-pty");
+    const { file, args } = resolveShell(shell);
+    const id = `term-${++seq}`;
+    const p = pty.spawn(file, args, {
+      name: "xterm-256color",
+      cols,
+      rows,
+      cwd,
+      env: process.env as Record<string, string>,
+    });
+    p.onData((data: string) => send("term:onData", { id, data }));
+    p.onExit(({ exitCode }: { exitCode: number }) => {
+      send("term:onExit", { id, exitCode });
+      sessions.delete(id);
+    });
+    sessions.set(id, {
+      cwd,
+      write: (data) => p.write(data),
+      resize: (c, r) => {
+        try {
+          p.resize(c, r);
+        } catch {
+          /* 已退出的 pty resize 会抛，忽略 */
+        }
+      },
+      kill: () => p.kill(),
+    });
+    return id;
+  });
+
+  ipcMain.handle("term:write", (_e, raw: unknown) => {
+    const { id, data } = WriteArgSchema.parse(raw);
+    const s = sessions.get(id);
+    if (!s) throw new Error(`terminal not found: ${id}`);
+    s.write(data);
+    return true;
+  });
+
+  ipcMain.handle("term:resize", (_e, raw: unknown) => {
+    const { id, cols, rows } = SizeArgSchema.parse(raw);
+    sessions.get(id)?.resize(cols, rows);
+    return true;
+  });
+
+  ipcMain.handle("term:kill", (_e, raw: unknown) => {
+    const { id } = IdArgSchema.parse(raw);
+    const s = sessions.get(id);
+    if (s) {
+      s.kill();
+      sessions.delete(id);
+    }
+    return true;
+  });
+}
+
+export function killAllTerminals(): void {
+  for (const s of sessions.values()) s.kill();
+  sessions.clear();
+}

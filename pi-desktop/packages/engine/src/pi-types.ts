@@ -42,6 +42,7 @@ export interface PiModule {
   createAgentSessionFromServices(options: {
     services: AgentSessionServicesLike;
     sessionManager: unknown;
+    customTools?: unknown;
   }): Promise<{ session: AgentSessionLike }>;
   createAgentSessionRuntime(
     factory: (opts: RuntimeFactoryOptions) => Promise<{

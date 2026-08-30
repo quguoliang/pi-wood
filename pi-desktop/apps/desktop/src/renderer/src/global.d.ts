@@ -33,6 +33,15 @@ declare global {
       fsRead(path: string): Promise<{ content: string; truncated: boolean }>;
       fsWrite(path: string, content: string): Promise<boolean>;
       fsSearch(query: string): Promise<unknown>;
+      termCreate(opts: { cwd: string; shell?: string; cols?: number; rows?: number }): Promise<string>;
+      termWrite(id: string, data: string): Promise<boolean>;
+      termResize(id: string, cols: number, rows: number): Promise<boolean>;
+      termKill(id: string): Promise<boolean>;
+      onTermData(cb: (d: { id: string; data: string }) => void): () => void;
+      onTermExit(cb: (d: { id: string; exitCode: number }) => void): () => void;
+      browserNavigate(url: string): Promise<{ title: string }>;
+      browserScreenshot(): Promise<{ screenshot: string; url: string }>;
+      onBrowserShot(cb: (d: { screenshot: string }) => void): () => void;
     };
   }
 }
