@@ -11,7 +11,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/event-bridge.test.ts"
+    "test": "node --test src/event-bridge.test.ts src/session-tree.test.ts"
   },
   "dependencies": {
     "@pidesk/ipc-schema": "workspace:*",

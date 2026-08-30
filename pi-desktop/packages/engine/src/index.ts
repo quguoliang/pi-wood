@@ -7,3 +7,13 @@ export type {
   AvailableModel,
 } from "./adapter";
 export type { EngineEvent } from "@pidesk/ipc-schema";
+export type {
+  TreeEntry,
+  SessionTreeNode,
+  SessionTree,
+} from "./session-tree.ts";
+export {
+  buildSessionTree,
+  defaultLeaf,
+  flattenTree,
+} from "./session-tree.ts";

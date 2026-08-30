@@ -387,6 +387,8 @@
 | 2026-08-30 | T1.1 | 决策 | IPC 方案定为**自研 contextBridge + ipcMain.handle + zod 边界校验**（不用 electron-trpc）：事件流是 main→renderer 推送，trpc subscription 在 Electron 上反而绕；zod schema（@pidesk/ipc-schema）仍是唯一契约源 | 记录备查 |
 | 2026-08-30 | T1.1 | 完成 | 契约层落地：① `packages/ipc-schema` 全量事件/命令 zod schema（25 种事件 + unknown 兜底 + 13 个通道常量）；② `packages/engine`：EngineAdapter 接口（渲染层仅类型，子路径 `@pidesk/engine/sdk` 隔离 Pi SDK）、normalizeEngineEvent 事件桥（未知事件归一化不崩，**单测 4/4 通过**，node:test + TS 类型剥离）、SdkAdapter 正式实现；③ e2e-service 重构为 SdkAdapter 驱动并重跑 E2E PASS（read→edit→diff 全链路） | T1.1 ✅ |
 | 2026-08-30 | T1.1 | 偏差 | **setModel 必须用 registry.getModel() 的完整 Model 对象**：裸 {provider,id} 会被接受但请求退化（模型复读输入、不调工具）。另实测 0.84.4 静态目录已无 deepseek-chat（仅 v4 系），早期看到的 chat 来自远程目录缓存——**模型目录是动态的，chat 可能整体退役**，T3.2 模型管理按"registry 可解析即可用"设计，不依赖静态清单 | T3.2 设计约束 |
+| 2026-08-30 | T1.4(后台) | 完成 | 左栏数据层先行完成：① `packages/engine/src/session-tree.ts` 纯函数树构建（buildSessionTree/flattenTree/defaultLeaf，孤儿条目容错、活跃分支标记），**单测 8/8 通过**；② 主进程 `project/project-manager.ts`（projects.json 注册表 + 复用 Pi ProjectTrustStore 信任预检，`ProjectTrustDecision = boolean\|null`）+ `engine/session-service.ts`（列表复用 SessionManager.list，树解析复用 parseSessionEntries）；③ 真实数据验证：19 个真实会话列出、最新会话解析为 12 节点树（深度缩进 + 活跃叶标记）、信任状态 undecided/not-required 分级正确。验证脚本 `apps/desktop/scratch/backend-probe.ts` | T1.4 后台部分 ✅，UI 部分（SessionTree 组件）与 CLI 互通硬验收待做 |
+| 2026-08-30 | T1.4(后台) | 偏差 | trustStatus 语义实测：`hasTrustRequiringProjectResources` 只对含动态资源的 .pi 项目返回 true；信任交互仍走运行时 project_trust 事件（经 uiBridge.confirm），预检仅做徽标显示 | §9 交互口径 |
 | | | | | |
 
 ---
