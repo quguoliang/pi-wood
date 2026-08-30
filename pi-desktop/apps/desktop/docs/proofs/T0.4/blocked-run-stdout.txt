@@ -1,0 +1,107 @@
+[2026-08-30T11:53:18.891Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+building runtime (services → fromServices → runtime)...
+runtime ok: session=true newSession=function switchSession=function fork=function
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-53-18-899Z_01a05284-5333-721f-a852-63b74b6d8cd9.jsonl
+bindExtensions ok (mode=rpc, desktop ui bridge bound)
+available models for deepseek: deepseek-v4-flash, deepseek-v4-flash-vision-exp, deepseek-v4-pro
+MODEL: deepseek/deepseek-v4-flash
+PROMPT: 运行 bash 命令 echo blocked-group 并告诉我输出
+EVENT agent_start
+EVENT turn_start
+EVENT message_start
+EVENT message_end
+EVENT message_start
+EVENT message_update(toolcall_start)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_end)
+EVENT message_end
+EVENT tool_execution_start: bash
+[permission-gate-probe] blocking bash call
+EVENT tool_execution_end
+EVENT message_start
+EVENT message_end
+EVENT turn_end
+EVENT turn_start
+EVENT message_start
+EVENT message_update(thinking_start)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(text_start)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(thinking_end)
+EVENT message_update(text_end)
+EVENT message_end
+EVENT turn_end
+EVENT agent_end
+EVENT agent_settled
+DONE: 97 events captured

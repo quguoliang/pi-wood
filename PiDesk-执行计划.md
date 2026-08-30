@@ -95,7 +95,7 @@
   - [ ] 打包后的 app（非 dev 模式）扩展仍能加载
 - 验证方式：dev + 打包版各跑一次，日志留档 `docs/proofs/T0.3/`
 
-### [ ] T0.4 `tool_call` 拦截验证（审批门可行性）
+### [x] T0.4 `tool_call` 拦截验证（审批门可行性）（✅ 2026-08-30，双组对照通过，记录见 §8）
 - 来源：方案 §10.3、[扩展文档 tool_call 事件](https://pi.dev/docs/latest/extensions)
 - 前置：T0.3
 - 步骤：
@@ -107,7 +107,7 @@
   - [ ] 结论写入 §8：审批门扩展路线确认可行 / 或记录替代方案
 - 验证方式：一条 prompt 触发 bash，观察日志
 
-### [ ] T0.5 node-pty Windows ABI 验证
+### [x] T0.5 node-pty Windows ABI 验证（✅ 2026-08-30，改用 @lydell/node-pty N-API 预编译，双运行时 ConPTY 通过，记录见 §8）
 - 来源：方案 §10.2、§10.6、§14
 - 前置：T0.1
 - 步骤：
@@ -380,6 +380,9 @@
 | 2026-08-30 | T0.3 | 偏差 | 排查坑：僵尸 electron 进程持有 `requestSingleInstanceLock` 导致新实例静默退出（exit 0 无输出）。排障时先 `taskkill /F /IM electron.exe` | 排障经验 |
 | 2026-08-30 | T0.3 | 完成 | **Electron 主进程探针 PASS**：jiti 加载 TS 扩展（echo_greeting）成功 → `bindExtensions({uiContext, mode:"rpc"})` 桌面桥生效 → DeepSeek 调用扩展工具 `TOOL_START/TOOL_END: isError=false` → notify 经 uiContext 发渲染层。证据：`apps/desktop/docs/proofs/T0.3/{electron-probe.log,boot.log}`。桌面模式语义定为 `"rpc"`（`ExtensionMode = tui/rpc/json/print`，无 "sdk" 值） | T0.3 ✅（打包版 asar 验证留 T0.6） |
 | 2026-08-30 | T0.3 | 偏差 | 模型目录实测：`getAvailable()` 列表随在线目录刷新变化（Node 首跑含 deepseek-chat/reasoner 5 个，Electron 侧仅 v4 系 3 个），`setModel` 不校验列表仍可用 chat。**T3.2 模型管理须处理静态目录 vs 在线目录合并 + 收藏模型直连** | T3.2 设计约束 |
+| 2026-08-30 | T0.4 | 完成 | **tool_call 拦截验证通过（双组对照）**：对照组 bash 正常执行（tool_execution_update 有输出）；实验组 `pi.on("tool_call")` 返回 `{block:true, reason}` → bash 无实际执行输出，agent 收到 reason 正常继续（agent_end）。证据：`apps/desktop/docs/proofs/T0.4/blocked-run-stdout.txt`。审批门扩展路线确认可行，`<ApprovalCard>` 只需在 block 前插入 IPC 等待用户决策 | T0.4 ✅，§10.3 设计确认 |
+| 2026-08-30 | T0.5 | 偏差 | 机器无 Visual Studio Build Tools：node-pty 1.1.0 与 @homebridge 预编译分支均回退 node-gyp 源码编译 → 失败。**改用 `@lydell/node-pty`（N-API 预编译，可选依赖直发 win32-x64 二进制）**，无需 electron-rebuild | 方案 §2.4 选型变更，T5.3 打包更简 |
+| 2026-08-30 | T0.5 | 完成 | ConPTY 验证通过：Node 运行时与 Electron 运行时（`ELECTRON_RUN_AS_NODE`）下 `pty.spawn(powershell)` 均正常收发输出（exitCode 0 + 标记串命中）。骨架落盘 `electron/main/workbench/terminal-service.ts`。xterm 渲染层集成按计划归 T2.3 | T0.5 ✅ |
 | | | | | |
 
 ---
