@@ -3,6 +3,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { MessageList } from "./components/center/MessageList";
 import { Composer } from "./components/center/Composer";
 import { LeftPane } from "./components/left/LeftPane";
+import { RightPane } from "./components/right/RightPane";
 import { useSessionStore } from "./stores/session-store";
 
 interface Toast {
@@ -47,18 +48,7 @@ export default function App() {
           <Composer />
         </>
       }
-      right={
-        <>
-          <h2>右栏 · Diff</h2>
-          <p className="muted">文件变更实时显示（T2.2 正式化为 snapshot-service + MergeView）</p>
-          {diffs.map((d) => (
-            <div key={d.file} className="diff-box">
-              <div className="diff-file">{d.file}</div>
-              <pre>{d.patch}</pre>
-            </div>
-          ))}
-        </>
-      }
+      right={<RightPane diffs={diffs} />}
       statusbar={
         <>
           {versions

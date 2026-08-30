@@ -29,6 +29,10 @@ declare global {
       engineSwitchSession(file: string): Promise<boolean>;
       debugStress(count: number): Promise<number>;
       debugCapture(file: string): Promise<boolean>;
+      fsTree(dir?: string): Promise<unknown>;
+      fsRead(path: string): Promise<{ content: string; truncated: boolean }>;
+      fsWrite(path: string, content: string): Promise<boolean>;
+      fsSearch(query: string): Promise<unknown>;
     };
   }
 }

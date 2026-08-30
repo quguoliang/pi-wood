@@ -9,3 +9,6 @@ function greetZh(name) {
 }
 
 console.log(greetZh("皮"));
+
+// T2.1 手动编辑保存验证
+console.log("edited in PiDesk");

@@ -198,7 +198,7 @@
 
 ## 4. Phase 2 · 多功能工作台（预计 2~3 周）
 
-### [ ] T2.1 文件树 + 代码预览/编辑
+### [x] T2.1 文件树 + 代码预览/编辑（✅ 2026-08-31：fs:* 域 + 懒加载树 + 搜索 + CodeMirror 编辑保存落盘验证通过，记录见 §8；文件树未用 headless-tree，决策见 §8）
 - 来源：方案 §4.4（FilesPanel / CodePanel）、§2.4
 - 前置：T1.5
 - 步骤：
@@ -402,6 +402,9 @@
 | 2026-08-30 | T1.5 | 证据 | 门禁预验：GUI 会话（含续写轮次）→ pi CLI `--session -p` resume 成功，正确引用 GUI 对话内容（"需要我做什么其他处理吗？"上下文可达）。T1.5 正式录屏待补（capture 截图链已留存） | T1.5 录屏待补 |
 | 2026-08-31 | T1.5 | 完成 | **门禁评审通过**：日常任务全 GUI 闭环实测——新会话发"给 greet.js 添加 greetZh 函数并用 node 运行"→ agent 执行 read→edit→bash（read/edit/bash 三张工具卡片全部 ✅）→ streamdown 渲染代码块输出（hello pi / 你好，皮，带复制/下载按钮）→ greet.js 真实变更（新增 greetZh+调用行）→ pi CLI resume 该会话并正确回答修改内容。验收原文"日常改 bug/加功能在 GUI 完成，CLI 可 resume 同一会话"达成 | T1.5 ✅ **Phase 1 门禁通过，进入 Phase 2** |
 | 2026-08-31 | T1.5 | 偏差 | 右栏 diff 未在本次演示出现：edit 工具的 input.path 为相对路径（"greet.js"），主进程 readFileSync 相对 cwd 解析失败被静默吞掉。修复归 T2.2 snapshot-service 正式化：path.resolve(projectDir, relPath)，并把静默 catch 改为日志 | T2.2 修复项 |
+| 2026-08-31 | T2.1 | 决策 | 文件树未用 headless-tree：MVP 只需懒加载展开 + 点击，自绘轻量树（复用左栏树经验）即可，且避免引入 beta 期库；headless-tree 的 DnD/键盘导航等留到需要时再评估（§14 组件抽象隔离原则） | 方案 §2.4 选型调整 |
+| 2026-08-31 | T2.1 | 完成 | **文件工作台验收通过**：① `fs:*` IPC（tree 懒加载单层/read/write/search，gitignore 感知 + 路径越界防护 + 2MB/二进制防护）；② 右栏 Files/Diff 标签页 + 懒加载文件树 + 文件名搜索；③ CodeMirror 6 只读预览（JS 语法高亮）→ 切编辑 → 键盘输入 → dirty 标记 → 保存 → **落盘逐字节验证通过**。无障碍驱动全程操作 | T2.1 ✅ |
+| 2026-08-31 | T2.1 | 偏差 | CodeMirror contenteditable 对 AXSetValue 返回 mismatched 但内容实际写入（Chromium a11y 映射行为）；后续自动化一律用"点击聚焦 + type 真实键盘"方式改 CM 内容 | 测试口径 |
 | | | | | |
 
 ---

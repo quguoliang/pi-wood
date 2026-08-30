@@ -5,7 +5,8 @@ import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
-import { initEngineIpc } from "./engine/engine-manager";
+import { initEngineIpc, getActiveProjectDir } from "./engine/engine-manager";
+import { initFileIpc } from "./workbench/file-service";
 
 const debugLog = (line: string): void => {
   try {
@@ -118,6 +119,7 @@ if (!gotLock) {
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
     initDataIpc(getAgentDir());
     initEngineIpc();
+    initFileIpc(getActiveProjectDir);
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

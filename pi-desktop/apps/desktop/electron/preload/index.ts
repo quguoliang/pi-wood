@@ -56,6 +56,13 @@ const api = {
     ipcRenderer.invoke("engine:switchSession", { file }),
   debugStress: (count: number): Promise<number> => ipcRenderer.invoke("debug:stress", { count }),
   debugCapture: (file: string): Promise<boolean> => ipcRenderer.invoke("debug:capture", { file }),
+  // T2.1 文件域
+  fsTree: (dir?: string): Promise<unknown> => ipcRenderer.invoke("fs:tree", { dir }),
+  fsRead: (path: string): Promise<{ content: string; truncated: boolean }> =>
+    ipcRenderer.invoke("fs:read", { path }),
+  fsWrite: (path: string, content: string): Promise<boolean> =>
+    ipcRenderer.invoke("fs:write", { path, content }),
+  fsSearch: (query: string): Promise<unknown> => ipcRenderer.invoke("fs:search", { query }),
 };
 
 export type PiPreloadApi = typeof api;

@@ -69,6 +69,11 @@ export function getActiveAdapter(): SdkAdapter | undefined {
   return adapter;
 }
 
+export function getActiveProjectDir(): string {
+  if (!activeProject) throw new Error("引擎未启动：请先选择项目");
+  return activeProject;
+}
+
 async function requireAdapter(): Promise<SdkAdapter> {
   if (!adapter) throw new Error("引擎未启动：请先选择项目");
   return adapter;

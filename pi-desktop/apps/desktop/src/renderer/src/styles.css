@@ -380,3 +380,89 @@ body {
 .tree-row.active-branch {
   color: var(--pi-accent);
 }
+
+.right-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: 13px;
+}
+
+.right-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.right-tabs button {
+  background: transparent;
+  color: var(--pi-muted-fg);
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.right-tabs button.active {
+  color: #1a1b26;
+  background: var(--pi-accent);
+  border-color: var(--pi-accent);
+}
+
+.files-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.files-toolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.files-search {
+  flex: 1;
+  background: var(--pi-bg);
+  color: var(--pi-fg);
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.file-tree {
+  flex: 1;
+  min-height: 100px;
+  overflow: auto;
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  padding: 4px;
+  font-size: 12px;
+  max-height: 260px;
+}
+
+.file-row {
+  font-family: Consolas, monospace;
+}
+
+.editor-area {
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--pi-border);
+  font-size: 12px;
+}
+
+.editor-tab.active {
+  color: var(--pi-accent);
+  font-family: Consolas, monospace;
+}
