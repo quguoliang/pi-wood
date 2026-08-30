@@ -1,0 +1,76 @@
+:root {
+  color-scheme: dark;
+  --pi-bg: #1a1b26;
+  --pi-bg-panel: #1f2035;
+  --pi-fg: #c0caf5;
+  --pi-muted-fg: #7982a9;
+  --pi-border: #2f334d;
+  --pi-accent: #7aa2f7;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--pi-bg);
+  color: var(--pi-fg);
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--pi-border);
+  font-size: 13px;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: 22% 1fr 30%;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  padding: 14px;
+  overflow: auto;
+  border-right: 1px solid var(--pi-border);
+  background: var(--pi-bg-panel);
+}
+
+.panel h2 {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.panel.right {
+  border-right: none;
+}
+
+.muted {
+  color: var(--pi-muted-fg);
+  font-size: 12px;
+}
+
+.status-bar {
+  padding: 5px 14px;
+  border-top: 1px solid var(--pi-border);
+  font-size: 12px;
+  color: var(--pi-muted-fg);
+}
