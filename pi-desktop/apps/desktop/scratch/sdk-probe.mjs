@@ -19,8 +19,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const projectCwd = resolve(here, "test-project");
 const agentDir = getAgentDir();
-const logPath = resolve(here, "../../docs/proofs/T0.2/events-log.txt");
-mkdirSync(resolve(here, "../../docs/proofs/T0.2"), { recursive: true });
+const logPath = resolve(here, "../docs/proofs/T0.2/events-log.txt");
+mkdirSync(resolve(here, "../docs/proofs/T0.2"), { recursive: true });
 
 const log = (line) => {
   console.log(line);
@@ -30,12 +30,14 @@ const log = (line) => {
 log(`[${new Date().toISOString()}] agentDir=${agentDir} cwd=${projectCwd}`);
 
 // runtime 工厂：按目标 cwd 重建服务（EngineAdapter SdkAdapter 的核心结构）
+let lastServices;
 const runtimeFactory = async (opts) => {
   const services = await createAgentSessionServices({ cwd: opts.cwd, agentDir: opts.agentDir });
   const result = await createAgentSessionFromServices({
     services,
     sessionManager: opts.sessionManager,
   });
+  lastServices = services;
   return { ...result, services, diagnostics: services.diagnostics };
 };
 
@@ -67,6 +69,21 @@ if (!prompt) {
   log("NO_PROMPT_ARG: 无 Key 冒烟通过（runtime 装配 + 事件订阅就绪），未发送 prompt。");
   process.exit(0);
 }
+
+// 选择模型：getAvailable() 全量取回后按 provider 过滤
+// （实测 getAvailable(providerId) 直传参数会返回空，语义不是按 provider 过滤——记入执行计划 §8）
+const modelId = process.argv[3]; // 可选，如 deepseek-chat
+const providerId = modelId?.includes("/") ? modelId.split("/")[0] : (process.env.PI_PROBE_PROVIDER ?? "deepseek");
+const allAvailable = await lastServices.modelRuntime.getAvailable();
+const available = allAvailable.filter((m) => m.provider === providerId);
+log(`available models for ${providerId}: ${available.map((m) => m.id).join(", ") || "(none)"}`);
+if (available.length === 0) {
+  log("NO_MODEL: 该 Provider 无可用模型（检查 models.json / apiKey）");
+  process.exit(1);
+}
+const chosen = modelId?.includes("/") ? available.find((m) => m.id === modelId.split("/")[1]) : (available.find((m) => m.id === modelId) ?? available[0]);
+await session.setModel(chosen);
+log(`MODEL: ${chosen.provider}/${chosen.id}`);
 
 log(`PROMPT: ${prompt}`);
 try {

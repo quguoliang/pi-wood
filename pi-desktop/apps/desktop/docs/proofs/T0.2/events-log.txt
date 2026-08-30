@@ -1,8 +1,260 @@
-[2026-08-30T10:57:46.461Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
-creating session (createAgentSession, R-1: modelRuntime 由默认服务装配)...
-modelFallback: No models available. Use /login to log into a provider via OAuth or API key. See:
-  C:\Users\1\Desktop\pi-wood\pi-desktop\node_modules\.pnpm\@earendil-works+pi-coding-a_1bb2841d1524befda97e7628b4399848\node_modules\@earendil-works\pi-coding-agent\docs\providers.md
-  C:\Users\1\Desktop\pi-wood\pi-desktop\node_modules\.pnpm\@earendil-works+pi-coding-a_1bb2841d1524befda97e7628b4399848\node_modules\@earendil-works\pi-coding-agent\docs\models.md
-extensions loaded: 0
-sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T10-57-46-484Z_01a05251-79f4-7729-901c-6976971909ce.jsonl
-creating runtime (createAgentSessionRuntime)...
+[2026-08-30T11:01:29.790Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+building runtime (services → fromServices → runtime)...
+runtime ok: session=true newSession=function switchSession=function fork=function
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-01-29-793Z_01a05254-e241-7ca6-9b37-e93b17bbf340.jsonl
+NO_PROMPT_ARG: 无 Key 冒烟通过（runtime 装配 + 事件订阅就绪），未发送 prompt。
+[2026-08-30T11:08:24.335Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+building runtime (services → fromServices → runtime)...
+runtime ok: session=true newSession=function switchSession=function fork=function
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-08-24-339Z_01a0525b-3593-752d-88fb-4a4256b43ec2.jsonl
+available models for deepseek-chat: (none)
+NO_MODEL: 该 Provider 无可用模型（检查 models.json / apiKey）
+[2026-08-30T11:09:05.738Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+building runtime (services → fromServices → runtime)...
+runtime ok: session=true newSession=function switchSession=function fork=function
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-09-05-743Z_01a0525b-d74e-7719-ac09-122b2479a31f.jsonl
+available models for deepseek: deepseek-v4-flash, deepseek-v4-flash-vision-exp, deepseek-v4-pro, deepseek-chat, deepseek-reasoner
+EVENT thinking_level_changed
+MODEL: deepseek/deepseek-chat
+PROMPT: 把 test.txt 里的 foo 改成 bar
+EVENT agent_start
+EVENT turn_start
+EVENT message_start
+EVENT message_end
+EVENT message_start
+EVENT message_update(text_start)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_end)
+EVENT message_end
+EVENT turn_end
+EVENT agent_end
+EVENT agent_settled
+DONE: 30 events captured
+[2026-08-30T11:10:24.652Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+building runtime (services → fromServices → runtime)...
+runtime ok: session=true newSession=function switchSession=function fork=function
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-10-24-657Z_01a0525d-0b91-7aa6-b641-61f0b064a628.jsonl
+available models for deepseek: deepseek-v4-flash, deepseek-v4-flash-vision-exp, deepseek-v4-pro
+MODEL: deepseek/deepseek-v4-flash
+PROMPT: 把 test.txt 里的 foo 改成 bar
+EVENT agent_start
+EVENT turn_start
+EVENT message_start
+EVENT message_end
+EVENT message_start
+EVENT message_update(thinking_start)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(toolcall_start)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(thinking_end)
+EVENT message_update(toolcall_end)
+EVENT message_end
+EVENT tool_execution_start: read
+EVENT tool_execution_end
+EVENT message_start
+EVENT message_end
+EVENT turn_end
+EVENT turn_start
+EVENT message_start
+EVENT message_update(thinking_start)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(toolcall_start)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(thinking_end)
+EVENT message_update(toolcall_end)
+EVENT message_end
+EVENT tool_execution_start: edit
+EVENT tool_execution_end
+EVENT message_start
+EVENT message_end
+EVENT turn_end
+EVENT turn_start
+EVENT message_start
+EVENT message_update(toolcall_start)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_delta)
+EVENT message_update(toolcall_end)
+EVENT message_end
+EVENT tool_execution_start: read
+EVENT tool_execution_end
+EVENT message_start
+EVENT message_end
+EVENT turn_end
+EVENT turn_start
+EVENT message_start
+EVENT message_update(text_start)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_delta)
+EVENT message_update(text_end)
+EVENT message_end
+EVENT turn_end
+EVENT agent_end
+EVENT agent_settled
+DONE: 165 events captured
+[2026-08-30T11:12:47.265Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+building runtime (services → fromServices → runtime)...
+runtime ok: session=true newSession=function switchSession=function fork=function
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-12-47-271Z_01a0525f-38a7-7a04-a9dd-12c2bd69fb53.jsonl
+available models for deepseek: deepseek-v4-flash, deepseek-v4-flash-vision-exp, deepseek-v4-pro
+MODEL: deepseek/deepseek-v4-flash
+PROMPT: 只回复两个字：成功
+EVENT agent_start
+EVENT turn_start
+EVENT message_start
+EVENT message_end
+EVENT message_start
+EVENT message_update(thinking_start)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(thinking_delta)
+EVENT message_update(text_start)
+EVENT message_update(text_delta)
+EVENT message_update(thinking_end)
+EVENT message_update(text_end)
+EVENT message_end
+EVENT turn_end
+EVENT agent_end
+EVENT agent_settled
+DONE: 30 events captured

@@ -1,5 +1,0 @@
-[2026-08-30T11:01:29.790Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
-building runtime (services → fromServices → runtime)...
-runtime ok: session=true newSession=function switchSession=function fork=function
-sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T11-01-29-793Z_01a05254-e241-7ca6-9b37-e93b17bbf340.jsonl
-NO_PROMPT_ARG: 无 Key 冒烟通过（runtime 装配 + 事件订阅就绪），未发送 prompt。

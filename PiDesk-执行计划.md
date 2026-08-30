@@ -67,7 +67,7 @@
   - [ ] `pnpm build` 产出可安装的 Windows NSIS 包并成功运行
 - 验证方式：本机执行 `pnpm dev` / `pnpm build`，截图存 `docs/proofs/T0.1/`
 
-### [ ] T0.2 嵌入 Pi SDK：跑通一次完整 prompt 闭环 ★关键路径
+### [x] T0.2 嵌入 Pi SDK：跑通一次完整 prompt 闭环 ★关键路径（✅ 2026-08-30，DeepSeek 内置 Provider + DEEPSEEK_API_KEY 环境变量；验收记录见 §8）
 - 来源：方案 §2.1（**应用 §1 R-1、R-2 修订**）、[SDK 文档](https://pi.dev/docs/latest/sdk)
 - 前置：T0.1
 - 步骤：
@@ -373,6 +373,9 @@
 | 2026-08-30 | T0.1 | 完成 | 验收通过：`pnpm -r typecheck` 全绿；`electron-vite build` 三目标成功；打包版应用启动正常（3 进程、日志干净）；NSIS 包产出 `apps/desktop/release/PiDesk Setup 0.0.1.exe` | T0.1 ✅，下一任务 T0.2 |
 | 2026-08-30 | T0.2 | 偏差 | Pi SDK 实际版本 **0.84.4**（锁定）。实测装配路径比在线文档更精确：`createAgentSessionServices({cwd, agentDir, modelRuntime?})` → `createAgentSessionFromServices({services, sessionManager})` → `createAgentSessionRuntime(工厂函数, {cwd, agentDir, sessionManager})`。**工厂函数**（`CreateAgentSessionRuntimeFactory`）在每次 newSession/switchSession/fork 时按目标 cwd 重建服务——SdkAdapter 应持有工厂而非单个 session | sdk-adapter 结构据此设计（T1.1） |
 | 2026-08-30 | T0.2 | 进展 | 无 Key 冒烟通过：runtime 装配 + `session.subscribe()` 挂载 + `newSession/switchSession/fork` 方法面确认 + sessionFile 落盘 `~/.pi/agent/sessions/`（R-1/R-2 修订与真实包吻合）。探针：`apps/desktop/scratch/sdk-probe.mjs`（用法与日志见 `docs/proofs/T0.2/`） | **T0.2 剩余项阻塞：需用户提供模型 API Key** |
+| 2026-08-30 | T0.2 | 完成 | **用户提供 DeepSeek Key 后闭环达成**：prompt "把 test.txt 里的 foo 改成 bar" → 165 事件（含 3 次 tool_execution_start/end）→ 文件真实修改为 "hello bar"。日志 `apps/desktop/docs/proofs/T0.2/events-log.txt`。注：验收在 Node 进程完成（SDK 纯 JS），Electron 主进程内复验并入 T0.3 | T0.2 ✅ |
+| 2026-08-30 | T0.2 | 偏差 | **DeepSeek 是内置 Provider**，凭据走 `DEEPSEEK_API_KEY` 环境变量，无需 models.json。⚠️ 实测：自定义 `models.json` 中同名 provider 的最小配置会**覆盖**内置目录项并丢失 compat 设置，导致工具调用失效——T3.2 模型设置 UI 必须**合并**内置目录而非整体替换（修订方案 §5.6 实现口径） | T3.2 设计约束 |
+| 2026-08-30 | T0.2 | 偏差 | API 细节实测：① `getAvailable()` 需无参全量调用后按 `model.provider` 过滤（直传 providerId 返回空）；② 实际事件流含 `agent_settled`、`thinking_level_changed`，方案 §3.1 schema 未列——T1.1 补入 EngineEventSchema | T1.1 修订依据 |
 | | | | | |
 
 ---
