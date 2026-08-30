@@ -1,0 +1,8 @@
+[2026-08-30T10:57:46.461Z] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+creating session (createAgentSession, R-1: modelRuntime 由默认服务装配)...
+modelFallback: No models available. Use /login to log into a provider via OAuth or API key. See:
+  C:\Users\1\Desktop\pi-wood\pi-desktop\node_modules\.pnpm\@earendil-works+pi-coding-a_1bb2841d1524befda97e7628b4399848\node_modules\@earendil-works\pi-coding-agent\docs\providers.md
+  C:\Users\1\Desktop\pi-wood\pi-desktop\node_modules\.pnpm\@earendil-works+pi-coding-a_1bb2841d1524befda97e7628b4399848\node_modules\@earendil-works\pi-coding-agent\docs\models.md
+extensions loaded: 0
+sessionFile: C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-pi-wood-pi-desktop-apps-desktop-scratch-test-project--\2026-08-30T10-57-46-484Z_01a05251-79f4-7729-901c-6976971909ce.jsonl
+creating runtime (createAgentSessionRuntime)...

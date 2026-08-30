@@ -371,6 +371,8 @@
 | 2026-08-30 | T0.1 | 偏差 | 本机（Git Bash + pnpm）下 electron 的 install.js 下载后解压静默失败（extract-zip 只产出 LICENSES.chromium.html，exit 0 无报错）。解法：`ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node install.js` 下载，再用 PowerShell `Expand-Archive` 手动解压 dist/，并 `printf 'electron.exe' > path.txt`（echo 会带换行导致 spawn ENOENT） | **升级 electron 版本时需重复此流程** |
 | 2026-08-30 | T0.1 | 偏差 | electron-builder 打 NSIS 时 winCodeSign 解压因符号链接特权失败（"客户端没有所需的特权"）。解法：用自带 7za 手动解压 `winCodeSign\120937007.7z` → `winCodeSign\winCodeSign-2.6.0`（忽略 2 个 darwin 链接错误），预热缓存后重跑成功 | 已解决，非管理员环境打包照此绕行 |
 | 2026-08-30 | T0.1 | 完成 | 验收通过：`pnpm -r typecheck` 全绿；`electron-vite build` 三目标成功；打包版应用启动正常（3 进程、日志干净）；NSIS 包产出 `apps/desktop/release/PiDesk Setup 0.0.1.exe` | T0.1 ✅，下一任务 T0.2 |
+| 2026-08-30 | T0.2 | 偏差 | Pi SDK 实际版本 **0.84.4**（锁定）。实测装配路径比在线文档更精确：`createAgentSessionServices({cwd, agentDir, modelRuntime?})` → `createAgentSessionFromServices({services, sessionManager})` → `createAgentSessionRuntime(工厂函数, {cwd, agentDir, sessionManager})`。**工厂函数**（`CreateAgentSessionRuntimeFactory`）在每次 newSession/switchSession/fork 时按目标 cwd 重建服务——SdkAdapter 应持有工厂而非单个 session | sdk-adapter 结构据此设计（T1.1） |
+| 2026-08-30 | T0.2 | 进展 | 无 Key 冒烟通过：runtime 装配 + `session.subscribe()` 挂载 + `newSession/switchSession/fork` 方法面确认 + sessionFile 落盘 `~/.pi/agent/sessions/`（R-1/R-2 修订与真实包吻合）。探针：`apps/desktop/scratch/sdk-probe.mjs`（用法与日志见 `docs/proofs/T0.2/`） | **T0.2 剩余项阻塞：需用户提供模型 API Key** |
 | | | | | |
 
 ---
