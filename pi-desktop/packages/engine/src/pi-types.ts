@@ -38,6 +38,7 @@ export interface PiModule {
   createAgentSessionServices(options: {
     cwd: string;
     agentDir?: string;
+    resourceLoaderOptions?: { extensionFactories?: unknown[] };
   }): Promise<AgentSessionServicesLike>;
   createAgentSessionFromServices(options: {
     services: AgentSessionServicesLike;

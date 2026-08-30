@@ -85,6 +85,23 @@ const api = {
     ipcRenderer.invoke("browser:navigate", { url }),
   browserScreenshot: (): Promise<{ screenshot: string; url: string }> =>
     ipcRenderer.invoke("browser:screenshot"),
+  // T3.2/T4.1
+  providerList: (): Promise<unknown> => ipcRenderer.invoke("provider:list"),
+  providerSetKey: (provider: string, key: string): Promise<boolean> =>
+    ipcRenderer.invoke("provider:setKey", { provider, key }),
+  providerRemoveKey: (provider: string): Promise<boolean> =>
+    ipcRenderer.invoke("provider:removeKey", { provider }),
+  providerAddCustom: (cfg: unknown): Promise<boolean> =>
+    ipcRenderer.invoke("provider:addCustom", cfg),
+  approvalDecide: (id: number, allow: boolean): Promise<boolean> =>
+    ipcRenderer.invoke("approval:decide", { id, allow }),
+  onApprovalRequest: (
+    cb: (d: { id: number; title: string; message: string }) => void,
+  ): (() => void) => {
+    const h = (_e: unknown, d: { id: number; title: string; message: string }): void => cb(d);
+    ipcRenderer.on("approval:request", h);
+    return () => ipcRenderer.removeListener("approval:request", h);
+  },
 };
 
 export type PiPreloadApi = typeof api;

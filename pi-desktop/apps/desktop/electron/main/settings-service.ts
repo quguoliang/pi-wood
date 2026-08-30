@@ -14,6 +14,11 @@ export interface PiDeskSettings {
   theme: { fallback: "light" | "dark" | "system" };
   editor: { fontSize: number; tabSize: number };
   recentProjects: string[];
+  model: { provider: string; id: string };
+  approval: {
+    mode: "auto" | "highRisk" | "allAsk" | "denyAll";
+    rules: Array<{ pattern: string; action: "allow" | "ask" | "deny" }>;
+  };
 }
 
 export function defaultSettings(): PiDeskSettings {
@@ -22,6 +27,8 @@ export function defaultSettings(): PiDeskSettings {
     theme: { fallback: "dark" },
     editor: { fontSize: 14, tabSize: 2 },
     recentProjects: [],
+    model: { provider: "", id: "" },
+    approval: { mode: "highRisk", rules: [] },
   };
 }
 

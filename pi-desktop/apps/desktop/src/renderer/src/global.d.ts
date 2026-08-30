@@ -33,6 +33,14 @@ declare global {
       fsRead(path: string): Promise<{ content: string; truncated: boolean }>;
       fsWrite(path: string, content: string): Promise<boolean>;
       fsSearch(query: string): Promise<unknown>;
+      providerList(): Promise<unknown>;
+      providerSetKey(provider: string, key: string): Promise<boolean>;
+      providerRemoveKey(provider: string): Promise<boolean>;
+      providerAddCustom(cfg: unknown): Promise<boolean>;
+      approvalDecide(id: number, allow: boolean): Promise<boolean>;
+      onApprovalRequest(
+        cb: (d: { id: number; title: string; message: string }) => void,
+      ): () => void;
       termCreate(opts: { cwd: string; shell?: string; cols?: number; rows?: number }): Promise<string>;
       termWrite(id: string, data: string): Promise<boolean>;
       termResize(id: string, cols: number, rows: number): Promise<boolean>;

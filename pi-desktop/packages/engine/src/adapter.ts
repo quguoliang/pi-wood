@@ -19,6 +19,8 @@ export interface EngineStartOptions {
   uiBridge?: DesktopUiBridge;
   /** 宿主注册的自定义工具（如 browser_*），经 createAgentSessionFromServices 注入 */
   customTools?: unknown[];
+  /** 宿主 inline 扩展（如审批门），经 resourceLoaderOptions.extensionFactories 注入 */
+  inlineExtensions?: unknown[];
 }
 
 /** 方案 §5.2：ctx.ui 桌面桥。阻塞式对话框（select/confirm/input）由宿主经 IPC 往返渲染层实现 */

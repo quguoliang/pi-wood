@@ -7,6 +7,9 @@ import { SdkAdapter } from "@pidesk/engine/sdk";
 import type { DesktopUiBridge } from "@pidesk/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
+import { reinjectProviderEnv } from "../provider/provider-manager";
+import { permissionGateExtension, type ApprovalPolicy } from "../security/approval-gate";
+import { loadSettings } from "../settings-service";
 
 /**
  * 引擎管理器（T1.3）：主进程持有当前项目的 SdkAdapter 单例。
@@ -20,17 +23,38 @@ const SetModelArgSchema = z.object({ provider: z.string(), modelId: z.string() }
 
 let adapter: SdkAdapter | undefined;
 let activeProject = "";
+let approvalSeq = 0;
+const pendingApprovals = new Map<number, (allow: boolean) => void>();
 
 function send(channel: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0];
   win?.webContents.send(channel, data);
 }
 
+/** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise） */
+function confirmViaRenderer(title: string, message: string): Promise<boolean> {
+  const id = ++approvalSeq;
+  send("approval:request", { id, title, message });
+  return new Promise<boolean>((resolve) => {
+    pendingApprovals.set(id, resolve);
+    setTimeout(() => {
+      if (pendingApprovals.has(id)) {
+        pendingApprovals.delete(id);
+        resolve(false); // 超时默认拒绝（方案 §9）
+      }
+    }, 120_000);
+  });
+}
+
+function getPolicy(): ApprovalPolicy {
+  return loadSettings().approval as ApprovalPolicy;
+}
+
 function uiBridge(): DesktopUiBridge {
   return {
     notify: (message, type) => send("ui:notify", { message, type: type ?? "info" }),
     select: async () => undefined,
-    confirm: async () => false,
+    confirm: (title, message) => confirmViaRenderer(title, message),
     input: async () => undefined,
   };
 }
@@ -38,11 +62,19 @@ function uiBridge(): DesktopUiBridge {
 export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
   if (adapter && activeProject === projectDir) return adapter;
   if (adapter) await adapter.stop();
+  // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
+  reinjectProviderEnv();
   const next = new SdkAdapter();
   await next.start({
     projectDir,
     uiBridge: uiBridge(),
     customTools: browserCustomTools(),
+    inlineExtensions: [
+      permissionGateExtension(
+        () => getPolicy(),
+        (title, message) => confirmViaRenderer(title, message),
+      ),
+    ],
   });
   const snapshots = new SnapshotService(projectDir, (m) => console.warn(m));
   next.subscribe((event) => {
@@ -55,19 +87,30 @@ export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
       for (const d of snapshots.collectPatches()) send(ENGINE_CHANNELS.diff, d);
     }
   });
-  // 默认模型：chat 优先、v4 兜底（目录随在线刷新变化，见 §8；正式模型 UI 在 T3.2）
+  // 默认模型：settings.model 优先，否则 chat 优先、v4 兜底（目录随在线刷新变化，见 §8）
   try {
     const models = await next.getAvailableModels();
-    const candidates: Array<[string, string]> = [
-      ["deepseek", "deepseek-chat"],
-      ["deepseek", "deepseek-v4-flash"],
-      ["deepseek", "deepseek-v4-pro"],
-    ];
-    for (const [provider, id] of candidates) {
-      if (models.some((m) => m.provider === provider && m.id === id)) {
-        await next.setModel(provider, id);
-        break;
+    const preferred = loadSettings().model as { provider?: string; id?: string } | undefined;
+    let picked: { provider: string; id: string } | undefined;
+    if (preferred?.provider && preferred.id && models.some((m) => m.provider === preferred.provider && m.id === preferred.id)) {
+      picked = { provider: preferred.provider, id: preferred.id };
+    } else {
+      const candidates: Array<[string, string]> = [
+        ["deepseek", "deepseek-chat"],
+        ["deepseek", "deepseek-v4-flash"],
+        ["deepseek", "deepseek-v4-pro"],
+      ];
+      for (const [provider, id] of candidates) {
+        if (models.some((m) => m.provider === provider && m.id === id)) {
+          picked = { provider, id };
+          break;
+        }
       }
+      picked = picked ?? models[0];
+    }
+    if (picked) {
+      await next.setModel(picked.provider, picked.id);
+      send(ENGINE_CHANNELS.event, { type: "model_changed", ...picked });
     }
   } catch (err) {
     send("ui:notify", { message: `默认模型选择失败: ${String(err)}`, type: "warning" });
@@ -94,6 +137,14 @@ async function requireAdapter(): Promise<SdkAdapter> {
 /** T2.2：diff 快照逻辑已迁至 workbench/snapshot-service.ts */
 
 export function initEngineIpc(): void {
+  // T4.1：审批决策回传（渲染层 ApprovalCard → 主进程 resolve）
+  ipcMain.handle("approval:decide", (_e, raw: unknown) => {
+    const { id, allow } = z.object({ id: z.number(), allow: z.boolean() }).parse(raw);
+    pendingApprovals.get(id)?.(allow);
+    pendingApprovals.delete(id);
+    return true;
+  });
+
   ipcMain.handle("engine:switchSession", async (_e, raw: unknown) => {
     const { file } = z.object({ file: z.string().min(1) }).parse(raw);
     await (await requireAdapter()).switchSession(file);
