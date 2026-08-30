@@ -4,6 +4,7 @@ import { join, dirname } from "node:path";
 import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
+import { initDataIpc } from "./ipc/data.ipc";
 
 const debugLog = (line: string): void => {
   try {
@@ -82,7 +83,8 @@ function createWindow(): void {
           mkdirSync(dirname(file), { recursive: true });
           writeFileSync(file, image.toPNG());
           debugLog(`captured ${file}`);
-          setTimeout(() => app.quit(), 300);
+          // Pi SDK 静态引入后 app.quit() 会挂起（§8），探针/捕获路径用硬退出
+          setTimeout(() => app.exit(0), 300);
         });
       }, 2500);
     });
@@ -102,13 +104,16 @@ if (!gotLock) {
     }
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
       node: process.versions.node,
     }));
     initSettingsIpc();
+    // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
+    const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
+    initDataIpc(getAgentDir());
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
