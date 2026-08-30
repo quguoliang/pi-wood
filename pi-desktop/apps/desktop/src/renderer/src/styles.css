@@ -74,3 +74,46 @@ body {
   font-size: 12px;
   color: var(--pi-muted-fg);
 }
+
+.probe-box {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  color: var(--pi-muted-fg);
+  max-height: 300px;
+  overflow: auto;
+}
+
+.probe-box .err {
+  color: #f7768e;
+}
+
+.toasts {
+  position: fixed;
+  right: 16px;
+  top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.toast {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--pi-bg-panel);
+  border: 1px solid var(--pi-accent);
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.toast-error {
+  border-color: #f7768e;
+}
+
+.toast-warning {
+  border-color: #e0af68;
+}

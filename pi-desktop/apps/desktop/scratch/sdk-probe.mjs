@@ -64,6 +64,25 @@ session.subscribe((event) => {
   log(`EVENT ${brief}`);
 });
 
+// T0.3：桌面 ctx.ui 桥（最小实现）——Node 下 notify 打日志，Electron 内换成 webContents.send
+// 桌面模式语义 = "rpc"：阻塞式对话框（select/confirm/input）经 IPC 往返渲染层
+const uiContext = {
+  notify: (message, type) => log(`UI_NOTIFY[${type ?? "info"}] ${message}`),
+  select: async () => undefined,
+  confirm: async () => false,
+  input: async () => undefined,
+  onTerminalInput: () => () => {},
+  setStatus: () => {},
+  setWorkingMessage: () => {},
+  setWorkingVisible: () => {},
+  setWorkingIndicator: () => {},
+  setHiddenThinkingLabel: () => {},
+  setWidget: () => {},
+  setFooter: () => {},
+};
+await session.bindExtensions({ uiContext, mode: "rpc" });
+log("bindExtensions ok (mode=rpc, desktop ui bridge bound)");
+
 const prompt = process.argv[2];
 if (!prompt) {
   log("NO_PROMPT_ARG: 无 Key 冒烟通过（runtime 装配 + 事件订阅就绪），未发送 prompt。");

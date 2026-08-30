@@ -1,5 +1,17 @@
 import { app, shell, BrowserWindow, ipcMain } from "electron";
-import { join } from "node:path";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
+
+const debugLog = (line: string): void => {
+  try {
+    const f = join(app.getAppPath(), "docs", "proofs", "T0.3", "boot.log");
+    mkdirSync(dirname(f), { recursive: true });
+    appendFileSync(f, `${new Date().toISOString()} ${line}\n`);
+  } catch {
+    /* ignore */
+  }
+};
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -31,12 +43,26 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  // T0.3 探针模式：窗口就绪后在主进程内跑扩展加载 + ctx.ui 桥验证
+  if (isExtensionProbeMode()) {
+    debugLog("probe mode on, waiting did-finish-load");
+    const send = (channel: string, data: unknown) => mainWindow.webContents.send(channel, data);
+    mainWindow.webContents.on("did-finish-load", () => {
+      debugLog("did-finish-load fired");
+      void runExtensionProbe(send);
+    });
+    mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+      debugLog(`did-fail-load: ${code} ${desc}`);
+    });
+  }
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
+  debugLog(`boot: gotLock=true probe=${isExtensionProbeMode()}`);
   app.on("second-instance", () => {
     const win = BrowserWindow.getAllWindows()[0];
     if (win) {

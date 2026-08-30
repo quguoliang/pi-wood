@@ -81,7 +81,7 @@
   - [ ] 事件类型清单与方案 §3.1 schema 比对，差异记入 §8（预期缺失 `auto_retry_*` 等，即 R-3）
 - 验证方式：跑 `pnpm probe:sdk`（临时 script），日志留档
 
-### [ ] T0.3 扩展加载与 `ctx.ui` 桥接验证
+### [x] T0.3 扩展加载与 `ctx.ui` 桥接验证（✅ 2026-08-30，Electron 主进程探针 PASS；打包版 asar 复验留 T0.6，记录见 §8）
 - 来源：方案 §5.2、[扩展文档](https://pi.dev/docs/latest/extensions)
 - 前置：T0.2
 - 步骤：
@@ -376,6 +376,10 @@
 | 2026-08-30 | T0.2 | 完成 | **用户提供 DeepSeek Key 后闭环达成**：prompt "把 test.txt 里的 foo 改成 bar" → 165 事件（含 3 次 tool_execution_start/end）→ 文件真实修改为 "hello bar"。日志 `apps/desktop/docs/proofs/T0.2/events-log.txt`。注：验收在 Node 进程完成（SDK 纯 JS），Electron 主进程内复验并入 T0.3 | T0.2 ✅ |
 | 2026-08-30 | T0.2 | 偏差 | **DeepSeek 是内置 Provider**，凭据走 `DEEPSEEK_API_KEY` 环境变量，无需 models.json。⚠️ 实测：自定义 `models.json` 中同名 provider 的最小配置会**覆盖**内置目录项并丢失 compat 设置，导致工具调用失效——T3.2 模型设置 UI 必须**合并**内置目录而非整体替换（修订方案 §5.6 实现口径） | T3.2 设计约束 |
 | 2026-08-30 | T0.2 | 偏差 | API 细节实测：① `getAvailable()` 需无参全量调用后按 `model.provider` 过滤（直传 providerId 返回空）；② 实际事件流含 `agent_settled`、`thinking_level_changed`，方案 §3.1 schema 未列——T1.1 补入 EngineEventSchema | T1.1 修订依据 |
+| 2026-08-30 | T0.3 | 偏差 | **Electron 33 内置 Node 20 缺 `fs.globSync`，Pi SDK 0.84.4 无法加载 → 升级 Electron 37.10.3**（Node 22）。方案 §2.4 的"≥30"下限据此修正 | 依赖版本变更 |
+| 2026-08-30 | T0.3 | 偏差 | 排查坑：僵尸 electron 进程持有 `requestSingleInstanceLock` 导致新实例静默退出（exit 0 无输出）。排障时先 `taskkill /F /IM electron.exe` | 排障经验 |
+| 2026-08-30 | T0.3 | 完成 | **Electron 主进程探针 PASS**：jiti 加载 TS 扩展（echo_greeting）成功 → `bindExtensions({uiContext, mode:"rpc"})` 桌面桥生效 → DeepSeek 调用扩展工具 `TOOL_START/TOOL_END: isError=false` → notify 经 uiContext 发渲染层。证据：`apps/desktop/docs/proofs/T0.3/{electron-probe.log,boot.log}`。桌面模式语义定为 `"rpc"`（`ExtensionMode = tui/rpc/json/print`，无 "sdk" 值） | T0.3 ✅（打包版 asar 验证留 T0.6） |
+| 2026-08-30 | T0.3 | 偏差 | 模型目录实测：`getAvailable()` 列表随在线目录刷新变化（Node 首跑含 deepseek-chat/reasoner 5 个，Electron 侧仅 v4 系 3 个），`setModel` 不校验列表仍可用 chat。**T3.2 模型管理须处理静态目录 vs 在线目录合并 + 收藏模型直连** | T3.2 设计约束 |
 | | | | | |
 
 ---
