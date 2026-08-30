@@ -41,26 +41,50 @@ body {
 }
 
 .panels {
-  display: grid;
-  grid-template-columns: 22% 1fr 30%;
+  display: flex;
   flex: 1;
   min-height: 0;
 }
 
-.panel {
-  padding: 14px;
+.panel-inner {
+  height: 100%;
   overflow: auto;
-  border-right: 1px solid var(--pi-border);
-  background: var(--pi-bg-panel);
+  padding: 14px;
 }
 
-.panel h2 {
+.panel-inner h2 {
   font-size: 13px;
   margin-bottom: 6px;
 }
 
-.panel.right {
-  border-right: none;
+.panel-handle {
+  width: 4px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.panel-handle:hover,
+.panel-handle[data-resize-handle-active] {
+  background: var(--pi-accent);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.ghost-btn {
+  background: transparent;
+  color: var(--pi-muted-fg);
+  border: 1px solid var(--pi-border);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.ghost-btn:hover {
+  color: var(--pi-fg);
+  border-color: var(--pi-accent);
 }
 
 .muted {

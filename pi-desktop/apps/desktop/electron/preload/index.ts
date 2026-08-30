@@ -31,6 +31,10 @@ const api = {
     return () => ipcRenderer.removeListener("e2e:done", handler);
   },
   prompt: (text: string): Promise<void> => ipcRenderer.invoke("engine:prompt", text),
+  // 设置（T1.2 布局持久化；T1.1 正式化口径同 engine 域）
+  settingsGet: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("settings:get"),
+  settingsSet: (patch: Record<string, unknown>): Promise<Record<string, unknown>> =>
+    ipcRenderer.invoke("settings:set", patch),
 };
 
 export type PiPreloadApi = typeof api;

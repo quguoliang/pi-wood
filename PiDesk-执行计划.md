@@ -148,7 +148,7 @@
   - [ ] 事件桥对未知 `type` 不崩溃（单测：喂一个假事件）
 - 验证方式：`pnpm test packages/engine` + typecheck
 
-### [ ] T1.2 布局底座
+### [x] T1.2 布局底座（✅ 2026-08-30，capture 双布局还原 + 折叠状态恢复验证，记录见 §8）
 - 来源：方案 §4.1
 - 前置：T0.1
 - 步骤：`react-resizable-panels` 三栏 + 顶栏 + 状态栏骨架；`onLayout` 持久化到 `~/.pi-desktop/settings.json`（`window.layout`）；dockview 只在右栏占位挂载空实例
@@ -389,6 +389,8 @@
 | 2026-08-30 | T1.1 | 偏差 | **setModel 必须用 registry.getModel() 的完整 Model 对象**：裸 {provider,id} 会被接受但请求退化（模型复读输入、不调工具）。另实测 0.84.4 静态目录已无 deepseek-chat（仅 v4 系），早期看到的 chat 来自远程目录缓存——**模型目录是动态的，chat 可能整体退役**，T3.2 模型管理按"registry 可解析即可用"设计，不依赖静态清单 | T3.2 设计约束 |
 | 2026-08-30 | T1.4(后台) | 完成 | 左栏数据层先行完成：① `packages/engine/src/session-tree.ts` 纯函数树构建（buildSessionTree/flattenTree/defaultLeaf，孤儿条目容错、活跃分支标记），**单测 8/8 通过**；② 主进程 `project/project-manager.ts`（projects.json 注册表 + 复用 Pi ProjectTrustStore 信任预检，`ProjectTrustDecision = boolean\|null`）+ `engine/session-service.ts`（列表复用 SessionManager.list，树解析复用 parseSessionEntries）；③ 真实数据验证：19 个真实会话列出、最新会话解析为 12 节点树（深度缩进 + 活跃叶标记）、信任状态 undecided/not-required 分级正确。验证脚本 `apps/desktop/scratch/backend-probe.ts` | T1.4 后台部分 ✅，UI 部分（SessionTree 组件）与 CLI 互通硬验收待做 |
 | 2026-08-30 | T1.4(后台) | 偏差 | trustStatus 语义实测：`hasTrustRequiringProjectResources` 只对含动态资源的 .pi 项目返回 true；信任交互仍走运行时 project_trust 事件（经 uiBridge.confirm），预检仅做徽标显示 | §9 交互口径 |
+| 2026-08-30 | T1.2 | 偏差 | react-resizable-panels 升级到 **v4**，API 重命名：`PanelGroup→Group`、`PanelResizeHandle→Separator`、`onLayout→onLayoutChanged(layout, meta)`（Layout 为 {panelId: flexGrow}）、命令式句柄经 `panelRef` prop。方案 §2.4 的组件用法按 v4 口径写 | 方案 §4.1 实现口径 |
+| 2026-08-30 | T1.2 | 完成 | 布局底座验收通过（无干扰方式）：`--capture` 模式用 `webContents.capturePage()` 截窗口内容（窗口不需前台，不干扰用户其他应用）。两组 settings.json 预置值分别还原正确：`[40,40,20]` 正常三栏、`[18,42,40]+rightCollapsed` 右栏折叠态与按钮文案均正确。折叠按钮（收/展开左右栏）挂接 panelRef。证据：`docs/proofs/T1.2/*.png`。注：物理拖拽分割条的交互属库原生能力，onLayoutChanged(isUserInteraction) 已接持久化 | T1.2 ✅ |
 | | | | | |
 
 ---

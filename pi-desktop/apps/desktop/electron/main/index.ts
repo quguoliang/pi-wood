@@ -1,8 +1,9 @@
 import { app, shell, BrowserWindow, ipcMain } from "electron";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
+import { initSettingsIpc } from "./settings-service";
 
 const debugLog = (line: string): void => {
   try {
@@ -70,6 +71,22 @@ function createWindow(): void {
       debugLog(`e2e did-fail-load: ${code} ${desc}`);
     });
   }
+
+  // T1.2 无干扰视觉验收：--capture <file> 渲染完成后截窗口内容（不需前台）
+  const captureIdx = process.argv.indexOf("--capture");
+  if (captureIdx !== -1 && process.argv[captureIdx + 1]) {
+    const file = process.argv[captureIdx + 1] as string;
+    mainWindow.webContents.on("did-finish-load", () => {
+      setTimeout(() => {
+        void mainWindow.webContents.capturePage().then((image) => {
+          mkdirSync(dirname(file), { recursive: true });
+          writeFileSync(file, image.toPNG());
+          debugLog(`captured ${file}`);
+          setTimeout(() => app.quit(), 300);
+        });
+      }, 2500);
+    });
+  }
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -91,6 +108,7 @@ if (!gotLock) {
       electron: process.versions.electron,
       node: process.versions.node,
     }));
+    initSettingsIpc();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

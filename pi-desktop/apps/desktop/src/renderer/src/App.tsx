@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppShell } from "./components/layout/AppShell";
 
 declare global {
   interface Window {
@@ -10,6 +11,8 @@ declare global {
       onDiff(cb: (data: { file: string; patch: string }) => void): () => void;
       onE2EDone(cb: (data: { ok: boolean; error?: string }) => void): () => void;
       prompt(text: string): Promise<void>;
+      settingsGet(): Promise<Record<string, unknown>>;
+      settingsSet(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
     };
   }
 }
@@ -34,7 +37,6 @@ export default function App() {
   const [assistantText, setAssistantText] = useState("");
   const [toolCards, setToolCards] = useState<ToolCard[]>([]);
   const [diffs, setDiffs] = useState<Array<{ file: string; patch: string }>>([]);
-  const [e2eState, setE2EState] = useState<"idle" | "running" | "pass" | "fail">("idle");
   const [input, setInput] = useState("");
   const idSeq = useRef(0);
 
@@ -51,23 +53,18 @@ export default function App() {
     });
     const offLog = window.pi.onProbeLog((line) => setProbeLogs((l) => [...l, line]));
     const offEvt = window.pi.onEngineEvent((event: any) => {
-      const type = event.type as string;
-      if (type === "agent_start" || type === "turn_start") setE2EState((s) => (s === "idle" ? "running" : s));
-      if (type === "message_update") {
+      if (event.type === "message_update") {
         const inner = event.assistantMessageEvent as any;
-        if (inner?.type === "text_delta" && typeof inner.delta === "string") {
-          setAssistantText((prev) => prev + inner.delta);
-        } else if (typeof inner?.text === "string" && inner.type === "text_delta") {
-          setAssistantText((prev) => prev + inner.text);
-        }
+        const delta = inner?.type === "text_delta" ? (inner.delta ?? inner.text) : undefined;
+        if (typeof delta === "string") setAssistantText((prev) => prev + delta);
       }
-      if (type === "tool_execution_start") {
+      if (event.type === "tool_execution_start") {
         setToolCards((c) => [
           ...c,
           { id: String(event.toolCallId ?? Date.now()), toolName: event.toolName as string, status: "running" },
         ]);
       }
-      if (type === "tool_execution_end") {
+      if (event.type === "tool_execution_end") {
         setToolCards((c) =>
           c.map((card) =>
             card.id === String(event.toolCallId)
@@ -76,16 +73,13 @@ export default function App() {
           ),
         );
       }
-      if (type === "agent_end") setE2EState((s) => (s === "running" ? "idle" : s));
     });
     const offDiff = window.pi.onDiff((data) => setDiffs((d) => [...d, data]));
-    const offDone = window.pi.onE2EDone((data) => setE2EState(data.ok ? "pass" : "fail"));
     return () => {
       offNotify();
       offLog();
       offEvt();
       offDiff();
-      offDone();
     };
   }, []);
 
@@ -97,24 +91,22 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell">
-      <header className="top-bar">
-        <strong>PiDesk</strong>
-        <span className="muted">T0.6 门禁 E2E · 工具卡片 + diff 上屏</span>
-        <span className={`badge badge-${e2eState}`}>{e2eState}</span>
-      </header>
-      <div className="panels">
-        <aside className="panel left">
+    <AppShell
+      left={
+        <>
           <h2>左栏</h2>
-          <p className="muted">项目 / 会话树 / 历史（T1.4）</p>
-        </aside>
-        <section className="panel center">
-          <h2>中栏 · 对话流</h2>
+          <p className="muted">项目 / 会话树 / 历史（T1.4 UI）</p>
+        </>
+      }
+      center={
+        <>
           {toolCards.length > 0 && (
             <div className="tool-cards">
               {toolCards.map((card) => (
                 <div key={card.id} className={`tool-card tool-${card.status}`}>
-                  <span className="tool-icon">{card.status === "running" ? "⏳" : card.status === "ok" ? "✅" : "❌"}</span>
+                  <span className="tool-icon">
+                    {card.status === "running" ? "⏳" : card.status === "ok" ? "✅" : "❌"}
+                  </span>
                   <b>{card.toolName}</b>
                   <span className="muted">{card.status}</span>
                 </div>
@@ -140,30 +132,25 @@ export default function App() {
             />
             <button onClick={sendPrompt}>发送</button>
           </div>
-        </section>
-        <aside className="panel right">
-          <h2>右栏 · Diff（T2.2 正式化）</h2>
-          {diffs.length === 0 && <p className="muted">等待文件变更…</p>}
+        </>
+      }
+      right={
+        <>
+          <h2>右栏 · 工作台</h2>
+          <p className="muted">dockview 停靠布局在 T2.5 挂载</p>
           {diffs.map((d) => (
             <div key={d.file} className="diff-box">
               <div className="diff-file">{d.file}</div>
               <pre>{d.patch}</pre>
             </div>
           ))}
-        </aside>
-      </div>
-      <footer className="status-bar">
-        {versions
-          ? `IPC ✅ · electron ${versions.electron} · node ${versions.node}`
-          : "IPC 检测中…"}
-      </footer>
-      <div className="toasts">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            {t.message}
-          </div>
-        ))}
-      </div>
-    </div>
+        </>
+      }
+      statusbar={
+        versions
+          ? `IPC ✅ · electron ${versions.electron} · node ${versions.node} · 模型/上下文占用在 T1.3 接真实数据`
+          : "IPC 检测中…"
+      }
+    />
   );
 }
