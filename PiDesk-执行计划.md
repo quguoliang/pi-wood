@@ -120,7 +120,7 @@
   - [ ] 打包版同样可用
 - 验证方式：`pnpm dev` 与打包版各一次
 
-### [ ] T0.6 Phase 0 门禁评审
+### [x] T0.6 Phase 0 门禁评审（✅ 2026-08-30，E2E PASS，**Go 决策**——进入 Phase 1）
 - 来源：方案 §12 Phase 0 验收
 - 前置：T0.2 ~ T0.5
 - 步骤：对照方案验收标准"Electron 内完成'用 Pi 改一个文件'，工具卡片 + diff 上屏"做一次端到端串测（工具卡片/diff 可用最简 DOM 占位）
@@ -383,6 +383,7 @@
 | 2026-08-30 | T0.4 | 完成 | **tool_call 拦截验证通过（双组对照）**：对照组 bash 正常执行（tool_execution_update 有输出）；实验组 `pi.on("tool_call")` 返回 `{block:true, reason}` → bash 无实际执行输出，agent 收到 reason 正常继续（agent_end）。证据：`apps/desktop/docs/proofs/T0.4/blocked-run-stdout.txt`。审批门扩展路线确认可行，`<ApprovalCard>` 只需在 block 前插入 IPC 等待用户决策 | T0.4 ✅，§10.3 设计确认 |
 | 2026-08-30 | T0.5 | 偏差 | 机器无 Visual Studio Build Tools：node-pty 1.1.0 与 @homebridge 预编译分支均回退 node-gyp 源码编译 → 失败。**改用 `@lydell/node-pty`（N-API 预编译，可选依赖直发 win32-x64 二进制）**，无需 electron-rebuild | 方案 §2.4 选型变更，T5.3 打包更简 |
 | 2026-08-30 | T0.5 | 完成 | ConPTY 验证通过：Node 运行时与 Electron 运行时（`ELECTRON_RUN_AS_NODE`）下 `pty.spawn(powershell)` 均正常收发输出（exitCode 0 + 标记串命中）。骨架落盘 `electron/main/workbench/terminal-service.ts`。xterm 渲染层集成按计划归 T2.3 | T0.5 ✅ |
+| 2026-08-30 | T0.6 | 完成 | **门禁 E2E PASS（Go 决策）**：Electron 内 `--probe-e2e` 模式，prompt"把 test.txt 里的 hello 改成 hola"→ agent 执行 read→edit（事件全量转发渲染层，工具卡片状态机 running/ok 上屏）→ jsdiff 前后快照对比 → diff 推送右栏上屏 → 文件真实变更 `hello bar`→`hola bar`。证据：`apps/desktop/docs/proofs/T0.6/e2e.log`。工具卡片/diff 为最简 DOM 占位（按门禁口径允许）；窗口视觉截图因用户前台占用延至 T1.3 正式 UI 时补。**Phase 0 高风险路径全部验证通过，Go** | T0.6 ✅，进入 Phase 1（T1.1 起） |
 | | | | | |
 
 ---

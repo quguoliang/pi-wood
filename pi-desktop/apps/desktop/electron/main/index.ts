@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from "electron";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
+import { isE2EMode, startE2E } from "./engine/e2e-service";
 
 const debugLog = (line: string): void => {
   try {
@@ -54,6 +55,19 @@ function createWindow(): void {
     });
     mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
       debugLog(`did-fail-load: ${code} ${desc}`);
+    });
+  }
+
+  // T0.6 门禁 E2E：Electron 内 "用 Pi 改一个文件"，事件 + diff 实时上屏
+  if (isE2EMode()) {
+    debugLog("e2e mode on");
+    const send = (channel: string, data: unknown) => mainWindow.webContents.send(channel, data);
+    mainWindow.webContents.on("did-finish-load", () => {
+      debugLog("e2e did-finish-load, starting");
+      startE2E(send);
+    });
+    mainWindow.webContents.on("did-fail-load", (_e, code, desc) => {
+      debugLog(`e2e did-fail-load: ${code} ${desc}`);
     });
   }
 }
