@@ -8,7 +8,7 @@ declare global {
       onUiNotify(cb: (data: { message: string; type: string }) => void): () => void;
       onProbeLog(cb: (line: string) => void): () => void;
       onEngineEvent(cb: (event: Record<string, unknown>) => void): () => void;
-      onDiff(cb: (data: { file: string; patch: string }) => void): () => void;
+      onDiff(cb: (data: { file: string; before?: string; after?: string; patch?: string }) => void): () => void;
       onE2EDone(cb: (data: { ok: boolean; error?: string }) => void): () => void;
       prompt(text: string): Promise<void>;
       settingsGet(): Promise<Record<string, unknown>>;
@@ -41,6 +41,11 @@ declare global {
       onApprovalRequest(
         cb: (d: { id: number; title: string; message: string }) => void,
       ): () => void;
+      extensionsList(): Promise<unknown>;
+      engineReload(): Promise<boolean>;
+      packagesList(): Promise<{ packages: string[] }>;
+      packagesInstall(spec: string): Promise<{ ok: boolean; output: string }>;
+      engineSetModel(provider: string, modelId: string): Promise<void>;
       termCreate(opts: { cwd: string; shell?: string; cols?: number; rows?: number }): Promise<string>;
       termWrite(id: string, data: string): Promise<boolean>;
       termResize(id: string, cols: number, rows: number): Promise<boolean>;

@@ -5,7 +5,7 @@ import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
-import { initEngineIpc, getActiveProjectDir } from "./engine/engine-manager";
+import { initEngineIpc, getActiveProjectDir, getActiveProjectDirSafe } from "./engine/engine-manager";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc } from "./workbench/browser-service";
@@ -125,7 +125,7 @@ if (!gotLock) {
     initSettingsIpc();
     // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
-    initDataIpc(getAgentDir());
+    initDataIpc(getAgentDir(), getActiveProjectDirSafe);
     initEngineIpc();
     initFileIpc(getActiveProjectDir);
     initTerminalIpc(sendToRenderer);

@@ -46,7 +46,16 @@ export function LeftPane(): React.JSX.Element {
 
   useEffect(() => {
     refreshProjects();
-  }, []);
+    // 命令面板的项目切换事件（完整切换流程复用 selectProject）
+    const onSelect = (e: Event): void => {
+      const path = (e as CustomEvent<string>).detail;
+      const rec = projects.find((p) => p.path === path);
+      if (rec) selectProject(rec);
+    };
+    window.addEventListener('pidesk:select-project', onSelect);
+    return () => window.removeEventListener('pidesk:select-project', onSelect);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
 
   const selectProject = (p: ProjectRec): void => {
     setActiveProject(p.path);

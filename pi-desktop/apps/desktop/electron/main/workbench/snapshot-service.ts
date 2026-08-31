@@ -41,22 +41,29 @@ export class SnapshotService {
     }
   }
 
-  /** 返回发生变化的文件 patch 列表，并清理快照 */
-  collectPatches(): Array<{ file: string; patch: string }> {
-    const out: Array<{ file: string; patch: string }> = [];
+  /** 返回发生变化的文件 before/after（供 MergeView），并清理快照 */
+  collectChanges(): Array<{ file: string; before: string; after: string }> {
+    const out: Array<{ file: string; before: string; after: string }> = [];
     for (const [full, before] of this.before) {
       try {
         const after = existsSync(full) ? readFileSync(full, "utf-8") : "";
         if (before === after) continue;
-        const patch = diffLines(before, after)
-          .map((part) => (part.added ? "+ " : part.removed ? "- " : "  ") + part.value)
-          .join("");
-        out.push({ file: full.slice(this.projectDir.length + 1), patch });
+        out.push({ file: full.slice(this.projectDir.length + 1), before, after });
       } catch (err) {
         this.warn(`[snapshot] diff 失败 ${full}: ${String(err)}`);
       }
     }
     this.before.clear();
     return out;
+  }
+
+  /** 兼容旧口径：行级 patch 文本 */
+  collectPatches(): Array<{ file: string; patch: string }> {
+    return this.collectChanges().map(({ file, before, after }) => ({
+      file,
+      patch: diffLines(before, after)
+        .map((part) => (part.added ? "+ " : part.removed ? "- " : "  ") + part.value)
+        .join(""),
+    }));
   }
 }

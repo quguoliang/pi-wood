@@ -149,6 +149,11 @@ export class SdkAdapter implements EngineAdapter {
     this.rebindSession();
   }
 
+  /** 重载扩展资源（对应 Pi /reload） */
+  async reload(): Promise<void> {
+    await this.session().reload();
+  }
+
   async switchSession(file: string): Promise<void> {
     await this.runtimeSession().switchSession(file);
     this.rebindSession();

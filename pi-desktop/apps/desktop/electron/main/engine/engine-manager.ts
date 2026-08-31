@@ -84,7 +84,7 @@ export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
       snapshots.snapshot(String(event.toolName ?? ""), event.input);
     }
     if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
-      for (const d of snapshots.collectPatches()) send(ENGINE_CHANNELS.diff, d);
+      for (const d of snapshots.collectChanges()) send(ENGINE_CHANNELS.diff, d);
     }
   });
   // 默认模型：settings.model 优先，否则 chat 优先、v4 兜底（目录随在线刷新变化，见 §8）
@@ -127,6 +127,10 @@ export function getActiveAdapter(): SdkAdapter | undefined {
 export function getActiveProjectDir(): string {
   if (!activeProject) throw new Error("引擎未启动：请先选择项目");
   return activeProject;
+}
+
+export function getActiveProjectDirSafe(): string | undefined {
+  return activeProject || undefined;
 }
 
 async function requireAdapter(): Promise<SdkAdapter> {
@@ -212,6 +216,11 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:newSession", async () => {
     await (await requireAdapter()).newSession();
+  });
+
+  ipcMain.handle("engine:reload", async () => {
+    await (await requireAdapter()).reload();
+    return true;
   });
 
   ipcMain.handle("project:pickDialog", async () => {

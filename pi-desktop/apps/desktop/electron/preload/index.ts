@@ -20,7 +20,7 @@ const api = {
     ipcRenderer.on("engine:event", handler);
     return () => ipcRenderer.removeListener("engine:event", handler);
   },
-  onDiff: (cb: (data: { file: string; patch: string }) => void): (() => void) => {
+  onDiff: (cb: (data: { file: string; before?: string; after?: string; patch?: string }) => void): (() => void) => {
     const handler = (_e: unknown, data: { file: string; patch: string }): void => cb(data);
     ipcRenderer.on("engine:diff", handler);
     return () => ipcRenderer.removeListener("engine:diff", handler);
@@ -102,6 +102,14 @@ const api = {
     ipcRenderer.on("approval:request", h);
     return () => ipcRenderer.removeListener("approval:request", h);
   },
+  // T3.1/T3.4
+  extensionsList: (): Promise<unknown> => ipcRenderer.invoke("extensions:list"),
+  engineReload: (): Promise<boolean> => ipcRenderer.invoke("engine:reload"),
+  packagesList: (): Promise<unknown> => ipcRenderer.invoke("packages:list"),
+  packagesInstall: (spec: string): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("packages:install", { spec }),
+  engineSetModel: (provider: string, modelId: string): Promise<void> =>
+    ipcRenderer.invoke("engine:setModel", { provider, modelId }),
 };
 
 export type PiPreloadApi = typeof api;

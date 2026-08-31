@@ -10,7 +10,7 @@ interface ProviderInfo {
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme">("providers");
+  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ext">("providers");
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [models, setModels] = useState<Array<{ provider: string; id: string }>>([]);
@@ -18,6 +18,10 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
   const [approvalMode, setApprovalMode] = useState<string>("highRisk");
   const [theme, setTheme] = useState<string>("dark");
   const [saved, setSaved] = useState("");
+  const [extensions, setExtensions] = useState<Array<{ source: string; name: string; path: string }>>([]);
+  const [packages, setPackages] = useState<string[]>([]);
+  const [pkgSpec, setPkgSpec] = useState("");
+  const [pkgOutput, setPkgOutput] = useState("");
 
   const flash = (msg: string): void => {
     setSaved(msg);
@@ -30,6 +34,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
       setProviders(list);
     });
     void window.pi.engineModels().then(setModels).catch(() => setModels([]));
+    void window.pi.extensionsList().then((r) => setExtensions(r as typeof extensions));
+    void window.pi.packagesList().then((r) => setPackages(r.packages));
     void window.pi.settingsGet().then((s) => {
       const st = s as { model?: { provider: string; id: string }; approval?: { mode: string }; theme?: { fallback: string } };
       if (st.model) setModel(st.model);
@@ -37,6 +43,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
       if (st.theme?.fallback) setTheme(st.theme.fallback);
     });
   }, []);
+
+  const installPackage = (): void => {
+    const spec = pkgSpec.trim();
+    if (!spec) return;
+    setPkgOutput("安装中（经 pi CLI，最长 2 分钟）…");
+    void window.pi
+      .packagesInstall(spec)
+      .then((r) => {
+        setPkgOutput(r.output || "完成");
+        setPkgSpec("");
+        void window.pi.packagesList().then((r2) => setPackages(r2.packages));
+      })
+      .catch((err) => setPkgOutput(String((err as Error)?.message ?? err)));
+  };
 
   const saveKey = (provider: string): void => {
     const key = keyDraft[provider];
@@ -77,6 +97,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
           <button className={tab === "model" ? "active" : ""} onClick={() => setTab("model")}>默认模型</button>
           <button className={tab === "approval" ? "active" : ""} onClick={() => setTab("approval")}>审批策略</button>
           <button className={tab === "theme" ? "active" : ""} onClick={() => setTab("theme")}>主题</button>
+          <button className={tab === "ext" ? "active" : ""} onClick={() => setTab("ext")}>扩展与包</button>
         </div>
 
         {tab === "providers" && (
@@ -155,6 +176,40 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
                 {t}
               </label>
             ))}
+          </div>
+        )}
+
+        {tab === "ext" && (
+          <div className="modal-body">
+            <div className="pane-header">
+              <b className="muted">已加载扩展（选中项目后点"重载"生效）</b>
+              <button className="ghost-btn" onClick={() => void window.pi.engineReload().then(() => flash("已重载扩展"))}>
+                重载扩展
+              </button>
+            </div>
+            {extensions.length === 0 && <p className="muted">未发现扩展（全局 ~/.pi/agent/extensions 或项目 .pi/extensions）</p>}
+            {extensions.map((x) => (
+              <div key={x.path} className="model-row">
+                <span className="provider-name">{x.name}</span>
+                <span className="muted">{x.source === "global" ? "全局" : "项目"}</span>
+              </div>
+            ))}
+            <div className="pane-header" style={{ marginTop: 10 }}>
+              <b className="muted">Pi 包（实验：经 pi CLI 安装到 settings.packages）</b>
+            </div>
+            {packages.map((spec) => (
+              <div key={spec} className="model-row">{spec}</div>
+            ))}
+            <div className="provider-row">
+              <input
+                placeholder="npm:@scope/pkg 或 git:user/repo"
+                value={pkgSpec}
+                onChange={(e) => setPkgSpec(e.target.value)}
+                style={{ flex: 1, padding: "5px 9px", fontSize: 12 }}
+              />
+              <button className="ghost-btn" disabled={!pkgSpec.trim()} onClick={installPackage}>安装</button>
+            </div>
+            {pkgOutput && <pre className="approval-body">{pkgOutput}</pre>}
           </div>
         )}
       </div>

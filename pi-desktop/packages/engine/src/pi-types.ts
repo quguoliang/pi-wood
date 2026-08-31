@@ -17,6 +17,7 @@ export interface AgentSessionLike {
   setThinkingLevel(level: string): Promise<void>;
   compact(customInstructions?: string): Promise<void>;
   bindExtensions(bindings: Record<string, unknown>): Promise<void>;
+  reload(options?: Record<string, unknown>): Promise<void>;
   dispose?(): void;
 }
 

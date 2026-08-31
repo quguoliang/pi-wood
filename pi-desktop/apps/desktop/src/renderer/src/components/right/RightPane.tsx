@@ -2,11 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { FilesPanel } from "./FilesPanel";
 import { TerminalPanel } from "./TerminalPanel";
 import { BrowserPanel } from "./BrowserPanel";
+import CodeMirror from "@uiw/react-codemirror";
+import { unifiedMergeView } from "@codemirror/merge";
 
 /** T2.x 右栏工作台：文件 / 终端 / 浏览器 / Diff 四标签（dockview 布局管理在 T2.5 评估） */
 type Tab = "files" | "term" | "browser" | "diff";
 
-export function RightPane({ diffs }: { diffs: Array<{ file: string; patch: string }> }) {
+interface DiffItem {
+  file: string;
+  before?: string;
+  after?: string;
+  patch?: string;
+}
+
+export function RightPane({ diffs }: { diffs: DiffItem[] }) {
   const [tab, setTab] = useState<Tab>("files");
   const [seenCount, setSeenCount] = useState(0);
   const pending = diffs.length - seenCount;
@@ -37,14 +46,27 @@ export function RightPane({ diffs }: { diffs: Array<{ file: string; patch: strin
         {tab === "diff" && (
           <div>
             {diffs.length === 0 && (
-              <p className="muted">agent 修改文件后，变更会以 patch 形式显示在这里</p>
+              <p className="muted">agent 修改文件后，变更会以双栏对照显示在这里</p>
             )}
-            {diffs.map((d) => (
-              <div key={d.file + String(d.patch.length)} className="diff-box">
-                <div className="diff-file">{d.file}</div>
-                <pre>{d.patch}</pre>
-              </div>
-            ))}
+            {diffs.map((d) =>
+              d.before !== undefined && d.after !== undefined ? (
+                <div key={d.file + String(d.after.length)} className="diff-box">
+                  <div className="diff-file">{d.file}</div>
+                  <CodeMirror
+                    value={d.after}
+                    theme="dark"
+                    editable={false}
+                    height="280px"
+                    extensions={[unifiedMergeView({ original: d.before })]}
+                  />
+                </div>
+              ) : (
+                <div key={d.file} className="diff-box">
+                  <div className="diff-file">{d.file}</div>
+                  <pre>{d.patch}</pre>
+                </div>
+              ),
+            )}
           </div>
         )}
       </div>
