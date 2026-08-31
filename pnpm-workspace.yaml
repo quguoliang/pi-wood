@@ -3,9 +3,17 @@ packages:
   - packages/*
 
 allowBuilds:
-  "@google/genai": true
-  "@homebridge/node-pty-prebuilt-multiarch": true
+  '@google/genai': true
+  '@homebridge/node-pty-prebuilt-multiarch': true
   electron: true
   esbuild: true
   node-pty: true
   protobufjs: true
+
+ignoredBuiltDependencies:
+  - '@google/genai'
+  - esbuild
+  - protobufjs
+
+onlyBuiltDependencies:
+  - electron

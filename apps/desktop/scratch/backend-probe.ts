@@ -11,7 +11,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 const CWD = join(dirname(fileURLToPath(import.meta.url)), "test-project");
 
 // 1) ProjectManager（临时注册表，不污染真实 ~/.pi-wood）
-const tmp = mkdtempSync(join(tmpdir(), "pidesk-probe-"));
+const tmp = mkdtempSync(join(tmpdir(), "piwood-probe-"));
 const pm = new ProjectManager(tmp, getAgentDir());
 const rec = pm.add(CWD);
 pm.add("C:\\some\\other\\project");

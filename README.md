@@ -2,8 +2,8 @@
 
 以 Pi Coding Agent（`@earendil-works/pi-coding-agent`）为唯一内核的桌面 Agent 工作台。
 
-- 产品与技术方案：`../PiAgent-Desktop-Workbench-方案.md`（v2.2）
-- 执行计划与追溯：`../pi-wood-执行计划.md`（任务号 T{Phase}.{seq}，commit 前缀引用任务号）
+- 产品与技术方案：[`pi-wood-方案.md`](./pi-wood-方案.md)（v2.2）
+- 执行计划与追溯：[`pi-wood-执行计划.md`](./pi-wood-执行计划.md)（任务号 T{Phase}.{seq}，commit 前缀引用任务号）
 
 ## 常用命令
 

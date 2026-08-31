@@ -1,6 +1,6 @@
-# 以 Pi 为核心的桌面端 Agent 工作台 · 产品与技术方案（组件级 v2.0）
+# pi-wood · 产品与技术方案（组件级 v2.0）
 
-> 工作名称（可随时替换）：**PiDesk / Pi Workbench / PiHub**
+> 项目名称：**pi-wood**
 > 版本：v2.2（API 修订） · 日期：2026-08-30 · 状态：方案评审稿
 > 一句话：**一个本地优先的桌面 Agent 工作台，把 Pi Coding Agent 作为唯一内核嵌入进程内，用 Codex 式三栏交互承载完整开发闭环，并 100% 复用 Pi 官方生态（扩展 / Skills / 提示词模板 / 主题 / 包 / Provider / 会话树）。**
 > 本版相对 v1.0 的增量：**每个 UI 区域给出具体组件树与组件选型；每层给出精确依赖清单；IPC 通道、TS 类型、主题 token 映射、插件 manifest 全部给到可编码级别。**
@@ -49,7 +49,7 @@ Pi（pi.dev / `earendil-works/pi`）是"极简 Agent 框架（minimal agent harn
 
 | 产品 | 内核 | 形态 | 差异点 |
 |---|---|---|---|
-| **本方案（PiDesk）** | 官方 Pi SDK | 三栏桌面工作台 | 内核即官方 Pi；工作台面板与 Pi 工具系统打通；插件 CLI/桌面通用 |
+| **pi-wood** | 官方 Pi SDK | 三栏桌面工作台 | 内核即官方 Pi；工作台面板与 Pi 工具系统打通；插件 CLI/桌面通用 |
 | Codex（OpenAI 桌面） | 闭源 | 三栏桌面 | 锁定 OpenAI 模型；无扩展生态 |
 | Claude Code / Codex CLI | 闭源 | 终端 | 无 GUI 工作台 |
 | Cursor / Windsurf | 自研 | IDE | 编辑器为中心，非可嵌入的 agent 引擎 |
@@ -190,7 +190,7 @@ export interface EngineAdapter {
 ### 2.5 Monorepo 目录结构（文件级）
 
 ```
-pi-desktop/
+pi-wood/
 ├─ apps/desktop/
 │  ├─ electron/main/                       # 主进程
 │  │  ├─ index.ts                          # app 启动、单实例、窗口创建
@@ -402,7 +402,7 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
 | **CodeEditorTabs** | `<EditorTabBar>` + `<CMPreview>`（只读，右键"编辑"）+ `<CMEdit>` | `file`、`readOnly`、`dirty`、`theme` |
 | **DiffView** | `<FileDiffList>`（本次回合改动文件列表）+ `<CMDiffView>`（`@codemirror/merge`）+ `<RevertButton>` | `sessionId`、`selectedFile`、`before/after` |
 
-**联动规则（workbench-store）**：`tool_execution_start(read)` → `editor:open(file)`；`tool_execution_start(edit)` → `diff:refresh(file)` + 切到 DiffTab；`tool_execution_start(bash)` → 若开启镜像则在 TerminalTab 追加。工作台布局变更走 dockview `onDidLayoutChange` 写回 `~/.pi-desktop/layout.json`。
+**联动规则（workbench-store）**：`tool_execution_start(read)` → `editor:open(file)`；`tool_execution_start(edit)` → `diff:refresh(file)` + 切到 DiffTab；`tool_execution_start(bash)` → 若开启镜像则在 TerminalTab 追加。工作台布局变更走 dockview `onDidLayoutChange` 写回 `~/.pi-wood/layout.json`。
 
 ---
 
@@ -607,7 +607,7 @@ export interface ModelConfig {
 }
 ```
 
-- 存储：Provider/Model 写 Pi 兼容的 `models.json`；仅 UI 字段（favorite、排序）写 `~/.pi-desktop/settings.json`；密钥写系统钥匙串。
+- 存储：Provider/Model 写 Pi 兼容的 `models.json`；仅 UI 字段（favorite、排序）写 `~/.pi-wood/settings.json`；密钥写系统钥匙串。
 
 ### 7.3 运行中切换
 
@@ -627,17 +627,17 @@ export interface ModelConfig {
 | 会话（权威） | `~/.pi/agent/sessions/` | Pi JSONL 树，CLI/桌面互通 |
 | 扩展/Skill/模板/主题/包配置 | `~/.pi/agent/` | 与 CLI 共用 |
 | 密钥 | 系统钥匙串 + 环境变量 | 仅无钥匙串环境回退 `auth.json` |
-| 应用 UI 状态 | `~/.pi-desktop/`（settings.json / projects.json / layout.json） | 与 Pi 配置分离 |
-| 搜索索引（可选） | `~/.pi-desktop/index.sqlite` | 会话全文索引 |
+| 应用 UI 状态 | `~/.pi-wood/`（settings.json / projects.json / layout.json） | 与 Pi 配置分离 |
+| 搜索索引（可选） | `~/.pi-wood/index.sqlite` | 会话全文索引 |
 
 ```jsonc
-// ~/.pi-desktop/settings.json（概要）
+// ~/.pi-wood/settings.json（概要）
 {
   "window": { "layout": [22, 48, 30], "rightCollapsed": false },
   "theme": { "source": "pi-theme:tokyonight", "fallback": "dark" },
   "approval": { "defaultPolicy": "high-risk", "rules": [{ "pattern": "rm -rf", "policy": "ask" }] },
   "terminal": { "shell": "powershell", "mirrorAgentBash": false },
-  "browser": { "userDataDir": "~/.pi-desktop/browser-profile" },
+  "browser": { "userDataDir": "~/.pi-wood/browser-profile" },
   "editor": { "fontSize": 14, "tabSize": 2 },
   "recentProjects": []
 }

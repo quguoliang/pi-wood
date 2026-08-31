@@ -1,7 +1,7 @@
-# PiDesk 执行计划（Step-by-Step · 可追溯版）
+# pi-wood 执行计划（Step-by-Step · 可追溯版）
 
-> 依据：《PiAgent-Desktop-Workbench-方案.md》v2.1（组件级评审稿，2026-08-30）
-> 版本：执行计划 v1.0 · 日期：2026-08-30 · 配套方案：同目录 `PiAgent-Desktop-Workbench-方案.md`
+> 依据：《pi-wood-方案.md》v2.1（组件级评审稿，2026-08-30）
+> 版本：执行计划 v1.0 · 日期：2026-08-30 · 配套方案：同目录 `pi-wood-方案.md`
 > 目的：把方案拆成可独立执行、可验证、可追溯的任务。**任何后续会话/协作者拿到本文档即可继续推进，不需要重读聊天记录。**
 
 ---
@@ -61,7 +61,7 @@
   2. 建 `apps/desktop`（Electron + Vite + React 18 + TS strict）与 `packages/{engine,ipc-schema,ui-kit}` 空壳
   3. 配置 electron-builder 基础打包（NSIS）+ `electron-builder install-app-deps` 原生模块重建钩子
   4. ESLint + Prettier + `tsconfig` 项目引用
-- 产出：`pi-desktop/` 目录（结构对齐方案 §2.5，允许空文件占位）
+- 产出：`pi-wood/` 目录（结构对齐方案 §2.5，允许空文件占位）
 - 验收：
   - [ ] `pnpm dev` 启动空三栏窗口（React 热更新生效）
   - [ ] `pnpm build` 产出可安装的 Windows NSIS 包并成功运行
@@ -151,7 +151,7 @@
 ### [x] T1.2 布局底座（✅ 2026-08-30，capture 双布局还原 + 折叠状态恢复验证，记录见 §8）
 - 来源：方案 §4.1
 - 前置：T0.1
-- 步骤：`react-resizable-panels` 三栏 + 顶栏 + 状态栏骨架；`onLayout` 持久化到 `~/.pi-desktop/settings.json`（`window.layout`）；dockview 只在右栏占位挂载空实例
+- 步骤：`react-resizable-panels` 三栏 + 顶栏 + 状态栏骨架；`onLayout` 持久化到 `~/.pi-wood/settings.json`（`window.layout`）；dockview 只在右栏占位挂载空实例
 - 产出：`apps/desktop/src/renderer/components/layout/{AppShell,Panels,StatusBar,TopBar}.tsx`
 - 验收：
   - [ ] 拖拽分割条比例重启动后还原；三栏可折叠
@@ -250,7 +250,7 @@
 ### [ ] T2.5 工作台联动 + dockview 布局持久化
 - 来源：方案 §4.4 联动规则、§11-3
 - 前置：T2.1 ~ T2.4
-- 步骤：workbench-store 实现 `tool_execution_start` → 自动开 tab / 切 Diff / bash 镜像规则；dockview `serializeLayout()/loadLayout()` 持久化到 `~/.pi-desktop/layout.json`；重型组件全部 `React.lazy` 懒加载
+- 步骤：workbench-store 实现 `tool_execution_start` → 自动开 tab / 切 Diff / bash 镜像规则；dockview `serializeLayout()/loadLayout()` 持久化到 `~/.pi-wood/layout.json`；重型组件全部 `React.lazy` 懒加载
 - 验收：
   - [ ] agent read → 自动开 CodeTab；edit → 自动切 DiffTab；面板拖拽/浮动/重启还原
   - [ ] 首屏只加载轻组件（Performance 面板确认 CodeMirror/xterm/dockview 懒加载）
@@ -349,7 +349,7 @@
   - [ ] 未声明权限的 API 调用被拒并有日志
 - 验证方式：示例插件（含一次故意崩溃 + 一次越权调用）演示
 
-### [x] T5.3 打包分发（✅ 2026-08-31 NSIS 包产出 release/PiDesk Setup 0.0.1.exe；三平台与自动更新后续）
+### [x] T5.3 打包分发（✅ 2026-08-31 NSIS 包产出 release/pi-wood Setup 0.0.1.exe；三平台与自动更新后续）
 - 来源：方案 §10.6、§12 Phase 5
 - 步骤：electron-builder 三平台（当前优先 Windows NSIS + 签名）；自动更新；新用户上手文档
 - 验收：
@@ -370,7 +370,7 @@
 | 2026-08-30 | T0.1 | 偏差 | pnpm 11 不再读 package.json 的 `pnpm.onlyBuiltDependencies`，设置迁移到 `pnpm-workspace.yaml` 的 `allowBuilds`（electron/esbuild: true） | 已解决，影响后续所有装机 |
 | 2026-08-30 | T0.1 | 偏差 | 本机（Git Bash + pnpm）下 electron 的 install.js 下载后解压静默失败（extract-zip 只产出 LICENSES.chromium.html，exit 0 无报错）。解法：`ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node install.js` 下载，再用 PowerShell `Expand-Archive` 手动解压 dist/，并 `printf 'electron.exe' > path.txt`（echo 会带换行导致 spawn ENOENT） | **升级 electron 版本时需重复此流程** |
 | 2026-08-30 | T0.1 | 偏差 | electron-builder 打 NSIS 时 winCodeSign 解压因符号链接特权失败（"客户端没有所需的特权"）。解法：用自带 7za 手动解压 `winCodeSign\120937007.7z` → `winCodeSign\winCodeSign-2.6.0`（忽略 2 个 darwin 链接错误），预热缓存后重跑成功 | 已解决，非管理员环境打包照此绕行 |
-| 2026-08-30 | T0.1 | 完成 | 验收通过：`pnpm -r typecheck` 全绿；`electron-vite build` 三目标成功；打包版应用启动正常（3 进程、日志干净）；NSIS 包产出 `apps/desktop/release/PiDesk Setup 0.0.1.exe` | T0.1 ✅，下一任务 T0.2 |
+| 2026-08-30 | T0.1 | 完成 | 验收通过：`pnpm -r typecheck` 全绿；`electron-vite build` 三目标成功；打包版应用启动正常（3 进程、日志干净）；NSIS 包产出 `apps/desktop/release/pi-wood Setup 0.0.1.exe` | T0.1 ✅，下一任务 T0.2 |
 | 2026-08-30 | T0.2 | 偏差 | Pi SDK 实际版本 **0.84.4**（锁定）。实测装配路径比在线文档更精确：`createAgentSessionServices({cwd, agentDir, modelRuntime?})` → `createAgentSessionFromServices({services, sessionManager})` → `createAgentSessionRuntime(工厂函数, {cwd, agentDir, sessionManager})`。**工厂函数**（`CreateAgentSessionRuntimeFactory`）在每次 newSession/switchSession/fork 时按目标 cwd 重建服务——SdkAdapter 应持有工厂而非单个 session | sdk-adapter 结构据此设计（T1.1） |
 | 2026-08-30 | T0.2 | 进展 | 无 Key 冒烟通过：runtime 装配 + `session.subscribe()` 挂载 + `newSession/switchSession/fork` 方法面确认 + sessionFile 落盘 `~/.pi/agent/sessions/`（R-1/R-2 修订与真实包吻合）。探针：`apps/desktop/scratch/sdk-probe.mjs`（用法与日志见 `docs/proofs/T0.2/`） | **T0.2 剩余项阻塞：需用户提供模型 API Key** |
 | 2026-08-30 | T0.2 | 完成 | **用户提供 DeepSeek Key 后闭环达成**：prompt "把 test.txt 里的 foo 改成 bar" → 165 事件（含 3 次 tool_execution_start/end）→ 文件真实修改为 "hello bar"。日志 `apps/desktop/docs/proofs/T0.2/events-log.txt`。注：验收在 Node 进程完成（SDK 纯 JS），Electron 主进程内复验并入 T0.3 | T0.2 ✅ |
@@ -384,8 +384,8 @@
 | 2026-08-30 | T0.5 | 偏差 | 机器无 Visual Studio Build Tools：node-pty 1.1.0 与 @homebridge 预编译分支均回退 node-gyp 源码编译 → 失败。**改用 `@lydell/node-pty`（N-API 预编译，可选依赖直发 win32-x64 二进制）**，无需 electron-rebuild | 方案 §2.4 选型变更，T5.3 打包更简 |
 | 2026-08-30 | T0.5 | 完成 | ConPTY 验证通过：Node 运行时与 Electron 运行时（`ELECTRON_RUN_AS_NODE`）下 `pty.spawn(powershell)` 均正常收发输出（exitCode 0 + 标记串命中）。骨架落盘 `electron/main/workbench/terminal-service.ts`。xterm 渲染层集成按计划归 T2.3 | T0.5 ✅ |
 | 2026-08-30 | T0.6 | 完成 | **门禁 E2E PASS（Go 决策）**：Electron 内 `--probe-e2e` 模式，prompt"把 test.txt 里的 hello 改成 hola"→ agent 执行 read→edit（事件全量转发渲染层，工具卡片状态机 running/ok 上屏）→ jsdiff 前后快照对比 → diff 推送右栏上屏 → 文件真实变更 `hello bar`→`hola bar`。证据：`apps/desktop/docs/proofs/T0.6/e2e.log`。工具卡片/diff 为最简 DOM 占位（按门禁口径允许）；窗口视觉截图因用户前台占用延至 T1.3 正式 UI 时补。**Phase 0 高风险路径全部验证通过，Go** | T0.6 ✅，进入 Phase 1（T1.1 起） |
-| 2026-08-30 | T1.1 | 决策 | IPC 方案定为**自研 contextBridge + ipcMain.handle + zod 边界校验**（不用 electron-trpc）：事件流是 main→renderer 推送，trpc subscription 在 Electron 上反而绕；zod schema（@pidesk/ipc-schema）仍是唯一契约源 | 记录备查 |
-| 2026-08-30 | T1.1 | 完成 | 契约层落地：① `packages/ipc-schema` 全量事件/命令 zod schema（25 种事件 + unknown 兜底 + 13 个通道常量）；② `packages/engine`：EngineAdapter 接口（渲染层仅类型，子路径 `@pidesk/engine/sdk` 隔离 Pi SDK）、normalizeEngineEvent 事件桥（未知事件归一化不崩，**单测 4/4 通过**，node:test + TS 类型剥离）、SdkAdapter 正式实现；③ e2e-service 重构为 SdkAdapter 驱动并重跑 E2E PASS（read→edit→diff 全链路） | T1.1 ✅ |
+| 2026-08-30 | T1.1 | 决策 | IPC 方案定为**自研 contextBridge + ipcMain.handle + zod 边界校验**（不用 electron-trpc）：事件流是 main→renderer 推送，trpc subscription 在 Electron 上反而绕；zod schema（@pi-wood/ipc-schema）仍是唯一契约源 | 记录备查 |
+| 2026-08-30 | T1.1 | 完成 | 契约层落地：① `packages/ipc-schema` 全量事件/命令 zod schema（25 种事件 + unknown 兜底 + 13 个通道常量）；② `packages/engine`：EngineAdapter 接口（渲染层仅类型，子路径 `@pi-wood/engine/sdk` 隔离 Pi SDK）、normalizeEngineEvent 事件桥（未知事件归一化不崩，**单测 4/4 通过**，node:test + TS 类型剥离）、SdkAdapter 正式实现；③ e2e-service 重构为 SdkAdapter 驱动并重跑 E2E PASS（read→edit→diff 全链路） | T1.1 ✅ |
 | 2026-08-30 | T1.1 | 偏差 | **setModel 必须用 registry.getModel() 的完整 Model 对象**：裸 {provider,id} 会被接受但请求退化（模型复读输入、不调工具）。另实测 0.84.4 静态目录已无 deepseek-chat（仅 v4 系），早期看到的 chat 来自远程目录缓存——**模型目录是动态的，chat 可能整体退役**，T3.2 模型管理按"registry 可解析即可用"设计，不依赖静态清单 | T3.2 设计约束 |
 | 2026-08-30 | T1.4(后台) | 完成 | 左栏数据层先行完成：① `packages/engine/src/session-tree.ts` 纯函数树构建（buildSessionTree/flattenTree/defaultLeaf，孤儿条目容错、活跃分支标记），**单测 8/8 通过**；② 主进程 `project/project-manager.ts`（projects.json 注册表 + 复用 Pi ProjectTrustStore 信任预检，`ProjectTrustDecision = boolean\|null`）+ `engine/session-service.ts`（列表复用 SessionManager.list，树解析复用 parseSessionEntries）；③ 真实数据验证：19 个真实会话列出、最新会话解析为 12 节点树（深度缩进 + 活跃叶标记）、信任状态 undecided/not-required 分级正确。验证脚本 `apps/desktop/scratch/backend-probe.ts` | T1.4 后台部分 ✅，UI 部分（SessionTree 组件）与 CLI 互通硬验收待做 |
 | 2026-08-30 | T1.4(后台) | 偏差 | trustStatus 语义实测：`hasTrustRequiringProjectResources` 只对含动态资源的 .pi 项目返回 true；信任交互仍走运行时 project_trust 事件（经 uiBridge.confirm），预检仅做徽标显示 | §9 交互口径 |
@@ -393,7 +393,7 @@
 | 2026-08-30 | T1.2 | 完成 | 布局底座验收通过（无干扰方式）：`--capture` 模式用 `webContents.capturePage()` 截窗口内容（窗口不需前台，不干扰用户其他应用）。两组 settings.json 预置值分别还原正确：`[40,40,20]` 正常三栏、`[18,42,40]+rightCollapsed` 右栏折叠态与按钮文案均正确。折叠按钮（收/展开左右栏）挂接 panelRef。证据：`docs/proofs/T1.2/*.png`。注：物理拖拽分割条的交互属库原生能力，onLayoutChanged(isUserInteraction) 已接持久化 | T1.2 ✅ |
 | 2026-08-30 | T1.4 | 完成 | **CLI↔桌面双向互通硬验收通过**：① pi CLI 0.84.4 全局安装；② CLI `--session <桌面会话文件> -p` 成功 resume 桌面建的会话并正确回答历史内容（"hola"）；③ CLI 运行写入后桌面 SessionService 立即可见（msgs 8→10、entries 12→14、modified 更新） | T1.4 硬验收 ✅（SessionTree 组件 UI 仍待做） |
 | 2026-08-30 | T1.4 | 偏差 | **主进程禁止静态 import Pi（ESM-only）**：electron-vite 把 dependencies externalize 成 CJS require，而 pi 包 exports 无 CJS 入口 → 启动即 `ERR_PACKAGE_PATH_NOT_EXPORTED`（表现为窗口报 "App threw an error during load" + 进程挂起）。规则：主进程所有 Pi 访问必须 `await import()`，agentDir 等引导值由启动函数动态获取后传入各 service。session-service/project-manager/data.ipc 已全部改动态 | **硬性编码规范**，T2.x 起所有 Pi 触点遵守 |
-| 2026-08-30 | T1.4 | 完成 | 左栏数据 IPC 域接线完成：`ipc/data.ipc.ts` 注册 project:list/add/remove/trustStatus + sessions:list/tree（入参 zod 校验，通道常量来自 @pidesk/ipc-schema projects 域），boot 验证干净（capture exit=0） | T1.4 UI 接线就绪 |
+| 2026-08-30 | T1.4 | 完成 | 左栏数据 IPC 域接线完成：`ipc/data.ipc.ts` 注册 project:list/add/remove/trustStatus + sessions:list/tree（入参 zod 校验，通道常量来自 @pi-wood/ipc-schema projects 域），boot 验证干净（capture exit=0） | T1.4 UI 接线就绪 |
 | 2026-08-30 | T1.3+T1.4 UI | 完成 | **GUI 端到端闭环达成**（无障碍驱动 + 截图验证）：左栏项目选择 → engine:start（含默认模型 chat 优先兜底链）→ 19 会话列出 → 点击会话渲染会话树（缩进+活跃分支）→ Composer 发送"把 test.txt 里的 hello 改成 hola"→ 用户消息单条上屏 → 工具卡片 `read ✅ ok` → streamdown 流式回复（agent 正确发现文件已是 hola bar 并如实说明）。组件：MessageList（react-virtual）+ Composer（Enter/Alt+Enter/中止）+ LeftPane + session-store。开启 `app.accessibilitySupportEnabled` 支持自动化驱动 | T1.3 核心闭环 ✅ |
 | 2026-08-30 | T1.3 | 偏差 | dev 启动需 `DEEPSEEK_API_KEY` 环境变量（密钥未持久化，auth.json 为空）——T3.2 钥匙串+设置 UI 前的过渡：建议加 dotenv 式启动脚本 `pnpm dev:key`。另两处已修：preload prompt 需传 `{text}` 对象（zod 契约）；user 消息统一由主进程 user_message 事件回显（防双份） | T3.2 前置 |
 | 2026-08-30 | T1.3 | 待办 | 虚拟列表万条压测、Markdown 代码块高亮细节、CLI 会话在 UI 内 continue → switchSession 接线、会话树点击叶子跳转：记入 T1.3 精修清单（Phase 1 门禁前完成） | T1.6 门禁前清账 |
@@ -409,8 +409,8 @@
 | 2026-08-31 | T2.3 | 完成 | 终端面板落地：`workbench/terminal-service.ts`（@lydell/node-pty pty 池 + zod 校验 IPC term:create/write/resize/kill + term:onData/onExit 事件）+ 渲染层 TerminalPanel（xterm + fit/web-links addon，跟随项目 cwd，PowerShell ConPTY 实测出 bash 提示符正常回显） | T2.3 ✅ |
 | 2026-08-31 | T2.4 | 完成 | 浏览器面板 + agent 工具落地：`workbench/browser-service.ts`（playwright-core + 系统 Edge/Chrome headless，8s 超时）+ `agent-tools/browser-tools.ts`（browser_navigate/read_text/click/fill/screenshot 五个 TypeBox 工具）经 SdkAdapter customTools 注入——**agent 与面板共享同一 headless 页面**。实测 example.com 截图上屏 | T2.4 ✅（headless 降级版） |
 | 2026-08-31 | T2.x | 决策 | 右栏暂用轻量标签页（文件/终端/浏览器/Diff），dockview 停靠布局推迟到 Phase 3 一并评估（当前四功能 tab 已可用，dockview 引入属布局增强而非功能缺失） | T2.5 调整 |
-| 2026-08-31 | T2.6 | 完成 | **Phase 2 门禁通过**：webapp 项目 GUI 内发任务"改 index.html 的 h1 → browser_navigate 打开 → browser_read_text 验证"→ agent 执行 read→edit→browser_navigate→browser_read_text 四步工具链（全部 ✅）→ 正确回答"改成功了，页面文本显示为 Hello PiDesk"→ 文件真实变更（h1=Hello PiDesk）。验收原文"agent 跑 Web 项目：改代码→浏览器验证，全程桌面内闭环"达成，且浏览器验证走的是自定义 agent 工具首秀 | T2.6 ✅ **Phase 2 核心门禁通过** |
-| 2026-08-31 | 收尾 | 总结 | **项目阶段性完成**：Phase 0~2 全部门禁通过，Phase 3 核心（钥匙串/Provider/设置弹窗/主题）与 Phase 4 核心（审批门/path-guard/信任）落地，T5 NSIS 打包通过（release/PiDesk Setup 0.0.1.exe，108MB）。工作台四面板（文件/终端/浏览器/Diff）+ GUI 对话闭环 + CLI 双向互通 + 万条压测 + 审批门全部实测。**后续迭代项**：① UI 视觉重设计（用户反馈）；② T3.1 扩展列表 UI（数据层已就绪）；③ T3.4 包市场；④ T2.2 MergeView / T2.5 dockview；⑤ 打包版 asar 内扩展加载复验；⑥ T4.3 计划模式、T5.1 命令面板、T5.2 utilityProcess 插件 | 详见各阶段 §8 记录 |
+| 2026-08-31 | T2.6 | 完成 | **Phase 2 门禁通过**：webapp 项目 GUI 内发任务"改 index.html 的 h1 → browser_navigate 打开 → browser_read_text 验证"→ agent 执行 read→edit→browser_navigate→browser_read_text 四步工具链（全部 ✅）→ 正确回答"改成功了，页面文本显示为 Hello pi-wood"→ 文件真实变更（h1=Hello pi-wood）。验收原文"agent 跑 Web 项目：改代码→浏览器验证，全程桌面内闭环"达成，且浏览器验证走的是自定义 agent 工具首秀 | T2.6 ✅ **Phase 2 核心门禁通过** |
+| 2026-08-31 | 收尾 | 总结 | **项目阶段性完成**：Phase 0~2 全部门禁通过，Phase 3 核心（钥匙串/Provider/设置弹窗/主题）与 Phase 4 核心（审批门/path-guard/信任）落地，T5 NSIS 打包通过（release/pi-wood Setup 0.0.1.exe，108MB）。工作台四面板（文件/终端/浏览器/Diff）+ GUI 对话闭环 + CLI 双向互通 + 万条压测 + 审批门全部实测。**后续迭代项**：① UI 视觉重设计（用户反馈）；② T3.1 扩展列表 UI（数据层已就绪）；③ T3.4 包市场；④ T2.2 MergeView / T2.5 dockview；⑤ 打包版 asar 内扩展加载复验；⑥ T4.3 计划模式、T5.1 命令面板、T5.2 utilityProcess 插件 | 详见各阶段 §8 记录 |
 | 2026-08-31 | UI v2 | 完成 | **视觉重设计落地**（响应用户反馈）：styles.css 全量重写为设计系统 v2——单一强调色锁定（电蓝 #6e9bff）、6px 控件/8px 面板圆角体系、4px 间距网格、深浅双主题 token、细线分隔替代色块、去 emoji（换中性字形/文字）、按钮三态+focus-visible、滚动条/选区样式。Design read：devtool workbench，V3/M2/D6，Zed/Linear 式克制语言。design-taste-frontend 技能第 13 节声明：本应用属密集产品 UI，仅采用其通用纪律 | UI v2 ✅ |
 | 2026-08-31 | T3.1/T3.4/T5.1/T2.2 | 完成 | 四项延后功能清账：① T3.1 扩展列表 UI（全局+项目扫描 + engine:reload 热重载按钮，SdkAdapter.reload 接 AgentSession.reload）；② T3.4 包管理（实验）：settings.packages 列表 + pi CLI 安装（120s 超时，输出回显）；③ T5.1 命令面板：Ctrl+Shift+P 唤起，聚合设置/主题/新会话/切模型/切项目（自研轻量实现，cmdk 推迟）；④ T2.2 MergeView：SnapshotService 输出 before/after，Diff 标签接 @codemirror/merge unifiedMergeView 双栏对照 | 四项 ✅ |
 | | | | | |
