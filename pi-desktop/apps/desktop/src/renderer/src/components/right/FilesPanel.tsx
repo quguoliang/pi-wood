@@ -93,7 +93,7 @@ export function FilesPanel(): React.JSX.Element {
           style={{ paddingLeft: 8 + depth * 14 }}
           onClick={() => (entry.type === "dir" ? toggleDir(entry) : openFile(entry))}
         >
-          {entry.type === "dir" ? (expanded.has(entry.path) ? "▾ 📁" : "▸ 📁") : "📄"} {entry.name}
+          {entry.type === "dir" ? (expanded.has(entry.path) ? "▾" : "▸") : ""}{entry.name}
         </div>
         {entry.type === "dir" && expanded.has(entry.path) && (
           <>{renderEntries(expanded.get(entry.path) ?? [], depth + 1)}</>
@@ -120,7 +120,7 @@ export function FilesPanel(): React.JSX.Element {
           {searchResults.length === 0 && <p className="muted">无匹配</p>}
           {searchResults.map((r) => (
             <div key={r.path} className="tree-row file-row" onClick={() => openFile({ ...r, name: r.path, type: "file" })}>
-              📄 {r.path}
+              {r.path}
             </div>
           ))}
         </div>

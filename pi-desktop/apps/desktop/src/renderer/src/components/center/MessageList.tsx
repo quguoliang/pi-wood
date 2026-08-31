@@ -55,7 +55,7 @@ export function MessageList(): React.JSX.Element {
               ) : m.kind === "tool" ? (
                 <div className={`tool-card tool-${m.status}`}>
                   <span className="tool-icon">
-                    {m.status === "running" ? "⏳" : m.status === "ok" ? "✅" : "❌"}
+                    {m.status === "running" ? "…" : m.status === "ok" ? "done" : "fail"}
                   </span>
                   <b>{m.toolName}</b>
                   <span className="muted">{m.status}</span>

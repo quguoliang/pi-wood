@@ -72,15 +72,15 @@ export default function App() {
         statusbar={
           <>
             {versions
-              ? `IPC ✅ · electron ${versions.electron} · node ${versions.node}`
+              ? `IPC ok · electron ${versions.electron} · node ${versions.node}`
               : "IPC 检测中…"}
-            {modelName && <span className="model-badge">🧠 {modelName}</span>}
+            {modelName && <span className="model-badge">{modelName}</span>}
             <button
               className="ghost-btn"
               style={{ marginLeft: "auto" }}
               onClick={() => setSettingsOpen(true)}
             >
-              ⚙ 设置
+              设置
             </button>
           </>
         }

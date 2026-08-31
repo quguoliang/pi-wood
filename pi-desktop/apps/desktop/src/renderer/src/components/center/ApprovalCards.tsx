@@ -26,7 +26,7 @@ export function ApprovalCards(): React.JSX.Element {
     <div className="approval-stack">
       {pending.map((a) => (
         <div key={a.id} className="approval-card">
-          <div className="approval-title">🔐 {a.title}</div>
+          <div className="approval-title">{a.title}</div>
           <pre className="approval-body">{a.message}</pre>
           <div className="approval-actions">
             <button className="deny" onClick={() => decide(a.id, false)}>拒绝</button>

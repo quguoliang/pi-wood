@@ -85,7 +85,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
             {providers.map((p) => (
               <div key={p.id} className="provider-row">
                 <span className="provider-name">
-                  {p.name} {p.hasKey ? "✅" : "⚠️"}
+                  {p.name} · {p.hasKey ? "已配置" : "未配置"}
                 </span>
                 <input
                   type="password"

@@ -97,7 +97,7 @@ export function LeftPane(): React.JSX.Element {
             onClick={() => selectProject(p)}
             title={p.path}
           >
-            📁 {p.name}
+            {p.name}
             {trust !== "not-required" && activeProject === p.path && (
               <span className={`trust trust-${trust}`}>{trust === "trusted" ? "已信任" : "未信任"}</span>
             )}
@@ -148,7 +148,7 @@ export function LeftPane(): React.JSX.Element {
                 style={{ paddingLeft: row.depth * 14 }}
                 title={row.id}
               >
-                {typeIcon(row.type)} {row.type}
+                {row.type}
               </div>
             ))}
           </div>
@@ -158,10 +158,3 @@ export function LeftPane(): React.JSX.Element {
   );
 }
 
-function typeIcon(type: string): string {
-  if (type === "message") return "💬";
-  if (type === "session") return "🏁";
-  if (type === "model_change") return "🧠";
-  if (type === "compaction") return "🗜️";
-  return "·";
-}

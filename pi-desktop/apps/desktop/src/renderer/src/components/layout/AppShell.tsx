@@ -48,7 +48,6 @@ export function AppShell({
     <div className="app-shell">
       <header className="top-bar">
         <strong>PiDesk</strong>
-        <span className="muted">T1.2 布局底座</span>
         <span className="spacer" />
         <button className="ghost-btn" onClick={() => leftRef.current?.collapse()}>收左栏</button>
         <button className="ghost-btn" onClick={() => leftRef.current?.resize(`${l}%`)}>展开左栏</button>
