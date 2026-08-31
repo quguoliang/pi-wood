@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@pi-wood/engine": ["../../packages/engine/src/index.ts"],
+      "@pi-wood/ipc-schema": ["../../packages/ipc-schema/src/index.ts"],
+      "@pi-wood/ui-kit": ["../../packages/ui-kit/src/index.ts"]
+    }
+  },
+  "include": [
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.tsx",
+    "../../packages/engine/src/index.ts",
+    "../../packages/engine/src/adapter.ts",
+    "../../packages/ipc-schema/src/**/*.ts",
+    "../../packages/ui-kit/src/**/*.ts"
+  ]
+}
