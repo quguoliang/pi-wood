@@ -1,12 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
-import type { TreeEntry } from "@pi-wood/engine";
+import { useRuntimeStore } from "../../stores/runtime-store";
+import { Icon } from "../ui/Icon";
 
-/**
- * T1.4 左栏：ProjectPane + SessionPane（会话列表 + 会话树）。
- * 数据全部来自 data.ipc（project:* / sessions:*），树渲染用 @pi-wood/engine flattenTree。
- */
-interface ProjectRec {
+interface ProjectRecord {
   id: string;
   path: string;
   name: string;
@@ -21,149 +18,174 @@ interface SessionItem {
   firstMessage: string;
 }
 
-interface TreeRow {
-  id: string;
-  type: string;
-  depth: number;
-  activeBranch: boolean;
-}
+export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [sessionsByProject, setSessionsByProject] = useState<Record<string, SessionItem[]>>({});
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [activeProject, setActiveProject] = useState<string>();
+  const [activeSession, setActiveSession] = useState<SessionItem>();
+  const projectsRef = useRef<ProjectRecord[]>([]);
+  const activationSeq = useRef(0);
+  const { setActiveProject: setStoreProject, setEngineReady, reset, loadMessages } = useSessionStore();
+  const refreshRuntime = useRuntimeStore((s) => s.refresh);
+  const resetRuntime = useRuntimeStore((s) => s.reset);
 
-export function LeftPane(): React.JSX.Element {
-  const [projects, setProjects] = useState<ProjectRec[]>([]);
-  const [activeProject, setActiveProject] = useState<string | undefined>();
-  const [trust, setTrust] = useState<string>("not-required");
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [activeSession, setActiveSession] = useState<SessionItem | undefined>();
-  const [treeRows, setTreeRows] = useState<TreeRow[]>([]);
-  const setActiveProjectStore = useSessionStore((s) => s.setActiveProject);
-  const setEngineReady = useSessionStore((s) => s.setEngineReady);
-  const reset = useSessionStore((s) => s.reset);
-  const loadMessages = useSessionStore((s) => s.loadMessages);
+  const refreshProjectSessions = useCallback(async (project: ProjectRecord) => {
+    const sessions = (await window.pi.sessionsList(project.path).catch(() => [])) as SessionItem[];
+    setSessionsByProject((current) => ({ ...current, [project.path]: sessions }));
+  }, []);
 
-  const refreshProjects = (): void => {
-    void window.pi.projectList().then((list) => setProjects(list as ProjectRec[]));
-  };
+  const refreshProjects = useCallback(async () => {
+    const projectList = (await window.pi.projectList()) as ProjectRecord[];
+    projectsRef.current = projectList;
+    setProjects(projectList);
+
+    const grouped = await Promise.all(
+      projectList.map(async (project) => [
+        project.path,
+        (await window.pi.sessionsList(project.path).catch(() => [])) as SessionItem[],
+      ] as const),
+    );
+    setSessionsByProject(Object.fromEntries(grouped));
+  }, []);
+
+  const activateProject = useCallback(async (project: ProjectRecord) => {
+    const activation = ++activationSeq.current;
+    setActiveProject(project.path);
+    setActiveSession(undefined);
+    setStoreProject(project.path);
+    setEngineReady(false);
+    reset();
+    resetRuntime();
+    try {
+      await window.pi.engineStart(project.path);
+      if (activation === activationSeq.current) {
+        setEngineReady(true);
+        void refreshRuntime();
+      }
+    } catch (error) {
+      if (activation === activationSeq.current) setEngineReady(false);
+      console.error("项目引擎启动失败", error);
+    }
+  }, [reset, resetRuntime, refreshRuntime, setEngineReady, setStoreProject]);
 
   useEffect(() => {
-    refreshProjects();
-    // 命令面板的项目切换事件（完整切换流程复用 selectProject）
-    const onSelect = (e: Event): void => {
-      const path = (e as CustomEvent<string>).detail;
-      const rec = projects.find((p) => p.path === path);
-      if (rec) selectProject(rec);
+    void refreshProjects();
+
+    const selectProject = (event: Event) => {
+      const projectPath = (event as CustomEvent<string>).detail;
+      const project = projectsRef.current.find((item) => item.path === projectPath);
+      if (project) void activateProject(project);
     };
-    window.addEventListener('pidesk:select-project', onSelect);
-    return () => window.removeEventListener('pidesk:select-project', onSelect);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects]);
+    window.addEventListener("piwood:select-project", selectProject);
+    return () => window.removeEventListener("piwood:select-project", selectProject);
+  }, [activateProject, refreshProjects]);
 
-  const selectProject = (p: ProjectRec): void => {
-    setActiveProject(p.path);
-    setActiveProjectStore(p.path);
-    reset();
-    void window.pi.projectTrust(p.path).then(setTrust);
-    void window.pi.sessionsList(p.path).then((list) => setSessions(list as SessionItem[]));
-    void window.pi.engineStart(p.path).then(() => setEngineReady(true));
+  const selectSession = async (project: ProjectRecord, session: SessionItem) => {
+    if (activeProject !== project.path) await activateProject(project);
+    setActiveSession(session);
+    const messages = (await window.pi.sessionsMessages(session.file)) as { role: string; text: string }[];
+    loadMessages(messages);
+    await window.pi.engineSwitchSession(session.file);
+    void refreshRuntime();
   };
 
-  const addProject = (): void => {
-    void window.pi.projectPick().then((path) => {
-      if (!path) return;
-      void window.pi.projectAdd(path).then(() => {
-        refreshProjects();
-        const rec = { id: "", path, name: path.split(/[\\/]/).pop() ?? path };
-        selectProject(rec);
-      });
+  const createSession = useCallback(async (project: ProjectRecord) => {
+    setExpandedProjects((current) => new Set(current).add(project.path));
+    await activateProject(project);
+    await window.pi.engineNewSession();
+    await refreshProjectSessions(project);
+  }, [activateProject, refreshProjectSessions]);
+
+  useEffect(() => {
+    const createProjectSession = () => {
+      const project = projectsRef.current.find((item) => item.path === activeProject);
+      if (project) void createSession(project);
+    };
+    window.addEventListener("piwood:new-session", createProjectSession);
+    return () => window.removeEventListener("piwood:new-session", createProjectSession);
+  }, [activeProject, createSession]);
+
+  const toggleProject = (project: ProjectRecord) => {
+    setExpandedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(project.path)) next.delete(project.path);
+      else next.add(project.path);
+      return next;
     });
+    if (activeProject !== project.path) void activateProject(project);
   };
 
-  const selectSession = (s: SessionItem): void => {
-    setActiveSession(s);
-    // 点击会话 = 切换引擎到该会话 + 装载历史（续写）
-    void window.pi.sessionsTree(s.file).then((result) => {
-      const rows = (result as { rows: Array<TreeEntry & { depth: number; activeBranch: boolean }> }).rows;
-      setTreeRows(rows.map((r) => ({ id: r.id, type: r.type, depth: r.depth, activeBranch: r.activeBranch })));
-    });
-    void window.pi
-      .sessionsMessages(s.file)
-      .then((items) => loadMessages(items as Array<{ role: string; text: string }>))
-      .then(() => window.pi.engineSwitchSession(s.file))
-      .catch(() => undefined);
+  const addProject = async () => {
+    const path = await window.pi.projectPick();
+    if (!path) return;
+    const project = (await window.pi.projectAdd(path)) as ProjectRecord;
+    await refreshProjects();
+    await activateProject(project);
   };
 
   return (
-    <div className="left-pane">
-      <div className="pane-section">
-        <div className="pane-header">
-          <b>项目</b>
-          <button className="ghost-btn" onClick={addProject}>＋添加</button>
-        </div>
-        {projects.length === 0 && <p className="muted">还没有项目，点击"＋添加"</p>}
-        {projects.map((p) => (
-          <div
-            key={p.id}
-            className={`project-item ${activeProject === p.path ? "active" : ""}`}
-            onClick={() => selectProject(p)}
-            title={p.path}
-          >
-            {p.name}
-            {trust !== "not-required" && activeProject === p.path && (
-              <span className={`trust trust-${trust}`}>{trust === "trusted" ? "已信任" : "未信任"}</span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="pane-section">
-        <div className="pane-header">
-          <b>会话</b>
-          <button
-            className="ghost-btn"
-            disabled={!activeProject}
-            onClick={() => {
-              void window.pi.engineNewSession().then(() => {
-                reset();
-                if (activeProject) {
-                  void window.pi.sessionsList(activeProject).then((list) => setSessions(list as SessionItem[]));
-                }
-              });
-            }}
-          >
-            ＋新会话
+    <aside className="left-pane" aria-label="项目与会话">
+      <section className="project-collection">
+        <header className="project-list-header">
+          <span>项目</span>
+          <button type="button" onClick={() => void addProject()}>
+            <Icon name="add" size={14} /> 添加
           </button>
-        </div>
-        {activeProject && sessions.length === 0 && <p className="muted">该项目还没有会话</p>}
-        {sessions.slice(0, 20).map((s) => (
-          <div
-            key={s.id}
-            className={`session-item ${activeSession?.id === s.id ? "active" : ""}`}
-            onClick={() => selectSession(s)}
-            title={s.file}
-          >
-            <div className="session-first">{s.firstMessage || "(空会话)"}</div>
-            <div className="muted session-meta">{new Date(s.modified).toLocaleString()} · {s.messageCount} 条</div>
-          </div>
-        ))}
-      </div>
+        </header>
 
-      {activeSession && treeRows.length > 0 && (
-        <div className="pane-section">
-          <div className="pane-header"><b>会话树</b></div>
-          <div className="session-tree">
-            {treeRows.map((row) => (
-              <div
-                key={row.id}
-                className={`tree-row ${row.activeBranch ? "active-branch" : ""}`}
-                style={{ paddingLeft: row.depth * 14 }}
-                title={row.id}
-              >
-                {row.type}
-              </div>
-            ))}
-          </div>
+        <div className="project-tree">
+          {projects.map((project) => {
+            const isActiveProject = activeProject === project.path;
+            const isExpanded = expandedProjects.has(project.path);
+            const sessions = sessionsByProject[project.path] ?? [];
+            return (
+              <section className={`project-group${isActiveProject ? " active" : ""}`} key={project.path}>
+                <div className="project-row">
+                  <button
+                    className="project-item"
+                    type="button"
+                    onClick={() => toggleProject(project)}
+                  >
+                    <Icon name={isExpanded ? "folderOpen" : "folder"} size={16} />
+                    <span>{project.name}</span>
+                  </button>
+                  <button
+                    className="project-session-add"
+                    type="button"
+                    title={`在 ${project.name} 中新建会话`}
+                    aria-label={`在 ${project.name} 中新建会话`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void createSession(project);
+                    }}
+                  >
+                    <Icon name="add" size={14} />
+                  </button>
+                </div>
+
+                {isExpanded && sessions.map((session) => (
+                  <button
+                    className={`project-session${activeSession?.file === session.file ? " active" : ""}`}
+                    key={session.file}
+                    type="button"
+                    title={session.firstMessage || "空会话"}
+                    onClick={() => void selectSession(project, session)}
+                  >
+                    <span>{session.firstMessage || "空会话"}</span>
+                  </button>
+                ))}
+              </section>
+            );
+          })}
         </div>
-      )}
-    </div>
+      </section>
+
+      <footer className="sidebar-footer">
+        <button type="button" onClick={onOpenSettings}>
+          <Icon name="settings" size={16} /> 设置
+        </button>
+      </footer>
+    </aside>
   );
 }
-

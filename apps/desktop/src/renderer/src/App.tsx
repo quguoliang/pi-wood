@@ -7,7 +7,10 @@ import { SettingsModal } from "./components/center/SettingsModal";
 import { CommandPalette } from "./components/center/CommandPalette";
 import { LeftPane } from "./components/left/LeftPane";
 import { RightPane } from "./components/right/RightPane";
+import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
+import { ConversationToolbar } from "./components/center/ConversationToolbar";
 import { useSessionStore } from "./stores/session-store";
+import { useRuntimeStore } from "./stores/runtime-store";
 
 interface Toast {
   id: number;
@@ -16,21 +19,20 @@ interface Toast {
 }
 
 export default function App() {
-  const [versions, setVersions] = useState<{ electron: string; node: string } | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [diffs, setDiffs] = useState<Array<{ file: string; before?: string; after?: string; patch?: string }>>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [modelName, setModelName] = useState("");
+  const [environmentOpen, setEnvironmentOpen] = useState(false);
   const idSeq = useRef(0);
   const handleEvent = useSessionStore((s) => s.handleEvent);
+  const trackRuntimeEvent = useRuntimeStore((s) => s.trackEvent);
+  const messages = useSessionStore((s) => s.messages);
+  const streamBuffer = useSessionStore((s) => s.streamBuffer);
+  const streaming = useSessionStore((s) => s.streaming);
+  const hasConversation = messages.length > 0 || Boolean(streamBuffer) || streaming;
 
   useEffect(() => {
-    window.pi
-      .ping()
-      .then((r) => setVersions({ electron: r.electron, node: r.node }))
-      .catch(() => setVersions(null));
-
     // 主题（T3.3）：settings.theme.fallback → <html data-theme>
     void window.pi.settingsGet().then((s) => {
       const t = (s as { theme?: { fallback?: string } }).theme?.fallback;
@@ -44,6 +46,10 @@ export default function App() {
       }
     };
     window.addEventListener("keydown", onKey);
+    const openPalette = (): void => setPaletteOpen(true);
+    const openSettings = (): void => setSettingsOpen(true);
+    window.addEventListener("piwood:open-command-palette", openPalette);
+    window.addEventListener("piwood:open-settings", openSettings);
     const pushToast = (message: string, type: string): void => {
       const id = ++idSeq.current;
       setToasts((t) => [...t, { id, message, type }]);
@@ -53,10 +59,7 @@ export default function App() {
     const offNotify = window.pi.onUiNotify((d) => pushToast(d.message, d.type));
     const offEvt = window.pi.onEngineEvent((event) => {
       handleEvent(event);
-      if (event.type === "model_changed") {
-        const m = event as unknown as { provider: string; id: string };
-        setModelName(`${m.provider}/${m.id}`);
-      }
+      trackRuntimeEvent(event);
     });
     const offDiff = window.pi.onDiff((data) => setDiffs((d) => [...d, data]));
     return () => {
@@ -64,36 +67,27 @@ export default function App() {
       offEvt();
       offDiff();
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("piwood:open-command-palette", openPalette);
+      window.removeEventListener("piwood:open-settings", openSettings);
     };
-  }, [handleEvent]);
+  }, [handleEvent, trackRuntimeEvent]);
 
   return (
     <>
       <AppShell
-        left={<LeftPane />}
+        left={<LeftPane onOpenSettings={() => setSettingsOpen(true)} />}
         center={
-          <>
-            <MessageList />
-            <Composer />
+          <section className={`conversation-workspace${hasConversation ? " has-conversation" : " is-empty"}`}>
+            <ConversationToolbar environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
+            <div className="conversation-main">
+              <MessageList />
+              <Composer />
+            </div>
             <ApprovalCards />
-          </>
+            <EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} />
+          </section>
         }
         right={<RightPane diffs={diffs} />}
-        statusbar={
-          <>
-            {versions
-              ? `IPC ok · electron ${versions.electron} · node ${versions.node}`
-              : "IPC 检测中…"}
-            {modelName && <span className="model-badge">{modelName}</span>}
-            <button
-              className="ghost-btn"
-              style={{ marginLeft: "auto" }}
-              onClick={() => setSettingsOpen(true)}
-            >
-              设置
-            </button>
-          </>
-        }
       />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {paletteOpen && (

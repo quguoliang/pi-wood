@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Group, Panel, Separator, type PanelImperativeHandle } from "react-resizable-panels";
 import { useSettingsStore } from "../../stores/settings-store";
+import { Icon } from "../ui/Icon";
 
 /**
  * T1.2 布局底座：react-resizable-panels v4（Group/Panel/Separator）三栏
@@ -12,12 +13,10 @@ export function AppShell({
   left,
   center,
   right,
-  statusbar,
 }: {
   left: React.ReactNode;
   center: React.ReactNode;
   right: React.ReactNode;
-  statusbar?: React.ReactNode;
 }) {
   const { settings, loaded, load, setLayout } = useSettingsStore();
   const leftRef = useRef<PanelImperativeHandle | null>(null);
@@ -31,29 +30,48 @@ export function AppShell({
   // 启动时恢复右栏折叠状态（挂载后一次性）
   useEffect(() => {
     if (!loaded) return;
+    if (settings.window.leftCollapsed) leftRef.current?.collapse();
     if (settings.window.rightCollapsed) rightRef.current?.collapse();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
-  if (!loaded) return <div className="app-shell" />;
+  useEffect(() => {
+    const toggleInspector = (): void => {
+      const collapsed = useSettingsStore.getState().settings.window.rightCollapsed;
+      if (collapsed) rightRef.current?.expand();
+      else rightRef.current?.collapse();
+      void useSettingsStore.getState().patch({ window: { rightCollapsed: !collapsed } });
+    };
+    window.addEventListener("piwood:toggle-inspector", toggleInspector);
+    return () => window.removeEventListener("piwood:toggle-inspector", toggleInspector);
+  }, []);
 
-  const toggleRight = (): void => {
-    const collapsed = useSettingsStore.getState().settings.window.rightCollapsed;
-    if (collapsed) rightRef.current?.expand();
-    else rightRef.current?.collapse();
-    void useSettingsStore.getState().patch({ window: { rightCollapsed: !collapsed } });
+  const toggleLeftSidebar = (): void => {
+    const collapsed = Boolean(useSettingsStore.getState().settings.window.leftCollapsed);
+    if (collapsed) leftRef.current?.expand();
+    else leftRef.current?.collapse();
+    void useSettingsStore.getState().patch({ window: { leftCollapsed: !collapsed } });
   };
 
+  if (!loaded) return <div className="app-shell" />;
+
   return (
-    <div className="app-shell">
-      <header className="top-bar">
-        <strong>pi-wood</strong>
-        <span className="spacer" />
-        <button className="ghost-btn" onClick={() => leftRef.current?.collapse()}>收左栏</button>
-        <button className="ghost-btn" onClick={() => leftRef.current?.resize(`${l}%`)}>展开左栏</button>
-        <button className="ghost-btn" onClick={toggleRight}>
-          {settings.window.rightCollapsed ? "展开右栏" : "收右栏"}
+    <div className={`app-shell${settings.window.leftCollapsed ? " sidebar-collapsed" : ""}`}>
+      <header className="window-chrome" aria-label="窗口操作">
+        <span className="window-chrome-traffic-light-space" />
+        <button type="button" onClick={toggleLeftSidebar} aria-label="展开或收起项目栏" title="展开或收起项目栏">
+          <Icon name="panel" size={15} />
         </button>
+        {settings.window.leftCollapsed && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("piwood:new-session"))}
+            aria-label="新建会话"
+            title="新建会话"
+          >
+            <Icon name="add" size={16} />
+          </button>
+        )}
       </header>
       <Group
         orientation="horizontal"
@@ -67,19 +85,20 @@ export function AppShell({
           setLayout([pct[0], pct[1], pct[2]]);
         }}
       >
-        <Panel id="left" panelRef={leftRef} defaultSize={`${l}%`} minSize="12%" maxSize="45%" collapsible collapsedSize={0}>
-          <div className="panel-inner">{left}</div>
+        <Panel id="left" panelRef={leftRef} defaultSize={`${l}%`} minSize="220px" maxSize="420px" collapsible collapsedSize={0}>
+          <div className="panel-inner">
+            {!settings.window.leftCollapsed && left}
+          </div>
         </Panel>
         <Separator className="panel-handle" />
         <Panel id="center" defaultSize={`${c}%`} minSize="25%">
           <div className="panel-inner">{center}</div>
         </Panel>
         <Separator className="panel-handle" />
-        <Panel id="right" panelRef={rightRef} defaultSize={`${r}%`} minSize="15%" collapsible collapsedSize={0}>
+        <Panel id="right" panelRef={rightRef} defaultSize={`${r}%`} minSize="260px" maxSize="55%" collapsible collapsedSize={0}>
           <div className="panel-inner">{right}</div>
         </Panel>
       </Group>
-      <footer className="status-bar">{statusbar}</footer>
     </div>
   );
 }

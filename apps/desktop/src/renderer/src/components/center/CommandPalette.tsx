@@ -68,7 +68,7 @@ export function CommandPalette({
       run: () => {
         // 复用左栏选择逻辑的最小路径：选项目由 LeftPane 状态管理，
         // 面板命令仅导航（点击左栏条目完成完整切换）
-        window.dispatchEvent(new CustomEvent("pidesk:select-project", { detail: p.path }));
+        window.dispatchEvent(new CustomEvent("piwood:select-project", { detail: p.path }));
       },
     }));
     return [...base, ...modelCmds, ...projectCmds];

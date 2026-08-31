@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
+import { useSessionStore } from "../../stores/session-store";
 
 interface FileEntry {
   name: string;
@@ -19,6 +20,7 @@ function isJsLike(path: string): boolean {
 }
 
 export function FilesPanel(): React.JSX.Element {
+  const activeProject = useSessionStore((s) => s.activeProject);
   const [expanded, setExpanded] = useState<Map<string, FileEntry[]>>(new Map());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | undefined>();
@@ -35,10 +37,14 @@ export function FilesPanel(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (!activeProject) {
+      setExpanded(new Map());
+      return;
+    }
     void loadChildren(undefined).then((entries) => {
       setExpanded((m) => new Map(m).set("", entries));
-    });
-  }, [loadChildren]);
+    }).catch((err) => setStatus(String(err?.message ?? err)));
+  }, [activeProject, loadChildren]);
 
   const toggleDir = (entry: FileEntry): void => {
     setExpanded((m) => {
@@ -103,6 +109,10 @@ export function FilesPanel(): React.JSX.Element {
 
   return (
     <div className="files-panel">
+      {!activeProject ? (
+        <div className="workbench-empty"><p>选择一个项目后即可浏览和编辑文件。</p></div>
+      ) : (
+        <>
       <div className="files-toolbar">
         <input
           className="files-search"
@@ -158,6 +168,8 @@ export function FilesPanel(): React.JSX.Element {
             height="300px"
           />
         </div>
+      )}
+        </>
       )}
     </div>
   );
