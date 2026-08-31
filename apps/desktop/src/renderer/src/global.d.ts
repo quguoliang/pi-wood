@@ -1,4 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
+import type { RuntimeInfo } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -10,7 +11,7 @@ declare global {
       onEngineEvent(cb: (event: Record<string, unknown>) => void): () => void;
       onDiff(cb: (data: { file: string; before?: string; after?: string; patch?: string }) => void): () => void;
       onE2EDone(cb: (data: { ok: boolean; error?: string }) => void): () => void;
-      prompt(text: string): Promise<void>;
+      prompt(text: string, attachments?: string[]): Promise<void>;
       settingsGet(): Promise<Record<string, unknown>>;
       settingsSet(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
       engineStart(projectDir: string): Promise<boolean>;
@@ -19,9 +20,15 @@ declare global {
       engineAbort(): Promise<void>;
       engineNewSession(): Promise<void>;
       engineModels(): Promise<Array<{ provider: string; id: string }>>;
+      engineState(): Promise<{ sessionId?: string; model?: string; thinkingLevel?: string; isStreaming?: boolean; contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null } }>;
+      runtimeInfo(): Promise<RuntimeInfo>;
+      engineThinkingLevels(): Promise<string[]>;
+      engineSetThinking(level: string): Promise<void>;
+      engineCompact(): Promise<void>;
       projectList(): Promise<unknown>;
       projectAdd(path: string): Promise<unknown>;
       projectPick(): Promise<string | undefined>;
+      projectPickAttachments(): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>>;
       projectTrust(path: string): Promise<string>;
       sessionsList(path: string): Promise<unknown>;
       sessionsTree(file: string): Promise<unknown>;

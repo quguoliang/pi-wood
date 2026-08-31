@@ -9,6 +9,8 @@ import { initEngineIpc, getActiveProjectDir, getActiveProjectDirSafe } from "./e
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc } from "./workbench/browser-service";
+import { initProviderIpc } from "./provider/provider-manager";
+import { loadPrivateEnv } from "./private-env";
 
 let mainWindowRef: BrowserWindow | undefined;
 function sendToRenderer(channel: string, data: unknown): void {
@@ -34,6 +36,8 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: "pi-wood",
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    backgroundColor: "#111820",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -115,6 +119,7 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(async () => {
+    loadPrivateEnv(app.getAppPath());
     // 渲染层 DOM 暴露给系统无障碍树（自动化测试/读屏支持）
     app.accessibilitySupportEnabled = true;
     ipcMain.handle("app:ping", () => ({
@@ -123,6 +128,7 @@ if (!gotLock) {
       node: process.versions.node,
     }));
     initSettingsIpc();
+    initProviderIpc();
     // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
     initDataIpc(getAgentDir(), getActiveProjectDirSafe);

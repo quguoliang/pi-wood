@@ -74,7 +74,7 @@ export function permissionGateExtension(
   confirm: (title: string, message: string) => Promise<boolean>,
 ): { name: string; factory: (pi: unknown) => void } {
   return {
-    name: "pidesk-permission-gate",
+    name: "piwood-permission-gate",
     factory: (pi: any) => {
       pi.on("tool_call", async (event: any, ctx: any) => {
         const policy = getPolicy();

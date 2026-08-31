@@ -9,8 +9,8 @@ const APP_DATA_DIR = join(process.env["USERPROFILE"] ?? process.env["HOME"] ?? "
  * 应用设置服务（方案 §8.1）：~/.pi-wood/settings.json
  * 与 Pi 配置完全分离；渲染层经 settings:get/set IPC 读写，主进程深合并持久化。
  */
-export interface pi-woodSettings {
-  window: { layout: [number, number, number]; rightCollapsed: boolean };
+export interface PiWoodSettings {
+  window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
   theme: { fallback: "light" | "dark" | "system" };
   editor: { fontSize: number; tabSize: number };
   recentProjects: string[];
@@ -21,13 +21,13 @@ export interface pi-woodSettings {
   };
 }
 
-export function defaultSettings(): pi-woodSettings {
+export function defaultSettings(): PiWoodSettings {
   return {
-    window: { layout: [22, 48, 30], rightCollapsed: false },
+    window: { layout: [22, 48, 30], leftCollapsed: false, rightCollapsed: false },
     theme: { fallback: "dark" },
     editor: { fontSize: 14, tabSize: 2 },
     recentProjects: [],
-    model: { provider: "", id: "" },
+    model: { provider: "deepseek", id: "deepseek-v4-flash" },
     approval: { mode: "highRisk", rules: [] },
   };
 }
@@ -36,17 +36,17 @@ function settingsPath(): string {
   return join(APP_DATA_DIR, "settings.json");
 }
 
-export function loadSettings(): pi-woodSettings {
+export function loadSettings(): PiWoodSettings {
   const p = settingsPath();
   if (!existsSync(p)) return defaultSettings();
   try {
-    return { ...defaultSettings(), ...(JSON.parse(readFileSync(p, "utf-8")) as Partial<pi-woodSettings>) };
+    return deepMerge(defaultSettings(), JSON.parse(readFileSync(p, "utf-8")));
   } catch {
     return defaultSettings();
   }
 }
 
-export function saveSettings(next: pi-woodSettings): void {
+export function saveSettings(next: PiWoodSettings): void {
   const p = settingsPath();
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify(next, null, 2));
@@ -63,7 +63,7 @@ function deepMerge<T>(base: T, patch: unknown): T {
   return out as T;
 }
 
-export function initSettingsIpc(): pi-woodSettings {
+export function initSettingsIpc(): PiWoodSettings {
   let current = loadSettings();
   ipcMain.handle("settings:get", () => current);
   ipcMain.handle("settings:set", (_e, patch: unknown) => {

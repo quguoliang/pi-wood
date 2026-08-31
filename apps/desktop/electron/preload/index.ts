@@ -30,7 +30,8 @@ const api = {
     ipcRenderer.on("e2e:done", handler);
     return () => ipcRenderer.removeListener("e2e:done", handler);
   },
-  prompt: (text: string): Promise<void> => ipcRenderer.invoke("engine:prompt", { text }),
+  prompt: (text: string, attachments: string[] = []): Promise<void> =>
+    ipcRenderer.invoke("engine:prompt", { text, attachments }),
   // 设置（T1.2 布局持久化；T1.1 正式化口径同 engine 域）
   settingsGet: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("settings:get"),
   settingsSet: (patch: Record<string, unknown>): Promise<Record<string, unknown>> =>
@@ -44,9 +45,16 @@ const api = {
   engineNewSession: (): Promise<void> => ipcRenderer.invoke("engine:newSession"),
   engineModels: (): Promise<Array<{ provider: string; id: string }>> =>
     ipcRenderer.invoke("engine:getAvailableModels"),
+  engineState: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("engine:getState"),
+  runtimeInfo: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("engine:getRuntimeInfo"),
+  engineThinkingLevels: (): Promise<string[]> => ipcRenderer.invoke("engine:getThinkingLevels"),
+  engineSetThinking: (level: string): Promise<void> => ipcRenderer.invoke("engine:setThinking", { level }),
+  engineCompact: (): Promise<void> => ipcRenderer.invoke("engine:compact"),
   projectList: (): Promise<unknown> => ipcRenderer.invoke("project:list"),
   projectAdd: (path: string): Promise<unknown> => ipcRenderer.invoke("project:add", { path }),
   projectPick: (): Promise<string | undefined> => ipcRenderer.invoke("project:pickDialog"),
+  projectPickAttachments: (): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>> =>
+    ipcRenderer.invoke("project:pickAttachments"),
   projectTrust: (path: string): Promise<string> => ipcRenderer.invoke("project:trustStatus", { path }),
   sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
