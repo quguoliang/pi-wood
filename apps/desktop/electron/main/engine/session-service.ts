@@ -86,29 +86,103 @@ export type { SessionTreeNode };
 export interface SessionMessageItem {
   role: "user" | "assistant" | "tool";
   text: string;
+  toolCallId?: string;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  isError?: boolean;
 }
 
-/** 读取会话历史消息（点击会话续写时加载到 UI） */
+/** 读取会话历史消息（点击会话续写时加载到 UI），保留 assistant 的 toolCall 与 toolResult 配对 */
 export async function loadSessionMessages(file: string): Promise<SessionMessageItem[]> {
   const { SessionManager } = await loadPi();
   const manager = SessionManager.open(file);
   const out: SessionMessageItem[] = [];
+  const pendingCalls = new Map<string, { name: string; input?: Record<string, unknown> }>();
+
+  const flushText = (role: "user" | "assistant", text: string): void => {
+    if (text.trim()) out.push({ role, text });
+  };
+
   for (const entry of manager.getEntries()) {
     if (entry.type !== "message") continue;
-    const msg = (entry as { message?: { role?: string; content?: unknown } }).message;
+    const msg = (entry as { message?: unknown }).message as Record<string, unknown> | undefined;
     if (!msg || typeof msg.role !== "string") continue;
-    const role = msg.role === "assistant" ? "assistant" : msg.role === "user" ? "user" : "tool";
-    const content = msg.content;
-    let text = "";
-    if (typeof content === "string") {
-      text = content;
-    } else if (Array.isArray(content)) {
-      text = content
-        .filter((c: { type?: string }) => c?.type === "text")
-        .map((c: { text?: string }) => c.text ?? "")
-        .join("");
+    const role = msg.role;
+
+    if (role === "user") {
+      const text = typeof msg.content === "string" ? msg.content : "";
+      flushText("user", text);
+      continue;
     }
-    if (text.trim()) out.push({ role: role as SessionMessageItem["role"], text });
+
+    if (role === "assistant") {
+      const content = msg.content;
+      if (typeof content === "string") {
+        flushText("assistant", content);
+        continue;
+      }
+      if (!Array.isArray(content)) continue;
+      let textBuf = "";
+      for (const part of content) {
+        if (!part || typeof part !== "object") continue;
+        const p = part as { type?: string; text?: string; id?: string; name?: string; arguments?: unknown };
+        if (p.type === "text") {
+          textBuf += p.text ?? "";
+        } else if (p.type === "toolCall") {
+          flushText("assistant", textBuf);
+          textBuf = "";
+          const callId = typeof p.id === "string" ? p.id : `hist-${out.length}`;
+          const toolName = String(p.name ?? "unknown");
+          const input =
+            p.arguments !== null && typeof p.arguments === "object" && !Array.isArray(p.arguments)
+              ? (p.arguments as Record<string, unknown>)
+              : undefined;
+          pendingCalls.set(callId, { name: toolName, input });
+          out.push({
+            role: "tool",
+            text: "",
+            toolCallId: callId,
+            toolName,
+            toolInput: input,
+            isError: false,
+          });
+        }
+      }
+      flushText("assistant", textBuf);
+      continue;
+    }
+
+    if (role === "toolResult") {
+      const callId = typeof msg.toolCallId === "string" ? msg.toolCallId : "";
+      const content = msg.content;
+      let text = "";
+      if (typeof content === "string") text = content;
+      else if (Array.isArray(content)) {
+        text = content
+          .map((c) =>
+            c !== null && typeof c === "object" && typeof (c as { text?: unknown }).text === "string"
+              ? (c as { text: string }).text
+              : "",
+          )
+          .filter(Boolean)
+          .join("\n");
+      }
+      const isError = Boolean(msg.isError);
+      const existing = callId ? out.findIndex((m) => m.role === "tool" && m.toolCallId === callId) : -1;
+      if (existing >= 0) {
+        out[existing] = { ...out[existing], text, isError };
+      } else {
+        const known = pendingCalls.get(callId);
+        out.push({
+          role: "tool",
+          text,
+          toolCallId: callId || `hist-${out.length}`,
+          toolName: known?.name ?? String(msg.toolName ?? "tool"),
+          toolInput: known?.input,
+          isError,
+        });
+      }
+    }
   }
   return out;
 }
