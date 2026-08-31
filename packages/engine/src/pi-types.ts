@@ -8,6 +8,16 @@ export interface AgentSessionLike {
   model?: { provider: string; id: string } | undefined;
   thinkingLevel?: string | undefined;
   isStreaming?: boolean | undefined;
+  getAvailableThinkingLevels(): string[];
+  getContextUsage(): { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
+  getActiveToolNames?(): string[];
+  getSessionStats?(): {
+    userMessages: number;
+    assistantMessages: number;
+    toolCalls: number;
+    tokens: { input: number; output: number; total: number };
+    cost: number;
+  };
   subscribe(fn: (event: unknown) => void): void;
   prompt(text: string, options?: Record<string, unknown>): Promise<void>;
   steer(text: string): Promise<void>;

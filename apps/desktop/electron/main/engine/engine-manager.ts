@@ -1,8 +1,10 @@
 import { ipcMain, BrowserWindow, dialog } from "electron";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { execFile } from "node:child_process";
+import { writeFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, extname, relative } from "node:path";
+import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema } from "@pi-wood/ipc-schema";
+import { ENGINE_CHANNELS, PromptCommandSchema, type GitInfo, type RuntimeInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
@@ -20,11 +22,74 @@ import { loadSettings } from "../settings-service";
 const StartArgSchema = z.object({ projectDir: z.string().min(1) });
 const TextArgSchema = z.object({ text: z.string().min(1) });
 const SetModelArgSchema = z.object({ provider: z.string(), modelId: z.string() });
+const SetThinkingArgSchema = z.object({ level: z.string().min(1) });
+
+const IMAGE_MIME = new Map([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+  [".gif", "image/gif"],
+]);
+const MAX_TEXT_ATTACHMENT_BYTES = 1024 * 1024;
+
+function prepareAttachments(paths: string[]): { text: string; images: Array<{ type: "image"; data: string; mimeType: string }> } {
+  const textBlocks: string[] = [];
+  const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
+  for (const path of paths) {
+    const stat = statSync(path);
+    if (!stat.isFile()) continue;
+    const mimeType = IMAGE_MIME.get(extname(path).toLowerCase());
+    const displayPath = activeProject ? relative(activeProject, path) || basename(path) : path;
+    if (mimeType) {
+      images.push({ type: "image", data: readFileSync(path).toString("base64"), mimeType });
+      textBlocks.push(`<file name="${displayPath}"></file>`);
+      continue;
+    }
+    const bytes = readFileSync(path);
+    if (bytes.includes(0)) {
+      textBlocks.push(`<file name="${displayPath}">二进制文件，路径：${path}</file>`);
+      continue;
+    }
+    const truncated = bytes.length > MAX_TEXT_ATTACHMENT_BYTES;
+    const content = bytes.subarray(0, MAX_TEXT_ATTACHMENT_BYTES).toString("utf8");
+    textBlocks.push(`<file name="${displayPath}">\n${content}${truncated ? "\n[内容超过 1 MiB，已截断]" : ""}\n</file>`);
+  }
+  return { text: textBlocks.join("\n"), images };
+}
 
 let adapter: SdkAdapter | undefined;
 let activeProject = "";
+let engineTransition: Promise<void> = Promise.resolve();
 let approvalSeq = 0;
 const pendingApprovals = new Map<number, (allow: boolean) => void>();
+
+const execFileAsync = promisify(execFile);
+
+async function git(args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd: activeProject, maxBuffer: 4 * 1024 * 1024 });
+  return stdout;
+}
+
+async function collectGitInfo(): Promise<GitInfo | undefined> {
+  try {
+    const branch = (await git(["branch", "--show-current"])).trim() || undefined;
+    const statOut = await git(["diff", "--numstat", "HEAD"]);
+    let added = 0;
+    let deleted = 0;
+    for (const line of statOut.split("\n")) {
+      const m = line.match(/^(\d+)\t(\d+)\t/);
+      if (m) {
+        added += Number(m[1]);
+        deleted += Number(m[2]);
+      }
+    }
+    const changed = statOut.split("\n").filter((l) => l.trim()).length;
+    return { branch, changed, added, deleted, files: [] };
+  } catch {
+    return undefined;
+  }
+}
 
 function send(channel: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0];
@@ -59,7 +124,7 @@ function uiBridge(): DesktopUiBridge {
   };
 }
 
-export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
+async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   if (adapter && activeProject === projectDir) return adapter;
   if (adapter) await adapter.stop();
   // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
@@ -118,6 +183,16 @@ export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
   adapter = next;
   activeProject = projectDir;
   return next;
+}
+
+export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
+  let result: SdkAdapter | undefined;
+  engineTransition = engineTransition.catch(() => undefined).then(async () => {
+    result = await ensureEngineUnlocked(projectDir);
+  });
+  await engineTransition;
+  if (!result) throw new Error("引擎启动失败");
+  return result;
 }
 
 export function getActiveAdapter(): SdkAdapter | undefined {
@@ -183,8 +258,12 @@ export function initEngineIpc(): void {
   ipcMain.handle(ENGINE_CHANNELS.prompt, async (_e, raw: unknown) => {
     const cmd = PromptCommandSchema.parse(raw);
     const a = await requireAdapter();
-    send(ENGINE_CHANNELS.event, { type: "user_message", text: cmd.text });
-    await a.prompt(cmd);
+    const prepared = prepareAttachments(cmd.attachments ?? []);
+    await a.prompt({
+      text: prepared.text ? `${cmd.text}\n\n${prepared.text}` : cmd.text,
+      images: [...(cmd.images ?? []), ...prepared.images],
+      streamingBehavior: cmd.streamingBehavior,
+    });
   });
 
   ipcMain.handle("engine:steer", async (_e, raw: unknown) => {
@@ -203,7 +282,26 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:setModel", async (_e, raw: unknown) => {
     const { provider, modelId } = SetModelArgSchema.parse(raw);
-    await (await requireAdapter()).setModel(provider, modelId);
+    const current = await requireAdapter();
+    await current.setModel(provider, modelId);
+    send(ENGINE_CHANNELS.event, { type: "model_changed", provider, id: modelId });
+  });
+
+  ipcMain.handle(ENGINE_CHANNELS.setThinking, async (_e, raw: unknown) => {
+    const { level } = SetThinkingArgSchema.parse(raw);
+    const current = await requireAdapter();
+    const allowed = current.getAvailableThinkingLevels();
+    if (!allowed.includes(level)) throw new Error(`当前模型不支持思考级别 ${level}`);
+    await current.setThinkingLevel(level);
+    send(ENGINE_CHANNELS.event, { type: "thinking_level_changed", thinkingLevel: level });
+  });
+
+  ipcMain.handle("engine:getThinkingLevels", async () => {
+    return (await requireAdapter()).getAvailableThinkingLevels();
+  });
+
+  ipcMain.handle(ENGINE_CHANNELS.compact, async () => {
+    await (await requireAdapter()).compact();
   });
 
   ipcMain.handle("engine:getAvailableModels", async () => {
@@ -212,6 +310,20 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:getState", async () => {
     return (await requireAdapter()).getState();
+  });
+
+  ipcMain.handle(ENGINE_CHANNELS.getRuntimeInfo, async (): Promise<RuntimeInfo> => {
+    const [pi, gitInfo] = await Promise.all([
+      (await requireAdapter()).getRuntimeInfo(),
+      collectGitInfo(),
+    ]);
+    return {
+      cwd: activeProject,
+      platform: `${process.platform} ${process.arch}`,
+      node: process.version,
+      ...pi,
+      git: gitInfo,
+    };
   });
 
   ipcMain.handle("engine:newSession", async () => {
@@ -231,5 +343,24 @@ export function initEngineIpc(): void {
     });
     if (result.canceled || result.filePaths.length === 0) return undefined;
     return result.filePaths[0];
+  });
+
+  ipcMain.handle("project:pickAttachments", async () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    const result = await dialog.showOpenDialog(win, {
+      properties: ["openFile", "multiSelections"],
+      title: "添加到对话",
+      filters: [
+        { name: "代码、文本与图片", extensions: ["ts", "tsx", "js", "jsx", "json", "md", "txt", "css", "html", "py", "go", "rs", "java", "yaml", "yml", "xml", "csv", "sh", "png", "jpg", "jpeg", "webp", "gif"] },
+        { name: "所有文件", extensions: ["*"] },
+      ],
+    });
+    if (result.canceled) return [];
+    return result.filePaths.map((path) => ({
+      path,
+      name: basename(path),
+      size: statSync(path).size,
+      kind: IMAGE_MIME.has(extname(path).toLowerCase()) ? "image" : "file",
+    }));
   });
 }

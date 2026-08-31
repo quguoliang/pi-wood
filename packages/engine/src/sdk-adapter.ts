@@ -23,7 +23,7 @@ import type {
   EngineAdapter,
   EngineStartOptions,
 } from "./adapter";
-import type { EngineEvent, PromptCommand, SessionState } from "@pi-wood/ipc-schema";
+import type { EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
 
 const noopBridge: DesktopUiBridge = {
   notify: () => {},
@@ -140,6 +140,10 @@ export class SdkAdapter implements EngineAdapter {
     await this.session().setThinkingLevel(level);
   }
 
+  getAvailableThinkingLevels(): string[] {
+    return this.session().getAvailableThinkingLevels();
+  }
+
   async compact(custom?: string): Promise<void> {
     await this.session().compact(custom);
   }
@@ -172,6 +176,26 @@ export class SdkAdapter implements EngineAdapter {
       model: s.model ? `${s.model.provider}/${s.model.id}` : undefined,
       thinkingLevel: s.thinkingLevel,
       isStreaming: Boolean(s.isStreaming),
+      contextUsage: s.getContextUsage(),
+    };
+  }
+
+  async getRuntimeInfo(): Promise<Omit<RuntimeInfo, "git" | "cwd" | "platform" | "node">> {
+    const s = this.session();
+    const stats = s.getSessionStats?.();
+    return {
+      model: s.model ? `${s.model.provider}/${s.model.id}` : undefined,
+      thinkingLevel: s.thinkingLevel,
+      tools: s.getActiveToolNames?.(),
+      stats: stats
+        ? {
+            userMessages: stats.userMessages,
+            assistantMessages: stats.assistantMessages,
+            toolCalls: stats.toolCalls,
+            tokens: stats.tokens,
+            cost: stats.cost,
+          }
+        : undefined,
     };
   }
 

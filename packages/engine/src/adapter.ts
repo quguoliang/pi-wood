@@ -1,4 +1,4 @@
-import type { EngineEvent, PromptCommand, SessionState } from "@pi-wood/ipc-schema";
+import type { EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
 
 /**
  * EngineAdapter 接口（方案 §2.1）——渲染层与主进程引擎之间唯一的抽象边界。
@@ -50,6 +50,7 @@ export interface EngineAdapter {
 
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
+  getAvailableThinkingLevels(): string[];
   getAvailableModels(): Promise<AvailableModel[]>;
 
   compact(custom?: string): Promise<void>;
@@ -60,4 +61,7 @@ export interface EngineAdapter {
   fork(entryId: string, pos: "before" | "at"): Promise<void>;
 
   getState(): Promise<SessionState>;
+
+  /** Pi 会话真实运行时信息（模型/思考级别/激活工具/会话统计）；git 等宿主侧字段由主进程补充 */
+  getRuntimeInfo(): Promise<Omit<RuntimeInfo, "git" | "cwd" | "platform" | "node">>;
 }

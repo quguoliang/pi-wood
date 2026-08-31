@@ -106,6 +106,7 @@ export type AssistantMessageEvent = z.infer<typeof AssistantMessageEventSchema>;
 export const PromptCommandSchema = z.object({
   text: z.string().min(1),
   images: z.array(z.unknown()).optional(),
+  attachments: z.array(z.string().min(1)).max(12).optional(),
   streamingBehavior: z.enum(["steer", "followUp"]).optional(),
 });
 export type PromptCommand = z.infer<typeof PromptCommandSchema>;
@@ -128,8 +129,44 @@ export const SessionStateSchema = z.object({
   model: z.string().optional(),
   thinkingLevel: z.string().optional(),
   isStreaming: z.boolean().optional(),
+  contextUsage: z.object({
+    tokens: z.number().nullable(),
+    contextWindow: z.number(),
+    percent: z.number().nullable(),
+  }).optional(),
 });
 export type SessionState = z.infer<typeof SessionStateSchema>;
+
+// ---------- 运行时信息（EnvironmentPanel 数据源；全部字段可选，缺什么渲染层就不展示什么） ----------
+
+export const GitInfoSchema = z.object({
+  branch: z.string().optional(),
+  changed: z.number(),
+  added: z.number(),
+  deleted: z.number(),
+  files: z.array(z.object({ status: z.string(), path: z.string() })),
+});
+export type GitInfo = z.infer<typeof GitInfoSchema>;
+
+export const RuntimeInfoSchema = z.object({
+  cwd: z.string(),
+  platform: z.string(),
+  node: z.string(),
+  model: z.string().optional(),
+  thinkingLevel: z.string().optional(),
+  tools: z.array(z.string()).optional(),
+  stats: z
+    .object({
+      userMessages: z.number(),
+      assistantMessages: z.number(),
+      toolCalls: z.number(),
+      tokens: z.object({ input: z.number(), output: z.number(), total: z.number() }),
+      cost: z.number(),
+    })
+    .optional(),
+  git: GitInfoSchema.optional(),
+});
+export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>;
 
 // ---------- 通道名常量（main/preload/render 共用） ----------
 
@@ -147,4 +184,5 @@ export const ENGINE_CHANNELS = {
   switchSession: "engine:switchSession",
   fork: "engine:fork",
   getState: "engine:getState",
+  getRuntimeInfo: "engine:getRuntimeInfo",
 } as const;
