@@ -411,6 +411,7 @@
 | 2026-08-31 | T2.x | 决策 | 右栏暂用轻量标签页（文件/终端/浏览器/Diff），dockview 停靠布局推迟到 Phase 3 一并评估（当前四功能 tab 已可用，dockview 引入属布局增强而非功能缺失） | T2.5 调整 |
 | 2026-08-31 | T2.6 | 完成 | **Phase 2 门禁通过**：webapp 项目 GUI 内发任务"改 index.html 的 h1 → browser_navigate 打开 → browser_read_text 验证"→ agent 执行 read→edit→browser_navigate→browser_read_text 四步工具链（全部 ✅）→ 正确回答"改成功了，页面文本显示为 Hello PiDesk"→ 文件真实变更（h1=Hello PiDesk）。验收原文"agent 跑 Web 项目：改代码→浏览器验证，全程桌面内闭环"达成，且浏览器验证走的是自定义 agent 工具首秀 | T2.6 ✅ **Phase 2 核心门禁通过** |
 | 2026-08-31 | 收尾 | 总结 | **项目阶段性完成**：Phase 0~2 全部门禁通过，Phase 3 核心（钥匙串/Provider/设置弹窗/主题）与 Phase 4 核心（审批门/path-guard/信任）落地，T5 NSIS 打包通过（release/PiDesk Setup 0.0.1.exe，108MB）。工作台四面板（文件/终端/浏览器/Diff）+ GUI 对话闭环 + CLI 双向互通 + 万条压测 + 审批门全部实测。**后续迭代项**：① UI 视觉重设计（用户反馈）；② T3.1 扩展列表 UI（数据层已就绪）；③ T3.4 包市场；④ T2.2 MergeView / T2.5 dockview；⑤ 打包版 asar 内扩展加载复验；⑥ T4.3 计划模式、T5.1 命令面板、T5.2 utilityProcess 插件 | 详见各阶段 §8 记录 |
+| 2026-08-31 | UI v2 | 完成 | **视觉重设计落地**（响应用户反馈）：styles.css 全量重写为设计系统 v2——单一强调色锁定（电蓝 #6e9bff）、6px 控件/8px 面板圆角体系、4px 间距网格、深浅双主题 token、细线分隔替代色块、去 emoji（换中性字形/文字）、按钮三态+focus-visible、滚动条/选区样式。Design read：devtool workbench，V3/M2/D6，Zed/Linear 式克制语言。design-taste-frontend 技能第 13 节声明：本应用属密集产品 UI，仅采用其通用纪律 | UI v2 ✅ |
 | | | | | |
 
 ---
