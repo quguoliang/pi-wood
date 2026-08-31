@@ -1,104 +1,143 @@
-import { useEffect, useState } from "react";
-import { FilesPanel } from "./FilesPanel";
-import { TerminalPanel } from "./TerminalPanel";
-import { BrowserPanel } from "./BrowserPanel";
-import CodeMirror from "@uiw/react-codemirror";
-import { unifiedMergeView } from "@codemirror/merge";
+import { lazy, Suspense, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import {
+  DockviewComponent,
+  themeDark,
+  type GroupPanelPartInitParameters,
+  type IContentRenderer,
+  type SerializedDockview,
+} from "dockview";
+import "dockview/dist/styles/dockview.css";
 import { Icon, type IconName } from "../ui/Icon";
+import { type WorkbenchTab } from "../../stores/workbench-store";
 
-/** T2.x 右栏工作台：文件 / 终端 / 浏览器 / Diff 四标签（dockview 布局管理在 T2.5 评估） */
-type Tab = "files" | "term" | "browser" | "diff";
+const FilesPanel = lazy(() => import("./FilesPanel").then((module) => ({ default: module.FilesPanel })));
+const TerminalPanel = lazy(() => import("./TerminalPanel").then((module) => ({ default: module.TerminalPanel })));
+const BrowserPanel = lazy(() => import("./BrowserPanel").then((module) => ({ default: module.BrowserPanel })));
+const DiffPanel = lazy(() => import("./DiffPanel").then((module) => ({ default: module.DiffPanel })));
 
-const tabMeta: Record<Tab, { label: string; icon: IconName }> = {
-  files: { label: "文件", icon: "folder" },
-  term: { label: "终端", icon: "terminal" },
-  browser: { label: "浏览器", icon: "browser" },
-  diff: { label: "变更", icon: "file" },
+const panelMeta: Record<WorkbenchTab, { title: string; icon: IconName }> = {
+  files: { title: "文件", icon: "folder" },
+  term: { title: "终端", icon: "terminal" },
+  browser: { title: "浏览器", icon: "browser" },
+  diff: { title: "变更", icon: "file" },
 };
 
-interface DiffItem {
-  file: string;
-  before?: string;
-  after?: string;
-  patch?: string;
+function LoadingPanel(): React.JSX.Element {
+  return <div className="workbench-empty"><p>正在载入面板…</p></div>;
 }
 
-export function RightPane({ diffs }: { diffs: DiffItem[] }) {
-  const [openTabs, setOpenTabs] = useState<Tab[]>(["files"]);
-  const [tab, setTab] = useState<Tab | null>("files");
-  const [seenCount, setSeenCount] = useState(0);
-  const pending = diffs.length - seenCount;
+function panelNode(name: string): ReactNode {
+  switch (name as WorkbenchTab) {
+    case "files": return <FilesPanel />;
+    case "term": return <TerminalPanel />;
+    case "browser": return <BrowserPanel />;
+    case "diff": return <DiffPanel />;
+    default: return <div className="workbench-empty"><p>未知面板</p></div>;
+  }
+}
+
+class ReactPanelRenderer implements IContentRenderer {
+  readonly element = document.createElement("div");
+  private root: Root | undefined;
+
+  constructor(private readonly name: string) {
+    this.element.className = "dockview-react-panel";
+  }
+
+  init(_params: GroupPanelPartInitParameters): void {
+    this.root = createRoot(this.element);
+    this.root.render(<Suspense fallback={<LoadingPanel />}>{panelNode(this.name)}</Suspense>);
+  }
+
+  dispose(): void {
+    this.root?.unmount();
+  }
+}
+
+function isSerializedLayout(value: unknown): value is SerializedDockview {
+  return Boolean(value && typeof value === "object" && "grid" in value && "panels" in value);
+}
+
+function addPanel(dockview: DockviewComponent, tab: WorkbenchTab): void {
+  const existing = dockview.panels.find((panel) => panel.id === tab);
+  if (existing) {
+    dockview.setActivePanel(existing);
+    return;
+  }
+  dockview.addPanel({
+    id: tab,
+    component: tab,
+    title: panelMeta[tab].title,
+    renderer: tab === "term" ? "always" : "onlyWhenVisible",
+  });
+}
+
+export function RightPane(): React.JSX.Element {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const dockviewRef = useRef<DockviewComponent>();
 
   useEffect(() => {
-    // 切到 Diff 页即视为已读
-    if (tab === "diff") setSeenCount(diffs.length);
-  }, [tab, diffs.length]);
+    const host = hostRef.current;
+    if (!host) return;
 
-  const diffBadge = pending > 0 ? ` ${pending}` : diffs.length > 0 ? ` ${diffs.length}` : "";
-  const openTab = (next: Tab): void => {
-    setOpenTabs((tabs) => (tabs.includes(next) ? tabs : [...tabs, next]));
-    setTab(next);
-  };
-  const closeTab = (closing: Tab): void => {
-    setOpenTabs((tabs) => {
-      const next = tabs.filter((item) => item !== closing);
-      if (tab === closing) setTab(next[next.length - 1] ?? null);
-      return next;
+    const dockview = new DockviewComponent(host, {
+      theme: themeDark,
+      createComponent: ({ name }) => new ReactPanelRenderer(name),
     });
-  };
+    dockviewRef.current = dockview;
+    let restoring = true;
+    let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  useEffect(() => {
-    const onOpen = (event: Event): void => openTab((event as CustomEvent<Tab>).detail);
+    const onOpen = (event: Event): void => addPanel(dockview, (event as CustomEvent<WorkbenchTab>).detail);
     window.addEventListener("piwood:open-workbench", onOpen);
-    return () => window.removeEventListener("piwood:open-workbench", onOpen);
+
+    const layoutDisposable = dockview.onDidLayoutChange(() => {
+      if (restoring) return;
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        void window.pi.settingsSet({ workbench: { layout: dockview.toJSON() } });
+      }, 180);
+    });
+
+    const resize = new ResizeObserver(([entry]) => {
+      dockview.layout(entry.contentRect.width, entry.contentRect.height);
+    });
+    resize.observe(host);
+
+    void window.pi.settingsGet().then((settings) => {
+      const layout = (settings as { workbench?: { layout?: unknown } }).workbench?.layout;
+      try {
+        if (isSerializedLayout(layout)) dockview.fromJSON(layout);
+      } catch {
+        // 版本升级或损坏布局时回退到默认文件面板。
+      }
+      if (dockview.panels.length === 0) addPanel(dockview, "files");
+      restoring = false;
+    });
+
+    return () => {
+      if (saveTimer) clearTimeout(saveTimer);
+      window.removeEventListener("piwood:open-workbench", onOpen);
+      resize.disconnect();
+      layoutDisposable.dispose();
+      dockview.dispose();
+      dockviewRef.current = undefined;
+    };
   }, []);
 
   return (
-    <div className="right-pane">
-      <nav className="workbench-tabs" aria-label="工作区标签">
-        {openTabs.map((key) => (
-          <div key={key} className={`workbench-tab ${tab === key ? "active" : ""}`}>
-            <button type="button" onClick={() => setTab(key)}><Icon name={tabMeta[key].icon} />{tabMeta[key].label}{key === "diff" ? diffBadge : ""}</button>
-            <button className="workbench-tab-close" type="button" onClick={() => closeTab(key)} aria-label={`关闭${tabMeta[key].label}`}><Icon name="x" /></button>
-          </div>
+    <div className="right-pane dockview-shell">
+      <nav className="workbench-launcher" aria-label="打开工作台面板">
+        {(Object.keys(panelMeta) as WorkbenchTab[]).map((tab) => (
+          <button key={tab} type="button" onClick={() => dockviewRef.current && addPanel(dockviewRef.current, tab)} title={`打开${panelMeta[tab].title}`}>
+            <Icon name={panelMeta[tab].icon} />
+            <span>{panelMeta[tab].title}</span>
+          </button>
         ))}
-        <button className="workbench-tab-add" type="button" onClick={() => openTab("files")} aria-label="打开文件"><Icon name="add" /></button>
       </nav>
-      <main className="right-content">
-        {tab ? (
-          <section className="workbench-full" aria-label={`${tabMeta[tab].label}面板`}>
-          {tab === "files" && <FilesPanel />}
-          {tab === "term" && <TerminalPanel />}
-          {tab === "browser" && <BrowserPanel />}
-          {tab === "diff" && (
-          <div>
-            {diffs.length === 0 && (
-              <div className="workbench-empty"><Icon name="file" /><p>Agent 修改文件后，变更会在这里集中审阅。</p></div>
-            )}
-            {diffs.map((d) =>
-              d.before !== undefined && d.after !== undefined ? (
-                <div key={d.file + String(d.after.length)} className="diff-box">
-                  <div className="diff-file">{d.file}</div>
-                  <CodeMirror
-                    value={d.after}
-                    theme="dark"
-                    editable={false}
-                    height="280px"
-                    extensions={[unifiedMergeView({ original: d.before })]}
-                  />
-                </div>
-              ) : (
-                <div key={d.file} className="diff-box">
-                  <div className="diff-file">{d.file}</div>
-                  <pre>{d.patch}</pre>
-                </div>
-              ),
-            )}
-          </div>
-          )}
-          </section>
-        ) : <div className="workbench-empty"><p>打开文件、终端、浏览器或变更面板。</p></div>}
-      </main>
+      <div ref={hostRef} className="dockview-host" />
     </div>
   );
 }

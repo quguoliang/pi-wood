@@ -9,6 +9,13 @@ const api = {
     ipcRenderer.on("ui:notify", handler);
     return () => ipcRenderer.removeListener("ui:notify", handler);
   },
+  onUiRequest: (cb: (data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }) => void): (() => void) => {
+    const handler = (_e: unknown, data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }): void => cb(data);
+    ipcRenderer.on("ui:request", handler);
+    return () => ipcRenderer.removeListener("ui:request", handler);
+  },
+  uiRespond: (id: number, value?: string | boolean): Promise<boolean> =>
+    ipcRenderer.invoke("ui:respond", { id, value }),
   onProbeLog: (cb: (line: string) => void): (() => void) => {
     const handler = (_e: unknown, line: string): void => cb(line);
     ipcRenderer.on("probe:log", handler);
@@ -20,11 +27,13 @@ const api = {
     ipcRenderer.on("engine:event", handler);
     return () => ipcRenderer.removeListener("engine:event", handler);
   },
-  onDiff: (cb: (data: { file: string; before?: string; after?: string; patch?: string }) => void): (() => void) => {
-    const handler = (_e: unknown, data: { file: string; patch: string }): void => cb(data);
+  onDiff: (cb: (data: { id?: string; file: string; before?: string; after?: string; patch?: string }) => void): (() => void) => {
+    const handler = (_e: unknown, data: { id?: string; file: string; before?: string; after?: string; patch?: string }): void => cb(data);
     ipcRenderer.on("engine:diff", handler);
     return () => ipcRenderer.removeListener("engine:diff", handler);
   },
+  diffRevert: (changeId: string): Promise<{ file: string; content: string }> =>
+    ipcRenderer.invoke("engine:diffRevert", { changeId }),
   onE2EDone: (cb: (data: { ok: boolean; error?: string }) => void): (() => void) => {
     const handler = (_e: unknown, data: { ok: boolean; error?: string }): void => cb(data);
     ipcRenderer.on("e2e:done", handler);
@@ -112,6 +121,7 @@ const api = {
   },
   // T3.1/T3.4
   extensionsList: (): Promise<unknown> => ipcRenderer.invoke("extensions:list"),
+  resourcesList: (): Promise<unknown> => ipcRenderer.invoke("resources:list"),
   engineReload: (): Promise<boolean> => ipcRenderer.invoke("engine:reload"),
   packagesList: (): Promise<unknown> => ipcRenderer.invoke("packages:list"),
   packagesInstall: (spec: string): Promise<{ ok: boolean; output: string }> =>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useSessionStore } from "../../stores/session-store";
+import { useWorkbenchStore } from "../../stores/workbench-store";
 
 interface FileEntry {
   name: string;
@@ -21,6 +22,8 @@ function isJsLike(path: string): boolean {
 
 export function FilesPanel(): React.JSX.Element {
   const activeProject = useSessionStore((s) => s.activeProject);
+  const requestedFile = useWorkbenchStore((s) => s.requestedFile);
+  const clearRequestedFile = useWorkbenchStore((s) => s.clearRequestedFile);
   const [expanded, setExpanded] = useState<Map<string, FileEntry[]>>(new Map());
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | undefined>();
@@ -55,7 +58,7 @@ export function FilesPanel(): React.JSX.Element {
     });
   };
 
-  const openFile = (entry: FileEntry): void => {
+  const openFile = useCallback((entry: FileEntry): void => {
     setOpenFiles((files) => {
       if (files.some((f) => f.path === entry.path)) {
         setActiveFile(entry.path);
@@ -72,7 +75,13 @@ export function FilesPanel(): React.JSX.Element {
       return files;
     });
     setActiveFile(entry.path);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!requestedFile) return;
+    openFile({ path: requestedFile, name: requestedFile.split(/[\\/]/).pop() ?? requestedFile, type: "file" });
+    clearRequestedFile();
+  }, [clearRequestedFile, openFile, requestedFile]);
 
   const saveActive = (): void => {
     if (!active) return;

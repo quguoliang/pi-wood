@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { MessageList } from "./components/center/MessageList";
 import { Composer } from "./components/center/Composer";
 import { ApprovalCards } from "./components/center/ApprovalCards";
 import { SettingsModal } from "./components/center/SettingsModal";
 import { CommandPalette } from "./components/center/CommandPalette";
+import { UiRequestDialogs } from "./components/center/UiRequestDialogs";
 import { LeftPane } from "./components/left/LeftPane";
-import { RightPane } from "./components/right/RightPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationToolbar } from "./components/center/ConversationToolbar";
 import { useSessionStore } from "./stores/session-store";
 import { useRuntimeStore } from "./stores/runtime-store";
+import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
+
+const RightPane = lazy(() => import("./components/right/RightPane").then((module) => ({ default: module.RightPane })));
 
 interface Toast {
   id: number;
@@ -20,13 +23,13 @@ interface Toast {
 
 export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [diffs, setDiffs] = useState<Array<{ file: string; before?: string; after?: string; patch?: string }>>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const idSeq = useRef(0);
   const handleEvent = useSessionStore((s) => s.handleEvent);
   const trackRuntimeEvent = useRuntimeStore((s) => s.trackEvent);
+  const addDiff = useWorkbenchStore((s) => s.addDiff);
   const messages = useSessionStore((s) => s.messages);
   const streamBuffer = useSessionStore((s) => s.streamBuffer);
   const streaming = useSessionStore((s) => s.streaming);
@@ -60,8 +63,18 @@ export default function App() {
     const offEvt = window.pi.onEngineEvent((event) => {
       handleEvent(event);
       trackRuntimeEvent(event);
+      if (event.type === "tool_execution_start") {
+        const tool = String(event.toolName ?? "");
+        const path = (event.input as { path?: unknown } | undefined)?.path;
+        if (tool === "read" && typeof path === "string") openWorkbenchFile(path);
+        else if (tool === "bash") openWorkbench("term");
+        else if (tool.startsWith("browser_")) openWorkbench("browser");
+      }
     });
-    const offDiff = window.pi.onDiff((data) => setDiffs((d) => [...d, data]));
+    const offDiff = window.pi.onDiff((data) => {
+      addDiff(data);
+      openWorkbench("diff");
+    });
     return () => {
       offNotify();
       offEvt();
@@ -70,7 +83,7 @@ export default function App() {
       window.removeEventListener("piwood:open-command-palette", openPalette);
       window.removeEventListener("piwood:open-settings", openSettings);
     };
-  }, [handleEvent, trackRuntimeEvent]);
+  }, [addDiff, handleEvent, trackRuntimeEvent]);
 
   return (
     <>
@@ -87,12 +100,13 @@ export default function App() {
             <EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} />
           </section>
         }
-        right={<RightPane diffs={diffs} />}
+        right={<Suspense fallback={<div className="workbench-empty"><p>正在载入工作台…</p></div>}><RightPane /></Suspense>}
       />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {paletteOpen && (
         <CommandPalette onClose={() => setPaletteOpen(false)} onOpenSettings={() => setSettingsOpen(true)} />
       )}
+      <UiRequestDialogs />
       <div className="toasts">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>

@@ -10,7 +10,8 @@
     "package": "electron-vite build && electron-builder --win",
     "package:dir": "electron-vite build && electron-builder --dir",
     "postinstall": "electron-builder install-app-deps",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "node --test electron/main/workbench/snapshot-service.test.ts"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

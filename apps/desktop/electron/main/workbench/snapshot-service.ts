@@ -1,6 +1,13 @@
-import { readFileSync, existsSync } from "node:fs";
-import { isAbsolute, join, normalize } from "node:path";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import { diffLines } from "diff";
+
+export interface SnapshotChange {
+  id: string;
+  file: string;
+  before: string;
+  after: string;
+}
 
 /**
  * 快照与 Diff 服务（T2.2，方案 §10.4 正式化）。
@@ -10,19 +17,21 @@ import { diffLines } from "diff";
  */
 export class SnapshotService {
   private before = new Map<string, string>();
+  private changes = new Map<string, { full: string; before: string; after: string }>();
+  private sequence = 0;
   private projectDir: string;
   private warn: (msg: string) => void;
 
   constructor(projectDir: string, warn?: (msg: string) => void) {
-    this.projectDir = projectDir;
+    this.projectDir = resolve(projectDir);
     this.warn = warn ?? (() => {});
   }
 
   /** 工具入参 path（相对或绝对）→ 项目内绝对路径；越界返回 undefined */
   resolveInProject(p: string): string | undefined {
-    const full = isAbsolute(p) ? normalize(p) : join(this.projectDir, p);
-    const norm = normalize(full);
-    return norm.startsWith(this.projectDir) ? norm : undefined;
+    const full = resolve(isAbsolute(p) ? p : resolve(this.projectDir, p));
+    const rel = relative(this.projectDir, full);
+    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)) ? full : undefined;
   }
 
   snapshot(toolName: string, input: unknown): void {
@@ -42,19 +51,36 @@ export class SnapshotService {
   }
 
   /** 返回发生变化的文件 before/after（供 MergeView），并清理快照 */
-  collectChanges(): Array<{ file: string; before: string; after: string }> {
-    const out: Array<{ file: string; before: string; after: string }> = [];
+  collectChanges(): SnapshotChange[] {
+    const out: SnapshotChange[] = [];
     for (const [full, before] of this.before) {
       try {
         const after = existsSync(full) ? readFileSync(full, "utf-8") : "";
         if (before === after) continue;
-        out.push({ file: full.slice(this.projectDir.length + 1), before, after });
+        const file = relative(this.projectDir, full);
+        const id = `change-${++this.sequence}`;
+        this.changes.set(id, { full, before, after });
+        out.push({ id, file, before, after });
       } catch (err) {
         this.warn(`[snapshot] diff 失败 ${full}: ${String(err)}`);
       }
     }
     this.before.clear();
     return out;
+  }
+
+  /**
+   * 恢复一次已收集的变更。若文件在 Diff 生成后又发生变化则拒绝覆盖，
+   * 防止较旧快照破坏后续编辑。写回原始字符串可保留 CRLF/BOM 字节。
+   */
+  revert(changeId: string): { file: string; content: string } {
+    const change = this.changes.get(changeId);
+    if (!change) throw new Error("变更快照不存在或已失效");
+    const current = existsSync(change.full) ? readFileSync(change.full, "utf-8") : "";
+    if (current !== change.after) throw new Error("文件在生成 Diff 后已再次修改，拒绝覆盖");
+    writeFileSync(change.full, change.before, "utf-8");
+    this.changes.delete(changeId);
+    return { file: relative(this.projectDir, change.full), content: change.before };
   }
 
   /** 兼容旧口径：行级 patch 文本 */

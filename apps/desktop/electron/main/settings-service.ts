@@ -19,6 +19,7 @@ export interface PiWoodSettings {
     mode: "auto" | "highRisk" | "allAsk" | "denyAll";
     rules: Array<{ pattern: string; action: "allow" | "ask" | "deny" }>;
   };
+  workbench: { layout: unknown | null };
 }
 
 export function defaultSettings(): PiWoodSettings {
@@ -29,6 +30,7 @@ export function defaultSettings(): PiWoodSettings {
     recentProjects: [],
     model: { provider: "deepseek", id: "deepseek-v4-flash" },
     approval: { mode: "highRisk", rules: [] },
+    workbench: { layout: null },
   };
 }
 

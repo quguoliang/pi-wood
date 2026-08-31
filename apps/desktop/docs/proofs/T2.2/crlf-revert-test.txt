@@ -1,0 +1,13 @@
+T2.2 CRLF 逐字节回滚专项验收（2026-08-31）
+
+命令：pnpm --filter @pi-wood/desktop test
+
+结果：3/3 通过
+- revert restores CRLF content byte for byte
+- revert refuses to overwrite a newer edit
+- snapshot rejects sibling paths with the same prefix
+
+补充门禁：
+- pnpm typecheck：通过
+- pnpm build：通过
+- git diff --check：通过

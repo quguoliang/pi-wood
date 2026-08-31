@@ -7,9 +7,12 @@ declare global {
     pi: {
       ping(): Promise<{ pong: boolean; electron: string; node: string }>;
       onUiNotify(cb: (data: { message: string; type: string }) => void): () => void;
+      onUiRequest(cb: (data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }) => void): () => void;
+      uiRespond(id: number, value?: string | boolean): Promise<boolean>;
       onProbeLog(cb: (line: string) => void): () => void;
       onEngineEvent(cb: (event: Record<string, unknown>) => void): () => void;
-      onDiff(cb: (data: { file: string; before?: string; after?: string; patch?: string }) => void): () => void;
+      onDiff(cb: (data: { id?: string; file: string; before?: string; after?: string; patch?: string }) => void): () => void;
+      diffRevert(changeId: string): Promise<{ file: string; content: string }>;
       onE2EDone(cb: (data: { ok: boolean; error?: string }) => void): () => void;
       prompt(text: string, attachments?: string[]): Promise<void>;
       settingsGet(): Promise<Record<string, unknown>>;
@@ -49,6 +52,7 @@ declare global {
         cb: (d: { id: number; title: string; message: string }) => void,
       ): () => void;
       extensionsList(): Promise<unknown>;
+      resourcesList(): Promise<unknown>;
       engineReload(): Promise<boolean>;
       packagesList(): Promise<{ packages: string[] }>;
       packagesInstall(spec: string): Promise<{ ok: boolean; output: string }>;

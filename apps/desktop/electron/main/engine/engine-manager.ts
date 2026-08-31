@@ -60,9 +60,12 @@ function prepareAttachments(paths: string[]): { text: string; images: Array<{ ty
 
 let adapter: SdkAdapter | undefined;
 let activeProject = "";
+let activeSnapshots: SnapshotService | undefined;
 let engineTransition: Promise<void> = Promise.resolve();
 let approvalSeq = 0;
 const pendingApprovals = new Map<number, (allow: boolean) => void>();
+let uiRequestSeq = 0;
+const pendingUiRequests = new Map<number, (value: string | boolean | undefined) => void>();
 
 const execFileAsync = promisify(execFile);
 
@@ -115,12 +118,30 @@ function getPolicy(): ApprovalPolicy {
   return loadSettings().approval as ApprovalPolicy;
 }
 
+function requestUi(
+  kind: "select" | "confirm" | "input",
+  title: string,
+  payload: { options?: string[]; message?: string; placeholder?: string },
+): Promise<string | boolean | undefined> {
+  const id = ++uiRequestSeq;
+  send("ui:request", { id, kind, title, ...payload });
+  return new Promise((resolve) => {
+    pendingUiRequests.set(id, resolve);
+    setTimeout(() => {
+      if (pendingUiRequests.has(id)) {
+        pendingUiRequests.delete(id);
+        resolve(kind === "confirm" ? false : undefined);
+      }
+    }, 120_000);
+  });
+}
+
 function uiBridge(): DesktopUiBridge {
   return {
     notify: (message, type) => send("ui:notify", { message, type: type ?? "info" }),
-    select: async () => undefined,
-    confirm: (title, message) => confirmViaRenderer(title, message),
-    input: async () => undefined,
+    select: (title, options) => requestUi("select", title, { options }) as Promise<string | undefined>,
+    confirm: async (title, message) => Boolean(await requestUi("confirm", title, { message })),
+    input: (title, placeholder) => requestUi("input", title, { placeholder }) as Promise<string | undefined>,
   };
 }
 
@@ -142,6 +163,7 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
     ],
   });
   const snapshots = new SnapshotService(projectDir, (m) => console.warn(m));
+  activeSnapshots = snapshots;
   next.subscribe((event) => {
     send(ENGINE_CHANNELS.event, event);
     // T2.2：edit/write 前后快照 → diff 推送右栏（含相对路径解析）
@@ -222,6 +244,29 @@ export function initEngineIpc(): void {
     pendingApprovals.get(id)?.(allow);
     pendingApprovals.delete(id);
     return true;
+  });
+
+  ipcMain.handle("ui:respond", (_e, raw: unknown) => {
+    const { id, value } = z.object({
+      id: z.number().int().positive(),
+      value: z.union([z.string(), z.boolean()]).optional(),
+    }).parse(raw);
+    pendingUiRequests.get(id)?.(value);
+    pendingUiRequests.delete(id);
+    return true;
+  });
+
+  ipcMain.handle("engine:diffRevert", (_e, raw: unknown) => {
+    const { changeId } = z.object({ changeId: z.string().min(1) }).parse(raw);
+    if (!activeSnapshots) throw new Error("引擎未启动：没有可回滚的变更");
+    try {
+      const result = activeSnapshots.revert(changeId);
+      send("ui:notify", { message: `已还原 ${result.file}`, type: "success" });
+      return result;
+    } catch (err) {
+      send("ui:notify", { message: `还原失败：${err instanceof Error ? err.message : String(err)}`, type: "error" });
+      throw err;
+    }
   });
 
   ipcMain.handle("engine:switchSession", async (_e, raw: unknown) => {

@@ -68,6 +68,23 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
     ];
   });
 
+  const scanResourceDir = (dir: string, source: string, kind: "skill" | "prompt") => {
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() || /\.(md|txt)$/.test(entry.name))
+      .map((entry) => ({ kind, source, name: entry.name.replace(/\.(md|txt)$/, ""), path: join(dir, entry.name) }));
+  };
+  ipcMain.handle("resources:list", () => {
+    const projectDir = getProjectDir();
+    return [
+      ...scanResourceDir(join(agentDir, "skills"), "global", "skill"),
+      ...scanResourceDir(join(agentDir, "prompts"), "global", "prompt"),
+      ...(projectDir ? scanResourceDir(join(projectDir, ".pi", "skills"), "project", "skill") : []),
+      ...(projectDir ? scanResourceDir(join(projectDir, ".agents", "skills"), "agents", "skill") : []),
+      ...(projectDir ? scanResourceDir(join(projectDir, ".pi", "prompts"), "project", "prompt") : []),
+    ];
+  });
+
   // ---- T3.4 包管理（实验：pi CLI 安装 / settings.packages 列表）----
   ipcMain.handle("packages:list", () => {
     const settingsPath = join(agentDir, "settings.json");

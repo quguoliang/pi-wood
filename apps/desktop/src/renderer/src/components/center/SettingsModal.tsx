@@ -19,6 +19,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
   const [theme, setTheme] = useState<string>("dark");
   const [saved, setSaved] = useState("");
   const [extensions, setExtensions] = useState<Array<{ source: string; name: string; path: string }>>([]);
+  const [resources, setResources] = useState<Array<{ kind: "skill" | "prompt"; source: string; name: string; path: string }>>([]);
   const [packages, setPackages] = useState<string[]>([]);
   const [pkgSpec, setPkgSpec] = useState("");
   const [pkgOutput, setPkgOutput] = useState("");
@@ -35,6 +36,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
     });
     void window.pi.engineModels().then(setModels).catch(() => setModels([]));
     void window.pi.extensionsList().then((r) => setExtensions(r as typeof extensions));
+    void window.pi.resourcesList().then((r) => setResources(r as typeof resources));
     void window.pi.packagesList().then((r) => setPackages(r.packages));
     void window.pi.settingsGet().then((s) => {
       const st = s as { model?: { provider: string; id: string }; approval?: { mode: string }; theme?: { fallback: string } };
@@ -192,6 +194,26 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
               <div key={x.path} className="model-row">
                 <span className="provider-name">{x.name}</span>
                 <span className="muted">{x.source === "global" ? "全局" : "项目"}</span>
+              </div>
+            ))}
+            <div className="pane-header" style={{ marginTop: 10 }}>
+              <b className="muted">Skills</b>
+            </div>
+            {resources.filter((item) => item.kind === "skill").length === 0 && <p className="muted">未发现 Skill</p>}
+            {resources.filter((item) => item.kind === "skill").map((item) => (
+              <div key={item.path} className="model-row">
+                <span className="provider-name">{item.name}</span>
+                <span className="muted">{item.source}</span>
+              </div>
+            ))}
+            <div className="pane-header" style={{ marginTop: 10 }}>
+              <b className="muted">Prompt 模板</b>
+            </div>
+            {resources.filter((item) => item.kind === "prompt").length === 0 && <p className="muted">未发现 Prompt 模板</p>}
+            {resources.filter((item) => item.kind === "prompt").map((item) => (
+              <div key={item.path} className="model-row">
+                <span className="provider-name">{item.name}</span>
+                <span className="muted">{item.source}</span>
               </div>
             ))}
             <div className="pane-header" style={{ marginTop: 10 }}>

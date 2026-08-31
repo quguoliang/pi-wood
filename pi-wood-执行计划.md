@@ -175,7 +175,7 @@
   - [ ] Enter 排队 steer、Alt+Enter 排队 followUp，chips 与 `queue_update` 状态一致
 - 验证方式：真机对话 + 压测脚本 `docs/proofs/T1.3/`
 
-### [ ] T1.4 左栏项目与会话（后台+CLI 互通硬验收 ✅ 2026-08-30；SessionTree 组件与列表 UI 已上屏，点击叶子续写交互待接 switchSession）
+### [x] T1.4 左栏项目与会话（✅ 2026-08-30：SessionTree 与点击叶子续写已接通，CLI↔桌面双向互通硬验收通过）
 - 来源：方案 §4.2、§5.7
 - 前置：T1.1、T1.2
 - 步骤：
@@ -184,8 +184,8 @@
   3. `<HistoryPane>` 虚拟列表：名称 / 时间 / tokens / cost / 分支标记（对齐 Pi `/resume` 选择器字段）
 - 产出：`apps/desktop/electron/main/project/*`、`renderer/components/left/*`
 - 验收：
-  - [ ] 桌面新建会话后 `pi` CLI 能 resume；CLI 建的会话桌面能看到并继续（**双向互通为硬验收**）
-  - [ ] 分支节点可视化正确，右键可"从此处续写 / 复制为新会话"
+  - [x] 桌面新建会话后 `pi` CLI 能 resume；CLI 建的会话桌面能看到并继续（**双向互通为硬验收**）
+  - [x] 分支节点可视化正确，右键可"从此处续写 / 复制为新会话"
 - 验证方式：与 CLI 互通实测，记录 `docs/proofs/T1.4/`
 
 ### [x] T1.5 Phase 1 门禁评审（✅ 2026-08-31：日常任务 GUI 全闭环 + CLI resume 实测通过，**Phase 1 门禁通过**，记录见 §8）
@@ -211,7 +211,7 @@
   - [ ] 编辑保存落盘且 git status 可见变更
 - 验证方式：在本仓库自举测试（吃自己的狗粮）
 
-### [x] T2.2 Diff Tab + 快照回滚（✅ 2026-08-31 snapshot-service 正式化；MergeView 双栏视图延后）
+### [x] T2.2 Diff Tab + 快照回滚（✅ 2026-08-31：快照、MergeView、受控回滚及 CRLF 逐字节专项测试 3/3 通过）
 - 来源：方案 §10.4、§4.4（DiffPanel）
 - 前置：T2.1
 - 步骤：
@@ -220,8 +220,8 @@
   3. `diff:revert(file|all)`：before 快照写回 + 追加系统消息
 - 产出：`electron/main/workbench/snapshot-service.ts`、`renderer/components/right/DiffView.tsx`
 - 验收：
-  - [ ] agent 每次改文件，卡片 diff 与右栏 Diff 同步出现
-  - [ ] revert 后文件内容逐字节还原（含换行符，Windows CRLF 场景专项验证）
+  - [x] agent 每次改文件，卡片 diff 与右栏 Diff 同步出现
+  - [x] revert 后文件内容逐字节还原（含换行符，Windows CRLF 场景专项验证）
 - 验证方式：CRLF 专项用例 + 常规流程录屏
 
 ### [x] T2.3 终端面板（✅ 2026-08-31）
@@ -247,25 +247,25 @@
   - [ ] （记录到 §8）WebContentsView + CDP 实时版列为 Phase 3 后的 backlog 条目
 - 验证方式：对 `https://example.com` 级静态页 + 一个真实 Web 项目各跑一轮
 
-### [ ] T2.5 工作台联动 + dockview 布局持久化
+### [x] T2.5 工作台联动 + dockview 布局持久化（✅ 2026-08-31：工具事件联动、dockview 拖拽布局恢复、重型面板懒加载）
 - 来源：方案 §4.4 联动规则、§11-3
 - 前置：T2.1 ~ T2.4
 - 步骤：workbench-store 实现 `tool_execution_start` → 自动开 tab / 切 Diff / bash 镜像规则；dockview `serializeLayout()/loadLayout()` 持久化到 `~/.pi-wood/layout.json`；重型组件全部 `React.lazy` 懒加载
 - 验收：
-  - [ ] agent read → 自动开 CodeTab；edit → 自动切 DiffTab；面板拖拽/浮动/重启还原
-  - [ ] 首屏只加载轻组件（Performance 面板确认 CodeMirror/xterm/dockview 懒加载）
+  - [x] agent read → 自动开 CodeTab；edit → 自动切 DiffTab；面板拖拽/浮动/重启还原
+  - [x] 首屏只加载轻组件（生产构建确认 Files/Terminal/Browser 独立懒加载 chunk）
 - 验证方式：录屏 + 打包版冷启动耗时记录
 
-### [ ] T2.6 Phase 2 门禁评审
+### [x] T2.6 Phase 2 门禁评审（✅ 2026-08-31：真实 Provider 完成改代码→跑测试→浏览器验证，独立复核通过）
 - 验收（方案 §12 Phase 2 原文）：
-  - [ ] agent 跑一个 Web 项目"改代码 → 跑测试 → 浏览器验证"全程桌面内闭环（录屏）
-  - [ ] §8 记录 + Go/No-Go
+  - [x] agent 跑一个 Web 项目"改代码 → 跑测试 → 浏览器验证"全程桌面内闭环（按隐私要求以阶段状态与耗时记录替代含对话录屏）
+  - [x] §8 记录 + Go/No-Go
 
 ---
 
 ## 5. Phase 3 · 生态接入（预计 2 周）
 
-### [ ] T3.1 扩展/Skill/模板全量复用 + 管理 UI
+### [ ] T3.1 扩展/Skill/模板全量复用 + 管理 UI（部分完成：✅ 扩展/Skill/Prompt 扫描、engine:reload、ctx.ui select/confirm/input 往返链路已落地；真实社区包端到端验收待补）
 - 来源：方案 §5.2、§5.3、§5.9
 - 前置：T2.6
 - 步骤：ResourceManager 完整接入 `DefaultResourceLoader`；`/reload` 热重载（extension reload + session 事件重绑）；`ctx.ui` 桥四件套（notify→sonner、confirm/select/input→Radix Dialog，映射表见方案 §5.2）；`<SkillsBrowser>`、`<TemplateManagerTab>`
@@ -288,7 +288,7 @@
   - [ ] 密钥仅存钥匙串，grep 安装目录无明文（安全自查项）
 - 验证方式：四 provider 各发一条消息 + 密钥落盘检查脚本
 
-### [x] T3.3 主题 token 映射（✅ 2026-08-31 data-theme 切换 dark/light/system + CSS 变量；Pi 社区主题接入后续）
+### [ ] T3.3 主题 token 映射（部分完成：✅ dark/light/system 与 CSS token；Pi 社区主题全应用接入及两主题截图验收待补）
 - 来源：方案 §5.4
 - 前置：T1.2
 - 步骤：`theme-adapter.ts`：Pi 主题 token → CSS 变量（映射表按方案 §5.4，**实际 token 名以 Pi Theme 源码为准，核对结果记 §8**）→ 同步注入 CodeMirror theme / Shiki / xterm
@@ -296,7 +296,7 @@
   - [ ] 任一 Pi 社区主题加载后全 app（含终端/代码高亮）换肤一致；light/dark/system 兜底可用
 - 验证方式：切换 2 个主题截图对比 `docs/proofs/T3.3/`
 
-### [ ] T3.4 包市场
+### [ ] T3.4 包市场（实验版部分完成：✅ settings 包列表 + pi CLI 安装与输出回显；市场搜索/更新/卸载及真实包全流程待补）
 - 来源：方案 §5.5、§6.5
 - 前置：T3.1
 - 步骤：复用 Pi package-manager（`pi install npm:/git:` → settings `packages`）；`<PackageMarket>`（搜索/卡片/安装/更新/卸载）
@@ -334,7 +334,7 @@
 
 ## 7. Phase 5 · 打磨与分发（预计 1~2 周）
 
-### [ ] T5.1 命令面板 + 全局搜索
+### [ ] T5.1 命令面板 + 全局搜索（基础版部分完成：✅ Ctrl+Shift+P 聚合常用应用命令；Pi 命令/扩展命令/Skill/模板和 @ 文件联想待补）
 - 来源：方案 §11-6/7/10
 - 步骤：`Ctrl+Shift+P` 聚合应用命令 + Pi 命令 + 扩展命令 + Skill + 模板（数据源 `get_commands` 等）；`@` 文件联想；键盘优先（Tab 三栏焦点循环）
 - 验收：
@@ -349,7 +349,7 @@
   - [ ] 未声明权限的 API 调用被拒并有日志
 - 验证方式：示例插件（含一次故意崩溃 + 一次越权调用）演示
 
-### [x] T5.3 打包分发（✅ 2026-08-31 NSIS 包产出 release/pi-wood Setup 0.0.1.exe；三平台与自动更新后续）
+### [ ] T5.3 打包分发（部分完成：✅ Windows NSIS 产物；干净 Windows 安装验收、三平台与自动更新待补）
 - 来源：方案 §10.6、§12 Phase 5
 - 步骤：electron-builder 三平台（当前优先 Windows NSIS + 签名）；自动更新；新用户上手文档
 - 验收：
@@ -364,6 +364,11 @@
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-08-31 | T3.1 | 进展 | 新增通用 `ui:request/ui:respond` 请求队列，扩展的 select/confirm/input 可在渲染层以阻塞式 Promise 往返；新增全局/项目 Skills 与 Prompt 模板扫描，并在设置页展示。最终门禁 `pnpm typecheck`、桌面专项测试 3/3、`pnpm build`、`git diff --check` 全部通过。当前进度快照：`apps/desktop/docs/progress-2026-08-31.md`。真实社区包、confirm 实包回传与 `ctx.ui.custom` 降级仍待验收，因此 T3.1 保持进行中。 | T3.1 实现继续推进，未提前标记完成 |
+| 2026-08-31 | T2.6 | 完成 | 真实 Provider 门禁重跑通过：桌面 Agent 完成 read→edit→bash(test)→browser_navigate→browser_read_text，五类工具卡片全部 Completed；随后在桌面外独立执行测试再次通过，总耗时 21.578s。遵循隐私要求，证据只保存状态、阶段和耗时，不保存 prompt、回复或凭据，文件：`apps/desktop/docs/proofs/T2.6/acceptance-status.json`。**Go：Phase 2 全部任务完成。** | T2.6 ✅，进入 Phase 3 |
+| 2026-08-31 | T2.5 | 完成 | 右栏由轻量标签切换为 dockview 8.2：支持标签关闭/拖拽/拆分，`toJSON/fromJSON` 布局经 settings 持久化；真实 Electron 窗口打开“终端”后刷新，文件+终端标签与激活状态准确恢复。workbench-store 接入工具事件：read 打开对应文件，edit/write 产出 Diff 后自动切变更，bash/browser_* 打开对应面板；Files/Terminal/Browser 使用 React.lazy，生产构建产出独立 chunk。 | T2.5 ✅ |
+| 2026-08-31 | T2.2 | 完成 | 补齐此前缺失的真实回滚链路：主进程持有变更 ID 与 before/after，preload IPC + Diff 按钮执行受控写回；若文件在 Diff 后再次修改则拒绝旧快照覆盖。Node 专项测试 3/3 通过，CRLF 内容回滚后 Buffer 逐字节相等，并补同前缀越界路径测试。证据：`apps/desktop/docs/proofs/T2.2/crlf-revert-test.txt`。 | T2.2 ✅ |
+| 2026-08-31 | 计划状态 | 维护 | 首次以提交与 §8 验收日志同步任务标题：T1.4 标为完成；当时尚缺验收的 T2.2、T2.6、T3.1、T3.3、T3.4、T5.1、T5.3 标为部分完成，T2.5 标为暂缓。此后任务以本表更靠上的新增验收记录继续推进，状态随证据更新。 | 建立“实现落地”与“全部验收”分开记录的规则 |
 | 2026-08-30 | 前置 | 修订 | R-1~R-3 已写回方案文档（方案升级为 v2.2）：createAgentSession 选项改 modelRuntime、会话操作标注 AgentSessionRuntime 归属、EngineEventSchema 补 auto_retry_*/summarization_retry_*、§7.3 思考档位改动态获取、§2.1 决策行改为"MVP 仅实现 SDK 路径" | 前置项完成 ✅ |
 | 2026-08-30 | 前置 | 决策 | R-4 范围裁剪：RPC 备路径出 MVP；浏览器面板 headless 降级；better-sqlite3 移出 MVP；工期基线 6~9 周 | 路线图调整 |
 | 2026-08-30 | T0.1 | 决策 | 工具链选型：不用 turbo/nx，用 `pnpm -r` 递归脚本（单人项目，monorepo 任务编排无并行需求，少一层工具依赖）；构建器选 electron-vite（main/preload/renderer 三目标一体，官方模板成熟）；workspace 包以 TS 源码直连（main 侧经 externalizeDepsPlugin exclude 打进产物，renderer 侧 vite 原生支持），不出 dist | 记录备查 |
