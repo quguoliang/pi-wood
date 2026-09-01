@@ -43,8 +43,8 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
         toolCallId: String(e.toolCallId ?? `t${Date.now()}`),
         toolName: String(e.toolName ?? "unknown"),
         input:
-          e.input !== null && typeof e.input === "object" && !Array.isArray(e.input)
-            ? (e.input as Record<string, unknown>)
+          e.args !== null && typeof e.args === "object" && !Array.isArray(e.args)
+            ? (e.args as Record<string, unknown>)
             : undefined,
       };
       set({ tasks: [...get().tasks, task] });

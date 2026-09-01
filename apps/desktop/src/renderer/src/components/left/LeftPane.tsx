@@ -1,190 +1,78 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useSessionStore } from "../../stores/session-store";
-import { useRuntimeStore } from "../../stores/runtime-store";
+import { Button } from "@/components/ui/button";
 import { Icon } from "../ui/Icon";
+import { ProjectGroup } from "./ProjectGroup";
+import { SidebarNav } from "./SidebarNav";
+import { useSidebarProjects } from "./useSidebarProjects";
 
-interface ProjectRecord {
-  id: string;
-  path: string;
-  name: string;
-}
-
-interface SessionItem {
-  file: string;
-  id: string;
-  name?: string;
-  modified: string;
-  messageCount: number;
-  firstMessage: string;
-}
-
-export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
-  const [sessionsByProject, setSessionsByProject] = useState<Record<string, SessionItem[]>>({});
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [activeProject, setActiveProject] = useState<string>();
-  const [activeSession, setActiveSession] = useState<SessionItem>();
-  const projectsRef = useRef<ProjectRecord[]>([]);
-  const activationSeq = useRef(0);
-  const { setActiveProject: setStoreProject, setEngineReady, reset, loadMessages } = useSessionStore();
-  const refreshRuntime = useRuntimeStore((s) => s.refresh);
-  const resetRuntime = useRuntimeStore((s) => s.reset);
-
-  const refreshProjectSessions = useCallback(async (project: ProjectRecord) => {
-    const sessions = (await window.pi.sessionsList(project.path).catch(() => [])) as SessionItem[];
-    setSessionsByProject((current) => ({ ...current, [project.path]: sessions }));
-  }, []);
-
-  const refreshProjects = useCallback(async () => {
-    const projectList = (await window.pi.projectList()) as ProjectRecord[];
-    projectsRef.current = projectList;
-    setProjects(projectList);
-
-    const grouped = await Promise.all(
-      projectList.map(async (project) => [
-        project.path,
-        (await window.pi.sessionsList(project.path).catch(() => [])) as SessionItem[],
-      ] as const),
-    );
-    setSessionsByProject(Object.fromEntries(grouped));
-  }, []);
-
-  const activateProject = useCallback(async (project: ProjectRecord) => {
-    const activation = ++activationSeq.current;
-    setActiveProject(project.path);
-    setActiveSession(undefined);
-    setStoreProject(project.path);
-    setEngineReady(false);
-    reset();
-    resetRuntime();
-    try {
-      await window.pi.engineStart(project.path);
-      if (activation === activationSeq.current) {
-        setEngineReady(true);
-        void refreshRuntime();
-      }
-    } catch (error) {
-      if (activation === activationSeq.current) setEngineReady(false);
-      console.error("项目引擎启动失败", error);
-    }
-  }, [reset, resetRuntime, refreshRuntime, setEngineReady, setStoreProject]);
-
-  useEffect(() => {
-    void refreshProjects();
-
-    const selectProject = (event: Event) => {
-      const projectPath = (event as CustomEvent<string>).detail;
-      const project = projectsRef.current.find((item) => item.path === projectPath);
-      if (project) void activateProject(project);
-    };
-    window.addEventListener("piwood:select-project", selectProject);
-    return () => window.removeEventListener("piwood:select-project", selectProject);
-  }, [activateProject, refreshProjects]);
-
-  const selectSession = async (project: ProjectRecord, session: SessionItem) => {
-    if (activeProject !== project.path) await activateProject(project);
-    setActiveSession(session);
-    const messages = (await window.pi.sessionsMessages(session.file)) as { role: string; text: string }[];
-    loadMessages(messages);
-    await window.pi.engineSwitchSession(session.file);
-    void refreshRuntime();
-  };
-
-  const createSession = useCallback(async (project: ProjectRecord) => {
-    setExpandedProjects((current) => new Set(current).add(project.path));
-    await activateProject(project);
-    await window.pi.engineNewSession();
-    await refreshProjectSessions(project);
-  }, [activateProject, refreshProjectSessions]);
-
-  useEffect(() => {
-    const createProjectSession = () => {
-      const project = projectsRef.current.find((item) => item.path === activeProject);
-      if (project) void createSession(project);
-    };
-    window.addEventListener("piwood:new-session", createProjectSession);
-    return () => window.removeEventListener("piwood:new-session", createProjectSession);
-  }, [activeProject, createSession]);
-
-  const toggleProject = (project: ProjectRecord) => {
-    setExpandedProjects((current) => {
-      const next = new Set(current);
-      if (next.has(project.path)) next.delete(project.path);
-      else next.add(project.path);
-      return next;
-    });
-    if (activeProject !== project.path) void activateProject(project);
-  };
-
-  const addProject = async () => {
-    const path = await window.pi.projectPick();
-    if (!path) return;
-    const project = (await window.pi.projectAdd(path)) as ProjectRecord;
-    await refreshProjects();
-    await activateProject(project);
-  };
+/**
+ * 左栏（UI v3，参考 ZCode 侧栏）：顶部导航 + 项目分组树 + 底部设置。
+ * 数据与交互全部在 useSidebarProjects，本组件只做组合呈现。
+ */
+export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): React.JSX.Element {
+  const {
+    projects,
+    sessionsByProject,
+    expandedProjects,
+    activeProject,
+    activeSessionFile,
+    toggleProject,
+    createSession,
+    selectSession,
+    addProject,
+  } = useSidebarProjects();
 
   return (
-    <aside className="left-pane" aria-label="项目与会话">
-      <section className="project-collection">
-        <header className="project-list-header">
-          <span>项目</span>
-          <button type="button" onClick={() => void addProject()}>
-            <Icon name="add" size={14} /> 添加
-          </button>
+    <aside className="flex h-full min-h-0 flex-col bg-surface-chrome text-sidebar-foreground" aria-label="项目与会话">
+      <SidebarNav
+        onNewTask={() => window.dispatchEvent(new Event("piwood:new-session"))}
+        onSearch={() => window.dispatchEvent(new Event("piwood:open-command-palette"))}
+        onMarketplace={() => window.dispatchEvent(new Event("piwood:open-marketplace"))}
+      />
+
+      <section className="flex min-h-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between px-4 pb-1 pt-1">
+          <span className="text-xs font-medium text-muted-foreground">项目</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => void addProject()}
+          >
+            <Icon name="add" className="size-3.5" /> 添加
+          </Button>
         </header>
 
-        <div className="project-tree">
-          {projects.map((project) => {
-            const isActiveProject = activeProject === project.path;
-            const isExpanded = expandedProjects.has(project.path);
-            const sessions = sessionsByProject[project.path] ?? [];
-            return (
-              <section className={`project-group${isActiveProject ? " active" : ""}`} key={project.path}>
-                <div className="project-row">
-                  <button
-                    className="project-item"
-                    type="button"
-                    onClick={() => toggleProject(project)}
-                  >
-                    <Icon name={isExpanded ? "folderOpen" : "folder"} size={16} />
-                    <span>{project.name}</span>
-                  </button>
-                  <button
-                    className="project-session-add"
-                    type="button"
-                    title={`在 ${project.name} 中新建会话`}
-                    aria-label={`在 ${project.name} 中新建会话`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void createSession(project);
-                    }}
-                  >
-                    <Icon name="add" size={14} />
-                  </button>
-                </div>
-
-                {isExpanded && sessions.map((session) => (
-                  <button
-                    className={`project-session${activeSession?.file === session.file ? " active" : ""}`}
-                    key={session.file}
-                    type="button"
-                    title={session.firstMessage || "空会话"}
-                    onClick={() => void selectSession(project, session)}
-                  >
-                    <span>{session.firstMessage || "空会话"}</span>
-                  </button>
-                ))}
-              </section>
-            );
-          })}
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
+          {projects.map((project) => (
+            <ProjectGroup
+              key={project.path}
+              project={project}
+              sessions={sessionsByProject[project.path] ?? []}
+              isActiveProject={activeProject === project.path}
+              isExpanded={expandedProjects.has(project.path)}
+              activeSessionFile={activeSessionFile}
+              onToggle={() => toggleProject(project)}
+              onCreateSession={() => void createSession(project)}
+              onSelectSession={(session) => void selectSession(project, session)}
+            />
+          ))}
+          {projects.length === 0 && (
+            <p className="px-3 py-2 text-xs leading-relaxed text-muted-foreground/70">
+              还没有项目，点击「添加」选择本地目录开始。
+            </p>
+          )}
         </div>
       </section>
 
-      <footer className="sidebar-footer">
-        <button type="button" onClick={onOpenSettings}>
-          <Icon name="settings" size={16} /> 设置
-        </button>
+      <footer className="shrink-0 p-2 pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-full justify-start gap-2.5 rounded-md px-2.5 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+          onClick={onOpenSettings}
+        >
+          <Icon name="settings" /> 设置
+        </Button>
       </footer>
     </aside>
   );

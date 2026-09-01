@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 interface UiRequest {
   id: number;
@@ -23,22 +26,31 @@ export function UiRequestDialogs(): React.JSX.Element {
     setQueue((items) => items.slice(1));
   };
 
+  const cancel = (): void => respond(request?.kind === "confirm" ? false : undefined);
+
   if (!request) return <></>;
 
   return (
-    <div className="modal-mask ui-request-mask">
-      <section className="ui-request-dialog" role="dialog" aria-modal="true" aria-labelledby="ui-request-title">
-        <h2 id="ui-request-title">{request.title}</h2>
-        {request.message && <p>{request.message}</p>}
+    <Dialog open onOpenChange={(v) => { if (!v) cancel(); }}>
+      <DialogContent className="max-w-md gap-4" {...(request.message ? {} : { "aria-describedby": undefined })}>
+        <DialogHeader>
+          <DialogTitle>{request.title}</DialogTitle>
+          {request.message && (
+            <DialogDescription>{request.message}</DialogDescription>
+          )}
+        </DialogHeader>
+
         {request.kind === "select" && (
-          <div className="ui-request-options">
+          <div className="flex flex-col gap-2">
             {(request.options ?? []).map((option) => (
-              <button key={option} type="button" onClick={() => respond(option)}>{option}</button>
+              <Button key={option} type="button" variant="outline" className="justify-start" onClick={() => respond(option)}>
+                {option}
+              </Button>
             ))}
           </div>
         )}
         {request.kind === "input" && (
-          <input
+          <Input
             autoFocus
             value={draft}
             placeholder={request.placeholder}
@@ -46,12 +58,13 @@ export function UiRequestDialogs(): React.JSX.Element {
             onKeyDown={(event) => event.key === "Enter" && draft && respond(draft)}
           />
         )}
-        <div className="approval-actions">
-          <button className="deny" type="button" onClick={() => respond(request.kind === "confirm" ? false : undefined)}>取消</button>
-          {request.kind === "confirm" && <button className="allow" type="button" onClick={() => respond(true)}>确认</button>}
-          {request.kind === "input" && <button className="allow" type="button" disabled={!draft} onClick={() => respond(draft)}>提交</button>}
-        </div>
-      </section>
-    </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={cancel}>取消</Button>
+          {request.kind === "confirm" && <Button type="button" onClick={() => respond(true)}>确认</Button>}
+          {request.kind === "input" && <Button type="button" disabled={!draft} onClick={() => respond(draft)}>提交</Button>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

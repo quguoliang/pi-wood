@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandShortcut,
+} from "@/components/ui/command";
+import { useSessionStore } from "../../stores/session-store";
 
 /**
  * T5.1 命令面板：Ctrl/Cmd+Shift+P 唤起；聚合应用命令 + 默认模型 + 项目切换。
- * 轻量自研（cmdk 引入推迟到需要分组/多源聚合时）。
+ * 模糊搜索/键盘导航交给 cmdk（CommandDialog），命令项列表与执行回调不变。
  */
 interface Command {
   id: string;
@@ -18,17 +28,16 @@ export function CommandPalette({
   onClose: () => void;
   onOpenSettings: () => void;
 }): React.JSX.Element {
-  const [query, setQuery] = useState("");
-  const [cursor, setCursor] = useState(0);
   const [models, setModels] = useState<Array<{ provider: string; id: string }>>([]);
   const [projects, setProjects] = useState<Array<{ id: string; path: string; name: string }>>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const engineReady = useSessionStore((s) => s.engineReady);
 
   useEffect(() => {
-    inputRef.current?.focus();
-    void window.pi.engineModels().then(setModels).catch(() => setModels([]));
+    // 模型列表依赖引擎；未就绪时不拉取（§8 状态不变量）
+    if (engineReady) void window.pi.engineModels().then(setModels).catch(() => setModels([]));
+    else setModels([]);
     void window.pi.projectList().then((r) => setProjects(r as typeof projects));
-  }, []);
+  }, [engineReady]);
 
   const commands = useMemo<Command[]>(() => {
     const base: Command[] = [
@@ -74,12 +83,6 @@ export function CommandPalette({
     return [...base, ...modelCmds, ...projectCmds];
   }, [models, projects, onOpenSettings]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return commands;
-    return commands.filter((c) => c.label.toLowerCase().includes(q));
-  }, [commands, query]);
-
   const exec = (cmd: Command | undefined): void => {
     if (!cmd) return;
     void cmd.run();
@@ -87,46 +90,19 @@ export function CommandPalette({
   };
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
-        <input
-          ref={inputRef}
-          className="palette-input"
-          placeholder="输入命令或搜索…"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setCursor(0);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setCursor((c) => Math.min(c + 1, filtered.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setCursor((c) => Math.max(c - 1, 0));
-            } else if (e.key === "Enter") {
-              exec(filtered[cursor]);
-            } else if (e.key === "Escape") {
-              onClose();
-            }
-          }}
-        />
-        <div className="palette-list">
-          {filtered.length === 0 && <div className="muted" style={{ padding: "8px 12px" }}>无匹配命令</div>}
-          {filtered.map((cmd, i) => (
-            <div
-              key={cmd.id}
-              className={`palette-item ${i === cursor ? "active" : ""}`}
-              onMouseEnter={() => setCursor(i)}
-              onClick={() => exec(cmd)}
-            >
+    <CommandDialog open title="命令面板" onOpenChange={(v) => { if (!v) onClose(); }}>
+      <CommandInput placeholder="输入命令或搜索…" />
+      <CommandList>
+        <CommandEmpty>无匹配命令</CommandEmpty>
+        <CommandGroup heading="命令">
+          {commands.map((cmd) => (
+            <CommandItem key={cmd.id} value={cmd.label} onSelect={() => exec(cmd)}>
               {cmd.label}
-              {cmd.hint && <span className="muted palette-hint">{cmd.hint}</span>}
-            </div>
+              {cmd.hint && <CommandShortcut>{cmd.hint}</CommandShortcut>}
+            </CommandItem>
           ))}
-        </div>
-      </div>
-    </div>
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
   );
 }

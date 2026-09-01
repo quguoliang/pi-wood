@@ -2,10 +2,13 @@ packages:
   - apps/*
   - packages/*
 
+# run 脚本前不再自动触发 install（曾因 electron install.js 反复毁掉修复好的 dist/，见 执行计划 §8 T0.1；
+# 依赖同步请显式 pnpm install；Electron 二进制由 scripts/ensure-electron.mjs 在 dev/build 前自愈）
+verifyDepsBeforeRun: false
+
 allowBuilds:
   '@google/genai': true
   '@homebridge/node-pty-prebuilt-multiarch': true
-  electron: true
   esbuild: true
   node-pty: true
   protobufjs: true
@@ -14,6 +17,6 @@ ignoredBuiltDependencies:
   - '@google/genai'
   - esbuild
   - protobufjs
-
-onlyBuiltDependencies:
   - electron
+
+onlyBuiltDependencies: []

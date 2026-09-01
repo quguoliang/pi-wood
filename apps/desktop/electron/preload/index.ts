@@ -3,6 +3,17 @@ import { contextBridge, ipcRenderer } from "electron";
 const api = {
   ping: (): Promise<{ pong: boolean; electron: string; node: string }> =>
     ipcRenderer.invoke("app:ping"),
+  // UI v3：平台判定 + 无边框窗口控制（Windows 自绘 TitleBar；macOS 走系统红绿灯不使用）
+  platform: process.platform,
+  winMinimize: (): Promise<void> => ipcRenderer.invoke("win:minimize"),
+  winMaximizeToggle: (): Promise<void> => ipcRenderer.invoke("win:maximizeToggle"),
+  winClose: (): Promise<void> => ipcRenderer.invoke("win:close"),
+  winIsMaximized: (): Promise<boolean> => ipcRenderer.invoke("win:isMaximized"),
+  onWinMaximizeChanged: (cb: (maximized: boolean) => void): (() => void) => {
+    const handler = (_e: unknown, maximized: boolean): void => cb(maximized);
+    ipcRenderer.on("win:onMaximizeChanged", handler);
+    return () => ipcRenderer.removeListener("win:onMaximizeChanged", handler);
+  },
   // T0.3 探针/桥接事件（正式化在 T1.1 IPC 层）
   onUiNotify: (cb: (data: { message: string; type: string }) => void): (() => void) => {
     const handler = (_e: unknown, data: { message: string; type: string }): void => cb(data);
@@ -126,6 +137,12 @@ const api = {
   packagesList: (): Promise<unknown> => ipcRenderer.invoke("packages:list"),
   packagesInstall: (spec: string): Promise<{ ok: boolean; output: string }> =>
     ipcRenderer.invoke("packages:install", { spec }),
+  packagesUninstall: (spec: string): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("packages:uninstall", { spec }),
+  packagesUpdate: (spec?: string): Promise<{ ok: boolean; output: string }> =>
+    ipcRenderer.invoke("packages:update", { spec }),
+  packagesSearch: (query: string): Promise<{ ok: boolean; items: unknown[]; error?: string }> =>
+    ipcRenderer.invoke("packages:search", { query }),
   engineSetModel: (provider: string, modelId: string): Promise<void> =>
     ipcRenderer.invoke("engine:setModel", { provider, modelId }),
 };

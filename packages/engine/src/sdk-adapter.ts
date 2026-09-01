@@ -186,6 +186,8 @@ export class SdkAdapter implements EngineAdapter {
     return {
       model: s.model ? `${s.model.provider}/${s.model.id}` : undefined,
       thinkingLevel: s.thinkingLevel,
+      isStreaming: Boolean(s.isStreaming),
+      contextUsage: s.getContextUsage?.(),
       tools: s.getActiveToolNames?.(),
       stats: stats
         ? {

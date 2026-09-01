@@ -11,6 +11,7 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
     "paths": {
+      "@/*": ["./src/renderer/src/*"],
       "@pi-wood/engine": ["../../packages/engine/src/index.ts"],
       "@pi-wood/ipc-schema": ["../../packages/ipc-schema/src/index.ts"],
       "@pi-wood/ui-kit": ["../../packages/ui-kit/src/index.ts"]

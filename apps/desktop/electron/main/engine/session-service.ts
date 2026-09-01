@@ -110,7 +110,25 @@ export async function loadSessionMessages(file: string): Promise<SessionMessageI
     const role = msg.role;
 
     if (role === "user") {
-      const text = typeof msg.content === "string" ? msg.content : "";
+      // Pi 的 UserMessage.content 可为 string 或 (TextContent|ImageContent)[]；
+      // 旧代码只认 string，数组内容（含附件）被丢弃 → 历史里用户消息消失。
+      const content = msg.content;
+      let text = "";
+      if (typeof content === "string") text = content;
+      else if (Array.isArray(content)) {
+        text = content
+          .map((part) =>
+            part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+              ? (part as { text: string }).text
+              : part && typeof part === "object" && (part as { type?: unknown }).type === "image"
+                ? "[图片]"
+                : "",
+          )
+          .filter(Boolean)
+          .join("\n");
+      }
+      // 去掉主进程注入的附件块（<file ...>...</file>），与实时输入的干净气泡一致
+      text = text.replace(/\n*<file\b[\s\S]*?<\/file>\n*/g, "").replace(/\n*<file\b[^>]*>\s*<\/file>\n*/g, "").trim();
       flushText("user", text);
       continue;
     }

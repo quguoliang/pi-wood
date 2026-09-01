@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /** T2.4 浏览器面板：地址栏 + 截图流（headless，agent 经 browser_* 工具共用同一页面） */
 export function BrowserPanel(): React.JSX.Element {
@@ -32,17 +34,19 @@ export function BrowserPanel(): React.JSX.Element {
   }, []);
 
   return (
-    <div className="browser-panel">
-      <div className="browser-bar">
-        <input
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border px-2">
+        <Input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void go()}
         />
-        <button onClick={() => void go()}>前往</button>
+        <Button size="sm" variant="ghost" onClick={() => void go()}>前往</Button>
       </div>
-      <div className="muted browser-status">{status}</div>
-      {shot && <img className="browser-shot" src={shot} alt="页面截图" />}
+      <div className="px-2 py-1 text-xs text-muted-foreground">{status}</div>
+      <div className="min-h-0 flex-1 overflow-auto p-2">
+        {shot && <img className="w-full rounded-lg border border-border" src={shot} alt="页面截图" />}
+      </div>
     </div>
   );
 }

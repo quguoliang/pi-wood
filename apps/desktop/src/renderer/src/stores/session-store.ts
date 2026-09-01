@@ -1,36 +1,49 @@
 import { create } from "zustand";
 
 /**
- * 会话 store（T1.3）：消费引擎归一化事件流，维护 UIMessage 列表与流式状态。
- * 消息形态对齐方案 §8.3（简化：assistant 流式期间用 streamBuffer，message_end 落一条）。
+ * 会话 store（UI v3 重写，严格对齐 Pi SDK v0.84.4 真实事件字段）。
+ *
+ * 数据流要点（见执行计划 §8 调研）：
+ * - assistant 流式：message_update.assistantMessageEvent 的 text_delta/thinking_delta
+ *   写入独立 live buffer（避免每 token 对长列表做 O(n) 拷贝），块 *_end 或工具启动/
+ *   回合结束时 flush 成 finalized item。
+ * - 工具：tool_execution_start.args（非 input）、tool_execution_update.partialResult
+ *   （非 output）、tool_execution_end.result.{content,details}。edit 的 result.details
+ *   含结构化 patch/diff，直接内联渲染。
+ * - 回合/状态：agent_start/end/settled、compaction_*、auto_retry_*、queue_update。
  */
-export type UIMessage =
+
+export type ToolStatus = "running" | "ok" | "error";
+
+export interface DiffStat {
+  added: number;
+  deleted: number;
+}
+
+export type ConversationItem =
   | { id: string; kind: "user"; text: string }
   | { id: string; kind: "assistant"; text: string }
+  | { id: string; kind: "thinking"; text: string; durationMs?: number }
   | {
       id: string;
       kind: "tool";
       toolCallId: string;
-      toolName: string;
-      status: "running" | "ok" | "error";
-      input?: Record<string, unknown>;
+      name: string;
+      args: Record<string, unknown>;
+      status: ToolStatus;
       output?: string;
+      diff?: string;
+      diffStat?: DiffStat;
+      truncated?: boolean;
+      fullOutputPath?: string;
     }
-  | { id: string; kind: "system"; text: string };
-
-interface SessionState {
-  messages: UIMessage[];
-  streamBuffer: string;
-  streaming: boolean;
-  activeProject: string | undefined;
-  engineReady: boolean;
-  handleEvent(e: Record<string, unknown>): void;
-  addUserMessage(text: string): void;
-  loadMessages(items: HistoryMessageItem[]): void;
-  reset(): void;
-  setActiveProject(projectDir: string | undefined): void;
-  setEngineReady(ready: boolean): void;
-}
+  | {
+      id: string;
+      kind: "system";
+      text: string;
+      tone: "info" | "warn" | "error" | "success";
+      align?: "center" | "start";
+    };
 
 export interface HistoryMessageItem {
   role: string;
@@ -39,6 +52,25 @@ export interface HistoryMessageItem {
   toolName?: string;
   toolInput?: Record<string, unknown>;
   isError?: boolean;
+}
+
+interface LiveState {
+  liveText: string;
+  liveThinking: string;
+}
+
+interface SessionState extends LiveState {
+  items: ConversationItem[];
+  streaming: boolean;
+  activeProject: string | undefined;
+  engineReady: boolean;
+  queue: { steering: string[]; followUp: string[] };
+  handleEvent(e: Record<string, unknown>): void;
+  addUserMessage(text: string): void;
+  loadMessages(items: HistoryMessageItem[]): void;
+  reset(): void;
+  setActiveProject(projectDir: string | undefined): void;
+  setEngineReady(ready: boolean): void;
 }
 
 let seq = 0;
@@ -52,177 +84,258 @@ const safeStringify = (value: unknown): string => {
   }
 };
 
-/**
- * 把 Pi SDK 的工具结果解包成可读文本：
- * - content: [{type:"text", text}] 形态 → 直接拼接 text；
- * - error 形态的 Error 对象 → message；
- * - 其他对象 → 格式化的 JSON。
- */
-const extractToolOutput = (result: unknown, isError: boolean): string | undefined => {
+/** 把工具结果/部分内容（content 数组块或字符串）解成可读文本。 */
+const extractText = (result: unknown): string | undefined => {
   if (result === undefined || result === null) return undefined;
   if (typeof result === "string") return result;
-  if (isError && typeof (result as { message?: unknown }).message === "string") {
-    return (result as { message: string }).message;
-  }
   const content = (result as { content?: unknown }).content;
   if (Array.isArray(content)) {
     const text = content
       .map((part) =>
-        part !== null && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+        part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
           ? (part as { text: string }).text
-          : "",
+          : part && typeof part === "object" && (part as { type?: unknown }).type === "image"
+            ? "[图片]"
+            : "",
       )
       .filter(Boolean)
       .join("\n");
     if (text) return text;
   }
   if (typeof (result as { text?: unknown }).text === "string") return (result as { text: string }).text;
+  if (typeof (result as { message?: unknown }).message === "string") return (result as { message: string }).message;
   return safeStringify(result);
 };
 
-export const useSessionStore = create<SessionState>((set, get) => ({
-  messages: [],
-  streamBuffer: "",
-  streaming: false,
-  activeProject: undefined,
-  engineReady: false,
+/** 从 unified patch 统计 +/- 行数（排除 +++/--- 文件头）。 */
+const statPatch = (patch: string): DiffStat => {
+  let added = 0;
+  let deleted = 0;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) added += 1;
+    else if (line.startsWith("-")) deleted += 1;
+  }
+  return { added, deleted };
+};
 
-  handleEvent(e) {
-    const type = e.type as string;
-    if (type === "user_message") {
-      get().addUserMessage(e.text as string);
-      return;
+const asArgs = (v: unknown): Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : v === undefined
+      ? {}
+      : { value: v };
+
+let thinkingStartedAt = 0;
+
+export const useSessionStore = create<SessionState>((set, get) => {
+  /** 把当前 live thinking/text flush 成 finalized items（保证与后续工具的顺序）。 */
+  const flushLive = (): void => {
+    const { liveText, liveThinking, items } = get();
+    const additions: ConversationItem[] = [];
+    if (liveThinking.trim()) {
+      additions.push({
+        id: nextId(),
+        kind: "thinking",
+        text: liveThinking,
+        durationMs: thinkingStartedAt ? Date.now() - thinkingStartedAt : undefined,
+      });
+      thinkingStartedAt = 0;
     }
-    if (type === "agent_start") {
-      set({ streaming: true });
-      return;
-    }
-    if (type === "agent_end" || type === "agent_settled") {
-      set({ streaming: false });
-      return;
-    }
-    if (type === "message_update") {
-      const inner = e.assistantMessageEvent as
-        | { type?: string; delta?: unknown; text?: unknown }
-        | undefined;
-      if (inner?.type === "text_delta") {
-        const delta = typeof inner.delta === "string" ? inner.delta : typeof inner.text === "string" ? inner.text : "";
-        if (delta) set({ streamBuffer: get().streamBuffer + delta });
-      }
-      return;
-    }
-    if (type === "message_end") {
-      // 流式正文落盘为一条 assistant 消息；空文本（纯工具轮次）跳过
-      const buf = get().streamBuffer;
-      if (buf.trim()) {
-        set({
-          messages: [...get().messages, { id: nextId(), kind: "assistant", text: buf }],
-          streamBuffer: "",
-        });
-      } else {
-        set({ streamBuffer: "" });
-      }
-      return;
-    }
-    if (type === "tool_execution_start") {
-      const input = e.input;
-      set({
-        messages: [
-          ...get().messages,
-          {
+    if (liveText.trim()) additions.push({ id: nextId(), kind: "assistant", text: liveText });
+    if (additions.length) set({ items: [...items, ...additions], liveText: "", liveThinking: "" });
+    else if (liveText || liveThinking) set({ liveText: "", liveThinking: "" });
+  };
+
+  const pushItem = (item: ConversationItem): void => set({ items: [...get().items, item] });
+
+  const updateTool = (toolCallId: string, patch: Partial<Extract<ConversationItem, { kind: "tool" }>>): void => {
+    set({
+      items: get().items.map((m) => (m.kind === "tool" && m.toolCallId === toolCallId ? { ...m, ...patch } : m)),
+    });
+  };
+
+  return {
+    items: [],
+    liveText: "",
+    liveThinking: "",
+    streaming: false,
+    activeProject: undefined,
+    engineReady: false,
+    queue: { steering: [], followUp: [] },
+
+    handleEvent(e) {
+      const type = e.type as string;
+      switch (type) {
+        case "user_message":
+          get().addUserMessage(String(e.text ?? ""));
+          return;
+        case "agent_start":
+          set({ streaming: true });
+          return;
+        case "agent_end":
+        case "agent_settled":
+          flushLive();
+          set({ streaming: false, queue: { steering: [], followUp: [] } });
+          return;
+        case "message_end":
+          flushLive();
+          return;
+        case "message_update": {
+          const a = e.assistantMessageEvent as { type?: string; delta?: unknown } | undefined;
+          if (!a) return;
+          switch (a.type) {
+            case "thinking_start":
+              thinkingStartedAt = Date.now();
+              set({ liveThinking: "" });
+              return;
+            case "thinking_delta":
+              set({ liveThinking: get().liveThinking + (typeof a.delta === "string" ? a.delta : "") });
+              return;
+            case "thinking_end":
+              flushLive();
+              return;
+            case "text_start":
+              set({ liveText: "" });
+              return;
+            case "text_delta":
+              set({ liveText: get().liveText + (typeof a.delta === "string" ? a.delta : "") });
+              return;
+            case "text_end":
+              flushLive();
+              return;
+            default:
+              return;
+          }
+        }
+        case "tool_execution_start": {
+          flushLive();
+          pushItem({
             id: nextId(),
             kind: "tool",
             toolCallId: String(e.toolCallId ?? `t${Date.now()}`),
-            toolName: String(e.toolName ?? "unknown"),
+            name: String(e.toolName ?? "tool"),
+            args: asArgs(e.args),
             status: "running",
-            input:
-              input !== null && typeof input === "object" && !Array.isArray(input)
-                ? (input as Record<string, unknown>)
-                : input !== undefined
-                  ? { value: input }
-                  : undefined,
-          },
-        ],
-      });
-      return;
-    }
-    if (type === "tool_execution_update") {
-      const callId = String(e.toolCallId ?? "");
-      const chunk = typeof e.output === "string" ? e.output : "";
-      if (!chunk) return;
-      set({
-        messages: get().messages.map((m) =>
-          m.kind === "tool" && m.toolCallId === callId
-            ? { ...m, output: (m.output ?? "") + chunk }
-            : m,
-        ),
-      });
-      return;
-    }
-    if (type === "tool_execution_end") {
-      const callId = String(e.toolCallId ?? "");
-      const result = e.result;
-      set({
-        messages: get().messages.map((m) => {
-          if (m.kind !== "tool" || m.toolCallId !== callId) return m;
-          const isError = Boolean(e.isError);
-          return {
-            ...m,
-            status: isError ? ("error" as const) : ("ok" as const),
-            output: m.output ?? extractToolOutput(result, isError),
-          };
-        }),
-      });
-      return;
-    }
-    if (type === "compaction_end") {
-      set({
-        messages: [
-          ...get().messages,
-          { id: nextId(), kind: "system", text: "上下文已压缩" },
-        ],
-      });
-    }
-  },
-
-  addUserMessage(text) {
-    set({ messages: [...get().messages, { id: nextId(), kind: "user", text }], streamBuffer: "" });
-  },
-
-  loadMessages(items) {
-    set({
-      messages: items.map((m): UIMessage => {
-        if (m.role === "tool") {
-          return {
-            id: nextId(),
-            kind: "tool",
-            toolCallId: m.toolCallId ?? nextId(),
-            toolName: m.toolName ?? "tool",
-            status: m.isError ? "error" : "ok",
-            input: m.toolInput,
-            output: m.text || undefined,
-          };
+          });
+          return;
         }
-        return {
-          id: nextId(),
-          kind: m.role === "user" ? "user" : m.role === "assistant" ? "assistant" : "system",
-          text: m.text,
-        };
-      }),
-      streamBuffer: "",
-      streaming: false,
-    });
-  },
+        case "tool_execution_update": {
+          const text = extractText(e.partialResult);
+          if (text !== undefined) updateTool(String(e.toolCallId ?? ""), { output: text });
+          return;
+        }
+        case "tool_execution_end": {
+          const callId = String(e.toolCallId ?? "");
+          const result = e.result as
+            | { content?: unknown; details?: { patch?: string; diff?: string; truncation?: unknown; fullOutputPath?: string } }
+            | undefined;
+          const details = result?.details;
+          const patch = details?.patch || details?.diff;
+          const patchUpdate: Partial<Extract<ConversationItem, { kind: "tool" }>> = {
+            status: e.isError ? "error" : "ok",
+          };
+          const out = extractText(result);
+          if (out !== undefined) patchUpdate.output = out;
+          if (patch) {
+            patchUpdate.diff = patch;
+            patchUpdate.diffStat = statPatch(patch);
+          }
+          if (details?.fullOutputPath) patchUpdate.fullOutputPath = details.fullOutputPath;
+          if (details?.truncation) patchUpdate.truncated = true;
+          updateTool(callId, patchUpdate);
+          return;
+        }
+        case "turn_end": {
+          flushLive();
+          // Pi agent-loop：用户中断时 turn 的最后一条 assistant message.stopReason === "aborted"
+          const stopReason = (e.message as { stopReason?: string } | undefined)?.stopReason;
+          if (stopReason === "aborted") {
+            pushItem({ id: nextId(), kind: "system", tone: "warn", align: "start", text: "对话已终止" });
+          }
+          return;
+        }
+        case "compaction_start":
+          flushLive();
+          pushItem({ id: nextId(), kind: "system", tone: "info", text: "正在压缩上下文…" });
+          return;
+        case "compaction_end":
+          pushItem({
+            id: nextId(),
+            kind: "system",
+            tone: e.aborted ? "warn" : "info",
+            text: e.aborted ? "上下文压缩已中止" : "上下文已压缩",
+          });
+          return;
+        case "auto_retry_start":
+          pushItem({
+            id: nextId(),
+            kind: "system",
+            tone: "warn",
+            text: `请求失败，自动重试（第 ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"} 次）…`,
+          });
+          return;
+        case "auto_retry_end":
+          pushItem({
+            id: nextId(),
+            kind: "system",
+            tone: e.success ? "success" : "error",
+            text: e.success ? "重试成功" : `重试失败${e.finalError ? `：${String(e.finalError)}` : ""}`,
+          });
+          return;
+        case "queue_update":
+          set({
+            queue: {
+              steering: Array.isArray(e.steering) ? (e.steering as string[]) : [],
+              followUp: Array.isArray(e.followUp) ? (e.followUp as string[]) : [],
+            },
+          });
+          return;
+        default:
+          return;
+      }
+    },
 
-  reset() {
-    set({ messages: [], streamBuffer: "", streaming: false });
-  },
+    addUserMessage(text) {
+      flushLive();
+      pushItem({ id: nextId(), kind: "user", text });
+      set({ liveText: "", liveThinking: "" });
+    },
 
-  setActiveProject(projectDir) {
-    set({ activeProject: projectDir });
-  },
+    loadMessages(list) {
+      set({
+        items: list.map((m): ConversationItem => {
+          if (m.role === "tool") {
+            return {
+              id: nextId(),
+              kind: "tool",
+              toolCallId: m.toolCallId ?? nextId(),
+              name: m.toolName ?? "tool",
+              args: m.toolInput ?? {},
+              status: m.isError ? "error" : "ok",
+              output: m.text || undefined,
+            };
+          }
+          if (m.role === "user") return { id: nextId(), kind: "user", text: m.text };
+          if (m.role === "assistant") return { id: nextId(), kind: "assistant", text: m.text };
+          return { id: nextId(), kind: "system", tone: "info", text: m.text };
+        }),
+        liveText: "",
+        liveThinking: "",
+        streaming: false,
+      });
+    },
 
-  setEngineReady(ready) {
-    set({ engineReady: ready });
-  },
-}));
+    reset() {
+      set({ items: [], liveText: "", liveThinking: "", streaming: false, queue: { steering: [], followUp: [] } });
+    },
+
+    setActiveProject(projectDir) {
+      set({ activeProject: projectDir });
+    },
+
+    setEngineReady(ready) {
+      set({ engineReady: ready });
+    },
+  };
+});

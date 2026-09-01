@@ -10,6 +10,8 @@ import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc } from "./workbench/browser-service";
 import { initProviderIpc } from "./provider/provider-manager";
+import { initWindowIpc } from "./window-controls";
+import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
 
 let mainWindowRef: BrowserWindow | undefined;
@@ -36,8 +38,9 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: "pi-wood",
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: "#111820",
+    // UI v3：Windows 无边框 + 渲染层自绘 TitleBar（window-controls.ts）；macOS 保留红绿灯 hiddenInset
+    ...(process.platform === "win32" ? { frame: false } : { titleBarStyle: process.platform === "darwin" ? ("hiddenInset" as const) : ("default" as const) }),
+    backgroundColor: "#202020",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
@@ -48,6 +51,10 @@ function createWindow(): void {
   mainWindowRef = win;
 
   win.on("ready-to-show", () => win.show());
+
+  // 无边框窗口：最大化状态回推渲染层（TitleBar 图标切换 最大化/还原）
+  win.on("maximize", () => sendToRenderer("win:onMaximizeChanged", true));
+  win.on("unmaximize", () => sendToRenderer("win:onMaximizeChanged", false));
 
   // 外链走系统浏览器，不在应用内开新窗
   win.webContents.setWindowOpenHandler((details) => {
@@ -85,6 +92,11 @@ function createWindow(): void {
     win.webContents.on("did-fail-load", (_e, code, desc) => {
       debugLog(`e2e did-fail-load: ${code} ${desc}`);
     });
+  }
+
+  // dev 真实对话视觉测试台（走正式引擎链路，settle 后截屏退出）
+  if (isUiChatMode()) {
+    win.webContents.once("did-finish-load", () => setTimeout(runUiChat, 1500));
   }
 
   // T1.2 无干扰视觉验收：--capture <file> 渲染完成后截窗口内容（不需前台）
@@ -129,6 +141,7 @@ if (!gotLock) {
     }));
     initSettingsIpc();
     initProviderIpc();
+    initWindowIpc(() => mainWindowRef);
     // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
     initDataIpc(getAgentDir(), getActiveProjectDirSafe);

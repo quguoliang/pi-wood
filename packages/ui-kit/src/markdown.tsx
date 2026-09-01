@@ -37,7 +37,13 @@ const INITIAL_COMPONENTS: Partial<Components> = {
 
     if (isInline) {
       return (
-        <code className={cn("pk-inline-code", className)} {...props}>
+        <code
+          className={cn(
+            "rounded-[5px] bg-muted px-1.5 py-0.5 font-mono text-[0.8em] text-foreground",
+            className,
+          )}
+          {...props}
+        >
           {children}
         </code>
       );

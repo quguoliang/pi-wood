@@ -87,8 +87,17 @@ async function collectGitInfo(): Promise<GitInfo | undefined> {
         deleted += Number(m[2]);
       }
     }
+    const nameStatus = await git(["diff", "--name-status", "HEAD"]).catch(() => "");
+    const files = nameStatus
+      .split("\n")
+      .filter((l) => l.trim())
+      .slice(0, 40)
+      .map((line) => {
+        const parts = line.split("\t");
+        return { status: parts[0] ?? "", path: parts[parts.length - 1] ?? "" };
+      });
     const changed = statOut.split("\n").filter((l) => l.trim()).length;
-    return { branch, changed, added, deleted, files: [] };
+    return { branch, changed, added, deleted, files };
   } catch {
     return undefined;
   }
@@ -167,8 +176,9 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   next.subscribe((event) => {
     send(ENGINE_CHANNELS.event, event);
     // T2.2：edit/write 前后快照 → diff 推送右栏（含相对路径解析）
+    // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测
     if (event.type === "tool_execution_start") {
-      snapshots.snapshot(String(event.toolName ?? ""), event.input);
+      snapshots.snapshot(String(event.toolName ?? ""), event.args);
     }
     if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
       for (const d of snapshots.collectChanges()) send(ENGINE_CHANNELS.diff, d);
@@ -342,7 +352,7 @@ export function initEngineIpc(): void {
   });
 
   ipcMain.handle("engine:getThinkingLevels", async () => {
-    return (await requireAdapter()).getAvailableThinkingLevels();
+    return adapter ? adapter.getAvailableThinkingLevels() : [];
   });
 
   ipcMain.handle(ENGINE_CHANNELS.compact, async () => {
@@ -350,16 +360,17 @@ export function initEngineIpc(): void {
   });
 
   ipcMain.handle("engine:getAvailableModels", async () => {
-    return (await requireAdapter()).getAvailableModels();
+    // 只读查询：引擎未启动时降级为空（§8 状态不变量：渲染层仍应以 engineReady 门禁）
+    return adapter ? adapter.getAvailableModels() : [];
   });
 
   ipcMain.handle("engine:getState", async () => {
-    return (await requireAdapter()).getState();
+    return adapter ? adapter.getState() : {};
   });
 
   ipcMain.handle(ENGINE_CHANNELS.getRuntimeInfo, async (): Promise<RuntimeInfo> => {
     const [pi, gitInfo] = await Promise.all([
-      (await requireAdapter()).getRuntimeInfo(),
+      adapter ? adapter.getRuntimeInfo() : Promise.resolve({}),
       collectGitInfo(),
     ]);
     return {

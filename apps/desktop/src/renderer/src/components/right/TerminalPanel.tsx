@@ -49,16 +49,18 @@ export function TerminalPanel(): React.JSX.Element {
       if (termIdRef.current) void window.pi.termWrite(termIdRef.current, data);
     });
 
-    const onResize = (): void => {
+    const refit = (): void => {
       fit.fit();
       if (termIdRef.current) void window.pi.termResize(termIdRef.current, term.cols, term.rows);
     };
-    window.addEventListener("resize", onResize);
+    // 观察宿主尺寸：标签切走再切回（display:none→block）、面板拖宽都能触发 refit
+    const ro = new ResizeObserver(refit);
+    if (hostRef.current) ro.observe(hostRef.current);
 
     return () => {
       offData();
       offExit();
-      window.removeEventListener("resize", onResize);
+      ro.disconnect();
       if (termIdRef.current) void window.pi.termKill(termIdRef.current);
       term.dispose();
       termRef.current = null;
@@ -66,5 +68,5 @@ export function TerminalPanel(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProject]);
 
-  return <div ref={hostRef} style={{ height: "100%", minHeight: 220 }} />;
+  return <div ref={hostRef} className="terminal-host h-full min-h-[220px] w-full" />;
 }

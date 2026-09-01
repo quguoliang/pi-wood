@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { Icon } from "../ui/Icon";
 
 export type ApprovalMode = "auto" | "highRisk" | "allAsk" | "denyAll";
@@ -40,132 +43,138 @@ const thinkingLabels: Record<string, string> = {
   off: "关闭", minimal: "极低", low: "低", medium: "中", high: "高", xhigh: "很高", max: "最高",
 };
 
-const formatCount = (value: number): string => value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k` : String(value);
+const formatCount = (value: number): string => (value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k` : String(value));
+
+const controlBtn = "h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground";
+
+function MenuRow({ leading, title, detail, checked, kbd, onClick, disabled }: { leading?: React.ReactNode; title: string; detail?: string; checked?: boolean; kbd?: string; onClick(): void; disabled?: boolean }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40">
+      {leading ? <span className="text-muted-foreground">{leading}</span> : null}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] text-foreground">{title}</span>
+        {detail ? <span className="block text-[11px] text-muted-foreground">{detail}</span> : null}
+      </span>
+      {kbd ? <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{kbd}</kbd> : null}
+      {checked ? <Icon name="check" className="text-success" /> : null}
+    </button>
+  );
+}
 
 export function ComposerControls(props: ComposerControlsProps): React.JSX.Element {
-  const [open, setOpen] = useState<"add" | "permission" | "context" | "model" | "thinking" | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState<null | "add" | "permission" | "context" | "model" | "thinking">(null);
   const permission = approvalOptions.find((item) => item.mode === props.approvalMode) ?? approvalOptions[0];
   const currentModel = props.runtime.model?.split("/").pop() ?? "选择模型";
   const currentThinking = thinkingLabels[props.runtime.thinkingLevel ?? ""] ?? props.runtime.thinkingLevel ?? "思考";
   const usage = props.runtime.contextUsage;
-
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent): void => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(null);
-    };
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        setOpen(null);
-        requestAnimationFrame(() => triggerRef.current?.focus());
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus());
-  }, [open]);
-
-  const toggle = (menu: typeof open, trigger: HTMLButtonElement): void => {
-    triggerRef.current = trigger;
-    setOpen((value) => value === menu ? null : menu);
-  };
-
-  const closeMenu = (): void => {
-    setOpen(null);
-    requestAnimationFrame(() => triggerRef.current?.focus());
-  };
+  const show = (menu: typeof open) => (v: boolean) => setOpen(v ? menu : null);
+  const close = () => setOpen(null);
 
   return (
-    <div className="composer-controls" ref={rootRef}>
-      <div className="composer-control-group composer-control-left">
-        <button className={`composer-control icon-only${open === "add" ? " active" : ""}`} type="button" onClick={(event) => toggle("add", event.currentTarget)} aria-haspopup="dialog" aria-expanded={open === "add"} aria-label="添加内容" title="添加内容"><Icon name="add" /></button>
-        <button className={`composer-control permission-control${open === "permission" ? " active" : ""}`} type="button" onClick={(event) => toggle("permission", event.currentTarget)} aria-haspopup="dialog" aria-expanded={open === "permission"}>
-          <Icon name="shield" /><span>{permission.label}</span><Icon name="chevronDown" />
-        </button>
+    <div className="flex min-h-9 items-center justify-between gap-2 px-1.5 pb-1 pt-2">
+      <div className="flex items-center gap-1">
+        <Popover open={open === "add"} onOpenChange={show("add")}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label="添加内容">
+              <Icon name="add" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-72 gap-1 p-1.5">
+            <MenuRow leading={<Icon name="paperclip" />} title="添加文件" detail="代码、文本或图片将随消息发送" onClick={() => { close(); props.onPickFiles(); }} />
+            <MenuRow leading={<Icon name="command" />} title="命令面板" detail="选择项目、模型或打开设置" kbd="⌘⇧P" onClick={() => { close(); props.onOpenPalette(); }} />
+            <div className="my-1 h-px bg-border" />
+            <div className="px-2 py-1 text-[11px] text-muted-foreground">
+              <div className="mb-1 flex items-center gap-1.5 text-foreground"><Icon name="keyboard" /> 键盘操作</div>
+              <div className="grid grid-cols-[1fr_auto] gap-1"><span>发送</span><kbd className="text-right">Enter</kbd><span>换行</span><kbd className="text-right">Shift Enter</kbd><span>生成时排队</span><kbd className="text-right">Alt Enter</kbd></div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <Popover open={open === "permission"} onOpenChange={show("permission")}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, "text-warning hover:text-warning")} aria-label="Agent 权限">
+              <Icon name="shield" /><span className="max-w-[9rem] truncate">{permission.label}</span><Icon name="chevronDown" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-80 gap-0.5 p-1.5">
+            <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Agent 权限</div>
+            {approvalOptions.map((item) => (
+              <MenuRow key={item.mode} leading={<Icon name="shield" />} title={item.label} detail={item.detail} checked={props.approvalMode === item.mode} onClick={() => { close(); props.onApprovalChange(item.mode); }} />
+            ))}
+          </PopoverContent>
+        </Popover>
       </div>
 
-      <div className="composer-control-group composer-control-right">
-        <button className={`composer-control compact-control${open === "context" ? " active" : ""}`} type="button" disabled={!props.engineReady} onClick={(event) => toggle("context", event.currentTarget)} aria-haspopup="dialog" aria-expanded={open === "context"} title="当前上下文">
-          <Icon name="context" /><span>{usage?.percent == null ? "上下文" : `${Math.round(usage.percent)}%`}</span>
-        </button>
-        <button className={`composer-control model-control${open === "model" ? " active" : ""}`} type="button" disabled={!props.engineReady || props.streaming} onClick={(event) => toggle("model", event.currentTarget)} aria-haspopup="dialog" aria-expanded={open === "model"}>
-          <span>{currentModel}</span><Icon name="chevronDown" />
-        </button>
-        <button className={`composer-control thinking-control${open === "thinking" ? " active" : ""}`} type="button" disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1} onClick={(event) => toggle("thinking", event.currentTarget)} aria-haspopup="dialog" aria-expanded={open === "thinking"} title={props.thinkingLevels.length <= 1 ? "当前模型不支持可调思考级别" : "思考级别"}>
-          <Icon name="brain" /><span>{currentThinking}</span><Icon name="chevronDown" />
-        </button>
+      <div className="flex items-center gap-1">
+        <Popover open={open === "context"} onOpenChange={show("context")}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className={controlBtn} disabled={!props.engineReady}>
+              <Icon name="context" /><span>{usage?.percent == null ? "上下文" : `${Math.round(usage.percent)}%`}</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="end" className="w-72 gap-0.5 p-1.5">
+            <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">当前上下文</div>
+            {usage ? (
+              <div className="px-2.5 pb-2">
+                <div className="flex items-baseline gap-1"><strong className="text-lg font-semibold">{usage.tokens == null ? "待统计" : formatCount(usage.tokens)}</strong><span className="text-xs text-muted-foreground">/ {formatCount(usage.contextWindow)} tokens</span></div>
+                <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, usage.percent ?? 0)}%` }} /></div>
+                <small className="mt-1 block text-[11px] text-muted-foreground">{usage.percent == null ? "下一次模型响应后更新" : `已使用 ${Math.round(usage.percent)}%`}</small>
+              </div>
+            ) : <p className="px-2.5 pb-2 text-[11px] text-muted-foreground">发送第一条消息后显示真实上下文用量。</p>}
+            <MenuRow leading={<Icon name="context" />} title="压缩上下文" detail="调用 Pi 的 compact，保留摘要并释放窗口" disabled={props.streaming || !usage} onClick={() => { close(); props.onCompact(); }} />
+          </PopoverContent>
+        </Popover>
+
+        <Popover open={open === "model"} onOpenChange={show("model")}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem]")} disabled={!props.engineReady || props.streaming}>
+              <span className="truncate">{currentModel}</span><Icon name="chevronDown" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="end" className="w-72 gap-0.5 p-1.5">
+            <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">本项目可用模型</div>
+            {props.models.length === 0 && <p className="px-2.5 pb-2 text-[11px] text-muted-foreground">未从 Pi ModelRuntime 获取到模型。</p>}
+            <div className="max-h-72 overflow-auto">
+              {props.models.map((model) => {
+                const key = `${model.provider}/${model.id}`;
+                return <MenuRow key={key} title={model.id} detail={model.provider} checked={props.runtime.model === key} onClick={() => { close(); props.onModelChange(model); }} />;
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <Popover open={open === "thinking"} onOpenChange={show("thinking")}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className={controlBtn} disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1}>
+              <Icon name="brain" /><span>{currentThinking}</span><Icon name="chevronDown" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="end" className="w-44 gap-0.5 p-1.5">
+            <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">思考级别</div>
+            {props.thinkingLevels.map((level) => (
+              <MenuRow key={level} title={thinkingLabels[level] ?? level} checked={props.runtime.thinkingLevel === level} onClick={() => { close(); props.onThinkingChange(level); }} />
+            ))}
+          </PopoverContent>
+        </Popover>
+
         {props.streaming ? (
-          <button className="composer-submit is-running" type="button" onClick={props.onAbort} disabled={props.aborting} aria-label="中断当前对话" title="正在生成，点击中断"><Icon name="stop" /></button>
+          <Button size="icon-sm" onClick={props.onAbort} disabled={props.aborting} aria-label="中断当前对话" className="ml-0.5 rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80">
+            <Icon name="stop" />
+          </Button>
         ) : (
-          <button className="composer-submit" type="button" onClick={props.onSend} disabled={!props.canSend} aria-label="发送消息" title="发送消息"><Icon name="arrowUp" /></button>
+          <Button
+            size="icon-sm"
+            onClick={props.onSend}
+            aria-label="发送消息"
+            className={cn(
+              "ml-0.5 rounded-full transition-colors",
+              props.canSend ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground",
+            )}
+          >
+            <Icon name="arrowUp" />
+          </Button>
         )}
       </div>
-
-      {open === "add" && (
-        <div className="composer-menu menu-add" role="dialog" aria-label="添加内容" ref={menuRef}>
-          <button type="button" onClick={() => { closeMenu(); props.onPickFiles(); }}><Icon name="paperclip" /><span><b>添加文件</b><small>代码、文本或图片将随消息发送</small></span></button>
-          <button type="button" onClick={() => { closeMenu(); props.onOpenPalette(); }}><Icon name="command" /><span><b>命令面板</b><small>选择项目、模型或打开设置</small></span><kbd>⌘⇧P</kbd></button>
-          <div className="menu-separator" />
-          <div className="shortcut-list"><span><Icon name="keyboard" /> 键盘操作</span><small><kbd>Enter</kbd> 发送</small><small><kbd>Shift Enter</kbd> 换行</small><small><kbd>Alt Enter</kbd> 生成时排队</small></div>
-        </div>
-      )}
-
-      {open === "permission" && (
-        <div className="composer-menu menu-permission" role="dialog" aria-label="Agent 权限" ref={menuRef}>
-          <div className="menu-heading">Agent 权限</div>
-          {approvalOptions.map((item) => (
-            <button key={item.mode} type="button" aria-pressed={props.approvalMode === item.mode} onClick={() => { closeMenu(); props.onApprovalChange(item.mode); }}>
-              <Icon name="shield" /><span><b>{item.label}</b><small>{item.detail}</small></span>{props.approvalMode === item.mode && <Icon name="check" />}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {open === "context" && (
-        <div className="composer-menu menu-context" role="dialog" aria-label="当前上下文" ref={menuRef}>
-          <div className="menu-heading">当前上下文</div>
-          {usage ? (
-            <div className="context-meter">
-              <div><strong>{usage.tokens == null ? "待统计" : formatCount(usage.tokens)}</strong><span>/ {formatCount(usage.contextWindow)} tokens</span></div>
-              <div className="context-track"><i style={{ width: `${Math.min(100, usage.percent ?? 0)}%` }} /></div>
-              <small>{usage.percent == null ? "下一次模型响应后更新" : `已使用 ${Math.round(usage.percent)}%`}</small>
-            </div>
-          ) : <p className="menu-empty">发送第一条消息后显示真实上下文用量。</p>}
-          <button type="button" disabled={props.streaming || !usage} onClick={() => { closeMenu(); props.onCompact(); }}><Icon name="context" /><span><b>压缩上下文</b><small>调用 Pi 的 compact，保留摘要并释放窗口</small></span></button>
-        </div>
-      )}
-
-      {open === "model" && (
-        <div className="composer-menu menu-model" role="dialog" aria-label="选择模型" ref={menuRef}>
-          <div className="menu-heading">本项目可用模型</div>
-          {props.models.length === 0 && <p className="menu-empty">未从 Pi ModelRuntime 获取到模型。</p>}
-          <div className="model-menu-list">
-            {props.models.map((model) => {
-              const key = `${model.provider}/${model.id}`;
-              return <button key={key} type="button" aria-pressed={props.runtime.model === key} onClick={() => { closeMenu(); props.onModelChange(model); }}><span><b>{model.id}</b><small>{model.provider}</small></span>{props.runtime.model === key && <Icon name="check" />}</button>;
-            })}
-          </div>
-        </div>
-      )}
-
-      {open === "thinking" && (
-        <div className="composer-menu menu-thinking" role="dialog" aria-label="思考级别" ref={menuRef}>
-          <div className="menu-heading">思考级别</div>
-          {props.thinkingLevels.map((level) => (
-            <button key={level} type="button" aria-pressed={props.runtime.thinkingLevel === level} onClick={() => { closeMenu(); props.onThinkingChange(level); }}><span><b>{thinkingLabels[level] ?? level}</b></span>{props.runtime.thinkingLevel === level && <Icon name="check" />}</button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

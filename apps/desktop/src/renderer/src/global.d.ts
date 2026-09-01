@@ -3,9 +3,25 @@ import type { RuntimeInfo } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
+  /** 插件市场条目（npm 上以包发布的 Pi 扩展）。 */
+  interface PiMarketItem {
+    name: string;
+    version: string;
+    description: string;
+    author: string;
+    updated: string;
+    source: string;
+  }
+
   interface Window {
     pi: {
       ping(): Promise<{ pong: boolean; electron: string; node: string }>;
+      platform: NodeJS.Platform;
+      winMinimize(): Promise<void>;
+      winMaximizeToggle(): Promise<void>;
+      winClose(): Promise<void>;
+      winIsMaximized(): Promise<boolean>;
+      onWinMaximizeChanged(cb: (maximized: boolean) => void): () => void;
       onUiNotify(cb: (data: { message: string; type: string }) => void): () => void;
       onUiRequest(cb: (data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }) => void): () => void;
       uiRespond(id: number, value?: string | boolean): Promise<boolean>;
@@ -56,6 +72,9 @@ declare global {
       engineReload(): Promise<boolean>;
       packagesList(): Promise<{ packages: string[] }>;
       packagesInstall(spec: string): Promise<{ ok: boolean; output: string }>;
+      packagesUninstall(spec: string): Promise<{ ok: boolean; output: string }>;
+      packagesUpdate(spec?: string): Promise<{ ok: boolean; output: string }>;
+      packagesSearch(query: string): Promise<{ ok: boolean; items: PiMarketItem[]; error?: string }>;
       engineSetModel(provider: string, modelId: string): Promise<void>;
       termCreate(opts: { cwd: string; shell?: string; cols?: number; rows?: number }): Promise<string>;
       termWrite(id: string, data: string): Promise<boolean>;

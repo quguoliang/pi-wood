@@ -23,6 +23,54 @@ function piExec(args: string[], timeoutMs = 120000): Promise<string> {
   });
 }
 
+/** 插件市场条目（npm registry 上以 npm 包发布的 Pi 扩展）。 */
+export interface MarketItem {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  updated: string;
+  source: string; // 规范安装源：npm:<name>
+}
+
+/** pi 扩展启发式：名称/描述命中 pi 生态关键词。 */
+const PI_HINT = /\bpi\b|pi[-_ ]?(extension|agent|coding|plugin|tool)|for pi\b|pi coding|pi agent|pi-extension/i;
+
+function toMarketItem(raw: unknown): MarketItem | null {
+  const pkg = (raw as { package?: Record<string, unknown> })?.package;
+  if (!pkg || typeof pkg.name !== "string") return null;
+  const maintainers = pkg.maintainers as Array<{ username?: string }> | undefined;
+  const publisher = pkg.publisher as { username?: string } | undefined;
+  return {
+    name: pkg.name,
+    version: typeof pkg.version === "string" ? pkg.version : "",
+    description: typeof pkg.description === "string" ? pkg.description.trim() : "",
+    author: publisher?.username ?? maintainers?.[0]?.username ?? "",
+    updated: typeof pkg.date === "string" ? pkg.date : "",
+    source: `npm:${pkg.name}`,
+  };
+}
+
+/** 经 npm registry 公开检索 API 查 Pi 扩展；query 为空时给默认「发现」词。 */
+async function npmSearchPiExtensions(query: string, size = 30): Promise<MarketItem[]> {
+  const trimmed = query.trim();
+  const text = trimmed ? `${trimmed} pi` : "pi extension";
+  const url = `https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(text)}&size=${size}`;
+  const res = await fetch(url, { headers: { "user-agent": "pi-wood-marketplace" }, signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error(`npm 检索失败：HTTP ${res.status}`);
+  const json = (await res.json()) as { objects?: unknown[] };
+  const seen = new Set<string>();
+  const items: MarketItem[] = [];
+  for (const obj of json.objects ?? []) {
+    const item = toMarketItem(obj);
+    if (!item || seen.has(item.name)) continue;
+    if (!PI_HINT.test(`${item.name} ${item.description}`)) continue;
+    seen.add(item.name);
+    items.push(item);
+  }
+  return items;
+}
+
 export function initDataIpc(agentDir: string, getProjectDir: () => string | undefined): ProjectManager {
   const pm = new ProjectManager(DEFAULT_APP_DATA_DIR, agentDir);
 
@@ -100,6 +148,29 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
     const { spec } = z.object({ spec: z.string().min(1) }).parse(raw);
     const output = await piExec(["install", spec]);
     return { ok: true, output: output.slice(0, 2000) };
+  });
+  ipcMain.handle("packages:uninstall", async (_e, raw: unknown) => {
+    const { spec } = z.object({ spec: z.string().min(1) }).parse(raw);
+    const output = await piExec(["remove", spec]);
+    return { ok: true, output: output.slice(0, 2000) };
+  });
+  ipcMain.handle("packages:update", async (_e, raw: unknown) => {
+    const { spec } = z.object({ spec: z.string().optional() }).parse(raw ?? {});
+    const args = spec ? ["update", spec] : ["update", "--extensions"];
+    const output = await piExec(args);
+    return { ok: true, output: output.slice(0, 2000) };
+  });
+  // ---- 插件市场：npm registry 检索 Pi 扩展（真实市场数据源）----
+  ipcMain.handle("packages:search", async (_e, raw: unknown) => {
+    const { query } = z.object({ query: z.string().default("") }).parse(raw ?? {});
+    try {
+      return { ok: true, items: await npmSearchPiExtensions(query) };
+    } catch (error) {
+      const msg = String((error as Error)?.name ?? "") === "TimeoutError" || String((error as Error)?.message ?? "").includes("abort")
+        ? "检索超时：网络不可达或被拦截"
+        : String((error as Error)?.message ?? error);
+      return { ok: false, items: [], error: msg };
+    }
   });
 
   return pm;

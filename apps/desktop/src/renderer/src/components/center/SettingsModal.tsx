@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { useSettingsStore } from "../../stores/settings-store";
+import { cn } from "@/lib/utils";
+import { useSessionStore } from "../../stores/session-store";
 
 /**
  * T3.2/T3.3 设置弹窗：Providers 密钥（safeStorage 钥匙串）/ 模型默认 / 审批策略 / 主题。
+ * shadcn Dialog 外壳 + 左栏自绘导航，数据加载与保存逻辑不变。
  */
 interface ProviderInfo {
   id: string;
@@ -9,8 +18,44 @@ interface ProviderInfo {
   hasKey: boolean;
 }
 
+const sections = [
+  { id: "providers", label: "模型源" },
+  { id: "model", label: "默认模型" },
+  { id: "approval", label: "审批策略" },
+  { id: "theme", label: "主题" },
+  { id: "ui", label: "界面" },
+  { id: "ext", label: "扩展与包" },
+] as const;
+
+const approvalOptions: Array<[string, string]> = [
+  ["auto", "全自动（不询问）"],
+  ["highRisk", "高风险审批（bash/edit/write 需确认）"],
+  ["allAsk", "全部审批"],
+  ["denyAll", "全部拒绝"],
+];
+
+function SectionTitle({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <h3 className="text-xs font-medium text-muted-foreground">{children}</h3>
+      {action}
+    </div>
+  );
+}
+
+function ListRow({ primary, secondary }: { primary: React.ReactNode; secondary?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent">
+      <span className="min-w-0 truncate">{primary}</span>
+      {secondary ? <span className="shrink-0 text-xs text-muted-foreground">{secondary}</span> : null}
+    </div>
+  );
+}
+
 export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ext">("providers");
+  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ui" | "ext">("providers");
+  const ui = useSettingsStore((s) => s.settings.ui);
+  const patchUi = useSettingsStore((s) => s.patch);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [models, setModels] = useState<Array<{ provider: string; id: string }>>([]);
@@ -34,7 +79,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
       const list = (r as { builtin: ProviderInfo[] }).builtin ?? [];
       setProviders(list);
     });
-    void window.pi.engineModels().then(setModels).catch(() => setModels([]));
     void window.pi.extensionsList().then((r) => setExtensions(r as typeof extensions));
     void window.pi.resourcesList().then((r) => setResources(r as typeof resources));
     void window.pi.packagesList().then((r) => setPackages(r.packages));
@@ -45,6 +89,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
       if (st.theme?.fallback) setTheme(st.theme.fallback);
     });
   }, []);
+
+  const engineReady = useSessionStore((s) => s.engineReady);
+  useEffect(() => {
+    // 默认模型列表依赖引擎；未就绪时不拉取（§8 状态不变量）
+    if (engineReady) void window.pi.engineModels().then(setModels).catch(() => setModels([]));
+    else setModels([]);
+  }, [engineReady]);
 
   const installPackage = (): void => {
     const spec = pkgSpec.trim();
@@ -87,154 +138,191 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
   };
 
   return (
-    <div className="modal-mask" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <b>设置</b>
-          <span className="muted">{saved}</span>
-          <button className="ghost-btn" onClick={onClose}>关闭</button>
-        </div>
-        <div className="modal-tabs">
-          <button className={tab === "providers" ? "active" : ""} onClick={() => setTab("providers")}>模型源</button>
-          <button className={tab === "model" ? "active" : ""} onClick={() => setTab("model")}>默认模型</button>
-          <button className={tab === "approval" ? "active" : ""} onClick={() => setTab("approval")}>审批策略</button>
-          <button className={tab === "theme" ? "active" : ""} onClick={() => setTab("theme")}>主题</button>
-          <button className={tab === "ext" ? "active" : ""} onClick={() => setTab("ext")}>扩展与包</button>
-        </div>
-
-        {tab === "providers" && (
-          <div className="modal-body">
-            <p className="muted">密钥经系统钥匙串（DPAPI）加密存储于 ~/.pi-wood/keys.json</p>
-            {providers.map((p) => (
-              <div key={p.id} className="provider-row">
-                <span className="provider-name">
-                  {p.name} · {p.hasKey ? "已配置" : "未配置"}
-                </span>
-                <input
-                  type="password"
-                  placeholder={p.hasKey ? "已配置（输入可覆盖）" : `${p.id.toUpperCase()}_API_KEY`}
-                  value={keyDraft[p.id] ?? ""}
-                  onChange={(e) => setKeyDraft((d) => ({ ...d, [p.id]: e.target.value }))}
-                />
-                <button className="ghost-btn" disabled={!keyDraft[p.id]} onClick={() => saveKey(p.id)}>保存</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "model" && (
-          <div className="modal-body">
-            <p className="muted">可用模型（需先在左栏选择项目以启动引擎）</p>
-            {models.length === 0 && <p className="muted">(未获取到模型列表)</p>}
-            <div className="model-list">
-              {models.map((m) => (
-                <label key={`${m.provider}/${m.id}`} className="model-row">
-                  <input
-                    type="radio"
-                    name="default-model"
-                    checked={model.provider === m.provider && model.id === m.id}
-                    onChange={() => setModel(m)}
-                  />
-                  {m.provider} / {m.id}
-                </label>
-              ))}
-            </div>
-            <button className="ghost-btn" onClick={saveDefaultModel}>设为默认</button>
-          </div>
-        )}
-
-        {tab === "approval" && (
-          <div className="modal-body">
-            <p className="muted">四档策略（§9）：敏感文件（.env/.git/.ssh 等）始终拦截</p>
-            {[
-              ["auto", "全自动（不询问）"],
-              ["highRisk", "高风险审批（bash/edit/write 需确认）"],
-              ["allAsk", "全部审批"],
-              ["denyAll", "全部拒绝"],
-            ].map(([mode, label]) => (
-              <label key={mode} className="model-row">
-                <input
-                  type="radio"
-                  name="approval-mode"
-                  checked={approvalMode === mode}
-                  onChange={() => saveApproval(mode)}
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-        )}
-
-        {tab === "theme" && (
-          <div className="modal-body">
-            {["dark", "light", "system"].map((t) => (
-              <label key={t} className="model-row">
-                <input
-                  type="radio"
-                  name="theme"
-                  checked={theme === t}
-                  onChange={() => saveTheme(t)}
-                />
-                {t}
-              </label>
-            ))}
-          </div>
-        )}
-
-        {tab === "ext" && (
-          <div className="modal-body">
-            <div className="pane-header">
-              <b className="muted">已加载扩展（选中项目后点"重载"生效）</b>
-              <button className="ghost-btn" onClick={() => void window.pi.engineReload().then(() => flash("已重载扩展"))}>
-                重载扩展
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0" aria-describedby={undefined}>
+        <div className="flex h-[560px] max-h-[calc(100vh-4rem)]">
+          <aside className="flex w-44 shrink-0 flex-col gap-1 border-r border-border bg-muted/40 p-3">
+            <DialogTitle className="px-2 pb-2 text-sm font-semibold">设置</DialogTitle>
+            {sections.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setTab(s.id)}
+                className={cn(
+                  "rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent",
+                  tab === s.id ? "bg-accent font-medium text-foreground" : "text-muted-foreground",
+                )}
+              >
+                {s.label}
               </button>
-            </div>
-            {extensions.length === 0 && <p className="muted">未发现扩展（全局 ~/.pi/agent/extensions 或项目 .pi/extensions）</p>}
-            {extensions.map((x) => (
-              <div key={x.path} className="model-row">
-                <span className="provider-name">{x.name}</span>
-                <span className="muted">{x.source === "global" ? "全局" : "项目"}</span>
+            ))}
+            <span className="mt-auto px-2 pt-2 text-xs text-muted-foreground">{saved}</span>
+          </aside>
+
+          <div className="min-w-0 flex-1 overflow-y-auto p-6">
+            {tab === "providers" && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">密钥经系统钥匙串（DPAPI）加密存储于 ~/.pi-wood/keys.json</p>
+                {providers.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3">
+                    <span className="w-36 shrink-0 truncate text-sm">
+                      {p.name} · {p.hasKey ? "已配置" : "未配置"}
+                    </span>
+                    <Input
+                      type="password"
+                      className="min-w-0 flex-1"
+                      placeholder={p.hasKey ? "已配置（输入可覆盖）" : `${p.id.toUpperCase()}_API_KEY`}
+                      value={keyDraft[p.id] ?? ""}
+                      onChange={(e) => setKeyDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                    />
+                    <Button size="sm" variant="secondary" disabled={!keyDraft[p.id]} onClick={() => saveKey(p.id)}>保存</Button>
+                  </div>
+                ))}
               </div>
-            ))}
-            <div className="pane-header" style={{ marginTop: 10 }}>
-              <b className="muted">Skills</b>
-            </div>
-            {resources.filter((item) => item.kind === "skill").length === 0 && <p className="muted">未发现 Skill</p>}
-            {resources.filter((item) => item.kind === "skill").map((item) => (
-              <div key={item.path} className="model-row">
-                <span className="provider-name">{item.name}</span>
-                <span className="muted">{item.source}</span>
+            )}
+
+            {tab === "model" && (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">可用模型（需先在左栏选择项目以启动引擎）</p>
+                {models.length === 0 && <p className="text-xs text-muted-foreground">(未获取到模型列表)</p>}
+                <Select
+                  value={String(models.findIndex((m) => m.provider === model.provider && m.id === model.id))}
+                  onValueChange={(v) => {
+                    const m = models[Number(v)];
+                    if (m) setModel(m);
+                  }}
+                  disabled={models.length === 0}
+                >
+                  <SelectTrigger className="w-full" size="sm">
+                    <SelectValue placeholder="选择默认模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {models.map((m, i) => (
+                      <SelectItem key={`${m.provider}/${m.id}`} value={String(i)}>
+                        {m.provider} / {m.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div>
+                  <Button size="sm" onClick={saveDefaultModel} disabled={models.length === 0}>设为默认</Button>
+                </div>
               </div>
-            ))}
-            <div className="pane-header" style={{ marginTop: 10 }}>
-              <b className="muted">Prompt 模板</b>
-            </div>
-            {resources.filter((item) => item.kind === "prompt").length === 0 && <p className="muted">未发现 Prompt 模板</p>}
-            {resources.filter((item) => item.kind === "prompt").map((item) => (
-              <div key={item.path} className="model-row">
-                <span className="provider-name">{item.name}</span>
-                <span className="muted">{item.source}</span>
+            )}
+
+            {tab === "approval" && (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">四档策略（§9）：敏感文件（.env/.git/.ssh 等）始终拦截</p>
+                <Select value={approvalMode} onValueChange={saveApproval}>
+                  <SelectTrigger className="w-full" size="sm">
+                    <SelectValue placeholder="选择审批策略" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {approvalOptions.map(([mode, label]) => (
+                      <SelectItem key={mode} value={mode}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            ))}
-            <div className="pane-header" style={{ marginTop: 10 }}>
-              <b className="muted">Pi 包（实验：经 pi CLI 安装到 settings.packages）</b>
-            </div>
-            {packages.map((spec) => (
-              <div key={spec} className="model-row">{spec}</div>
-            ))}
-            <div className="provider-row">
-              <input
-                placeholder="npm:@scope/pkg 或 git:user/repo"
-                value={pkgSpec}
-                onChange={(e) => setPkgSpec(e.target.value)}
-                style={{ flex: 1, padding: "5px 9px", fontSize: 12 }}
-              />
-              <button className="ghost-btn" disabled={!pkgSpec.trim()} onClick={installPackage}>安装</button>
-            </div>
-            {pkgOutput && <pre className="approval-body">{pkgOutput}</pre>}
+            )}
+
+            {tab === "theme" && (
+              <div className="space-y-4">
+                <Select value={theme} onValueChange={saveTheme}>
+                  <SelectTrigger className="w-48" size="sm">
+                    <SelectValue placeholder="选择主题" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["dark", "light", "system"].map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {tab === "ui" && (
+              <div className="space-y-1">
+                <label className="flex items-center justify-between rounded-md px-3 py-2.5 text-sm hover:bg-accent">
+                  <span className="min-w-0">
+                    <span className="block font-medium">工具卡默认展开</span>
+                    <span className="block text-xs text-muted-foreground">新出现的工具调用卡片默认展开还是收起</span>
+                  </span>
+                  <Switch checked={ui.toolCardsDefaultOpen} onCheckedChange={(v) => void patchUi({ ui: { ...ui, toolCardsDefaultOpen: v } })} />
+                </label>
+                <label className="flex items-center justify-between rounded-md px-3 py-2.5 text-sm hover:bg-accent">
+                  <span className="min-w-0">
+                    <span className="block font-medium">思考过程默认展开</span>
+                    <span className="block text-xs text-muted-foreground">模型的 thinking 块默认展开还是收起（流式时始终实时展开）</span>
+                  </span>
+                  <Switch checked={ui.thinkingDefaultOpen} onCheckedChange={(v) => void patchUi({ ui: { ...ui, thinkingDefaultOpen: v } })} />
+                </label>
+              </div>
+            )}
+
+            {tab === "ext" && (
+              <div className="space-y-6">
+                <section>
+                  <SectionTitle action={
+                    <Button size="sm" variant="outline" onClick={() => void window.pi.engineReload().then(() => flash("已重载扩展"))}>
+                      重载扩展
+                    </Button>
+                  }>
+                    已加载扩展（选中项目后点“重载”生效）
+                  </SectionTitle>
+                  {extensions.length === 0 && <p className="text-xs text-muted-foreground">未发现扩展（全局 ~/.pi/agent/extensions 或项目 .pi/extensions）</p>}
+                  <div className="space-y-0.5">
+                    {extensions.map((x) => (
+                      <ListRow key={x.path} primary={x.name} secondary={x.source === "global" ? "全局" : "项目"} />
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <SectionTitle>Skills</SectionTitle>
+                  {resources.filter((item) => item.kind === "skill").length === 0 && <p className="text-xs text-muted-foreground">未发现 Skill</p>}
+                  <div className="space-y-0.5">
+                    {resources.filter((item) => item.kind === "skill").map((item) => (
+                      <ListRow key={item.path} primary={item.name} secondary={item.source} />
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <SectionTitle>Prompt 模板</SectionTitle>
+                  {resources.filter((item) => item.kind === "prompt").length === 0 && <p className="text-xs text-muted-foreground">未发现 Prompt 模板</p>}
+                  <div className="space-y-0.5">
+                    {resources.filter((item) => item.kind === "prompt").map((item) => (
+                      <ListRow key={item.path} primary={item.name} secondary={item.source} />
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <SectionTitle>Pi 包（实验：经 pi CLI 安装到 settings.packages）</SectionTitle>
+                  <div className="space-y-0.5">
+                    {packages.map((spec) => (
+                      <ListRow key={spec} primary={spec} />
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Input
+                      className="min-w-0 flex-1"
+                      placeholder="npm:@scope/pkg 或 git:user/repo"
+                      value={pkgSpec}
+                      onChange={(e) => setPkgSpec(e.target.value)}
+                    />
+                    <Button size="sm" disabled={!pkgSpec.trim()} onClick={installPackage}>安装</Button>
+                  </div>
+                  {pkgOutput && (
+                    <pre className="mt-3 max-h-40 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all text-muted-foreground">{pkgOutput}</pre>
+                  )}
+                </section>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -154,6 +154,15 @@ export const RuntimeInfoSchema = z.object({
   node: z.string(),
   model: z.string().optional(),
   thinkingLevel: z.string().optional(),
+  isStreaming: z.boolean().optional(),
+  sessionName: z.string().optional(),
+  contextUsage: z
+    .object({
+      tokens: z.number().nullable(),
+      contextWindow: z.number(),
+      percent: z.number().nullable(),
+    })
+    .optional(),
   tools: z.array(z.string()).optional(),
   stats: z
     .object({

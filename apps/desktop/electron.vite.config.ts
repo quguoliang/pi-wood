@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // workspace 包以 TS 源码直连（不出 dist）：
 // main/preload 侧 exclude 出 externalize 列表，由 esbuild 打进产物；
@@ -26,7 +27,10 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, "src/renderer"),
-    plugins: [react()],
+    resolve: {
+      alias: { "@": resolve(__dirname, "src/renderer/src") },
+    },
+    plugins: [react(), tailwindcss()],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, "src/renderer/index.html") },

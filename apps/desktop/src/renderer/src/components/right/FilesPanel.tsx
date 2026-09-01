@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkbenchStore } from "../../stores/workbench-store";
 
@@ -22,6 +24,7 @@ function isJsLike(path: string): boolean {
 
 export function FilesPanel(): React.JSX.Element {
   const activeProject = useSessionStore((s) => s.activeProject);
+  const engineReady = useSessionStore((s) => s.engineReady);
   const requestedFile = useWorkbenchStore((s) => s.requestedFile);
   const clearRequestedFile = useWorkbenchStore((s) => s.clearRequestedFile);
   const [expanded, setExpanded] = useState<Map<string, FileEntry[]>>(new Map());
@@ -40,14 +43,15 @@ export function FilesPanel(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!activeProject) {
+    // fs:tree 依赖主进程引擎已启动——以 engineReady 为准（activeProject 在引擎启动失败时仍保留）
+    if (!engineReady) {
       setExpanded(new Map());
       return;
     }
     void loadChildren(undefined).then((entries) => {
       setExpanded((m) => new Map(m).set("", entries));
     }).catch((err) => setStatus(String(err?.message ?? err)));
-  }, [activeProject, loadChildren]);
+  }, [engineReady, loadChildren]);
 
   const toggleDir = (entry: FileEntry): void => {
     setExpanded((m) => {
@@ -104,11 +108,12 @@ export function FilesPanel(): React.JSX.Element {
     entries.map((entry) => (
       <div key={entry.path}>
         <div
-          className="tree-row file-row"
+          className="flex cursor-pointer select-none items-center gap-1 rounded px-1 py-0.5 font-mono text-xs text-foreground hover:bg-accent"
           style={{ paddingLeft: 8 + depth * 14 }}
           onClick={() => (entry.type === "dir" ? toggleDir(entry) : openFile(entry))}
         >
-          {entry.type === "dir" ? (expanded.has(entry.path) ? "▾" : "▸") : ""}{entry.name}
+          <span className="w-3 shrink-0 text-muted-foreground">{entry.type === "dir" ? (expanded.has(entry.path) ? "▾" : "▸") : ""}</span>
+          <span className="truncate">{entry.name}</span>
         </div>
         {entry.type === "dir" && expanded.has(entry.path) && (
           <>{renderEntries(expanded.get(entry.path) ?? [], depth + 1)}</>
@@ -117,67 +122,75 @@ export function FilesPanel(): React.JSX.Element {
     ));
 
   return (
-    <div className="files-panel">
-      {!activeProject ? (
-        <div className="workbench-empty"><p>选择一个项目后即可浏览和编辑文件。</p></div>
+    <div className="flex h-full min-h-0 flex-col">
+      {!engineReady ? (
+        <div className="flex h-full items-center justify-center p-4 text-center text-xs text-muted-foreground">
+          <p>{activeProject ? "引擎未就绪：启动失败，请在设置中检查模型与 API Key 后重选项目。" : "选择一个项目后即可浏览和编辑文件。"}</p>
+        </div>
       ) : (
         <>
-      <div className="files-toolbar">
-        <input
-          className="files-search"
-          value={search}
-          placeholder="文件名搜索…"
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && runSearch()}
-        />
-        {searchResults && (
-          <button className="ghost-btn" onClick={() => { setSearchResults(null); setSearch(""); }}>清除</button>
-        )}
-      </div>
-      {searchResults ? (
-        <div className="file-tree">
-          {searchResults.length === 0 && <p className="muted">无匹配</p>}
-          {searchResults.map((r) => (
-            <div key={r.path} className="tree-row file-row" onClick={() => openFile({ ...r, name: r.path, type: "file" })}>
-              {r.path}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="file-tree">{renderEntries(expanded.get("") ?? [], 0)}</div>
-      )}
-
-      {active && (
-        <div className="editor-area">
-          <div className="editor-toolbar">
-            <span className="editor-tab active">{active.path}{active.dirty ? " *" : ""}</span>
-            <button className="ghost-btn" onClick={() => setEditing((v) => !v)}>
-              {editing ? "切只读" : "切编辑"}
-            </button>
-            {editing && (
-              <button className="ghost-btn" onClick={saveActive} disabled={!active.dirty}>
-                保存
-              </button>
+          <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border px-2">
+            <Input
+              className="h-8"
+              value={search}
+              placeholder="文件名搜索…"
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runSearch()}
+            />
+            {searchResults && (
+              <Button variant="ghost" size="sm" onClick={() => { setSearchResults(null); setSearch(""); }}>清除</Button>
             )}
-            {status && <span className="muted">{status}</span>}
           </div>
-          <CodeMirror
-            value={active.content}
-            theme="dark"
-            editable={editing}
-            basicSetup={{ foldGutter: false, searchKeymap: false }}
-            extensions={isJsLike(active.path) ? [javascript()] : []}
-            onChange={(value: string) =>
-              setOpenFiles((fs) =>
-                fs.map((f) =>
-                  f.path === active.path ? { ...f, content: value, dirty: f.content !== value } : f,
-                ),
-              )
-            }
-            height="300px"
-          />
-        </div>
-      )}
+          {searchResults ? (
+            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card/40 p-1">
+              {searchResults.length === 0 && <p className="p-2 text-xs text-muted-foreground">无匹配</p>}
+              {searchResults.map((r) => (
+                <div
+                  key={r.path}
+                  className="flex cursor-pointer select-none items-center gap-1 rounded px-1 py-0.5 font-mono text-xs text-foreground hover:bg-accent"
+                  onClick={() => openFile({ ...r, name: r.path, type: "file" })}
+                >
+                  <span className="truncate">{r.path}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card/40 p-1">{renderEntries(expanded.get("") ?? [], 0)}</div>
+          )}
+
+          {active && (
+            <div className="shrink-0 overflow-hidden rounded-lg border border-border bg-card/40">
+              <div className="flex h-9 items-center gap-1.5 border-b border-border px-2">
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{active.path}{active.dirty ? " *" : ""}</span>
+                <Button variant="ghost" size="sm" onClick={() => setEditing((v) => !v)}>
+                  {editing ? "切只读" : "切编辑"}
+                </Button>
+                {editing && (
+                  <Button variant="ghost" size="sm" onClick={saveActive} disabled={!active.dirty}>
+                    保存
+                  </Button>
+                )}
+                {status && <span className="text-xs text-muted-foreground">{status}</span>}
+              </div>
+              <div className="cm-host overflow-hidden">
+                <CodeMirror
+                  value={active.content}
+                  theme="dark"
+                  editable={editing}
+                  basicSetup={{ foldGutter: false, searchKeymap: false }}
+                  extensions={isJsLike(active.path) ? [javascript()] : []}
+                  onChange={(value: string) =>
+                    setOpenFiles((fs) =>
+                      fs.map((f) =>
+                        f.path === active.path ? { ...f, content: value, dirty: f.content !== value } : f,
+                      ),
+                    )
+                  }
+                  height="300px"
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

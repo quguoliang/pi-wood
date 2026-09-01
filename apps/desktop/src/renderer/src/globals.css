@@ -1,0 +1,295 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+/* Let Tailwind scan the workspace prompt-kit package (linked via pnpm) so its
+   utility classes are emitted into the renderer bundle. */
+@source "../../../../../packages/ui-kit/src";
+
+@custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
+
+/* ============================ Design tokens ============================ */
+/* Dark is the default surface. Light theme overrides live under
+   :root[data-theme="light"]; App.tsx toggles the data-theme attribute. */
+:root {
+  color-scheme: dark;
+
+  --radius: 0.7rem;
+
+  /* 分层主题（UI v3，唯一色彩来源）：chrome（顶栏/侧栏）比内容区浅一档。
+     换肤/调分层只改这里，组件层禁止散落面板底色。
+     内容区取色对齐参考稿 #181818（柔和深灰，非纯黑，减小白字对比刺眼）。 */
+  --surface-app: #181818; /* 内容区 */
+  --surface-chrome: #1e1e1e; /* 顶栏 + 侧栏（比内容区浅一档） */
+
+  --background: var(--surface-app);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.19 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.623 0.214 259);
+  --primary-foreground: oklch(0.985 0.005 255);
+  --secondary: oklch(0.268 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.268 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.285 0.02 259);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.636 0.208 25.3);
+  --success: oklch(0.72 0.17 155);
+  --warning: oklch(0.8 0.15 78);
+
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.623 0.214 259);
+
+  --sidebar: var(--surface-chrome);
+  --sidebar-foreground: oklch(0.92 0 0);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-accent: oklch(0.24 0.015 259);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.623 0.214 259);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.623 0.214 259);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* 亮色下 chrome 比内容区暗一档（同理唯一来源） */
+  --surface-app: oklch(0.99 0 0);
+  --surface-chrome: oklch(0.962 0.002 255);
+
+  --background: var(--surface-app);
+  --foreground: oklch(0.205 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.205 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.58 0.22 259);
+  --primary-foreground: oklch(0.985 0.005 255);
+  --secondary: oklch(0.968 0.002 255);
+  --secondary-foreground: oklch(0.28 0 0);
+  --muted: oklch(0.968 0.002 255);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.955 0.012 259);
+  --accent-foreground: oklch(0.28 0 0);
+  --destructive: oklch(0.577 0.245 27.3);
+  --success: oklch(0.6 0.16 155);
+  --warning: oklch(0.66 0.15 70);
+
+  --border: oklch(0.922 0.002 255);
+  --input: oklch(0.922 0.002 255);
+  --ring: oklch(0.58 0.22 259);
+
+  --sidebar: var(--surface-chrome);
+  --sidebar-foreground: oklch(0.28 0 0);
+  --sidebar-border: oklch(0.9 0.002 255);
+  --sidebar-accent: oklch(0.955 0.012 259);
+  --sidebar-accent-foreground: oklch(0.28 0 0);
+  --sidebar-primary: oklch(0.58 0.22 259);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.58 0.22 259);
+}
+
+@theme inline {
+  --color-surface-app: var(--surface-app);
+  --color-surface-chrome: var(--surface-chrome);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ============================ Base layer ============================ */
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 45%, transparent);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 28%, transparent);
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
+    background-clip: content-box;
+  }
+}
+
+/* ===================== Markdown prose (prompt-kit Response) ===================== */
+@layer components {
+  .pk-prose {
+    @apply text-[0.83rem] leading-[1.7] break-words;
+  }
+  .pk-prose :where(p, ul, ol, pre, table, blockquote) {
+    margin-top: 0;
+    margin-bottom: 0.7rem;
+  }
+  .pk-prose :where(h1, h2, h3, h4) {
+    margin: 1.15rem 0 0.5rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .pk-prose :where(h1) { font-size: 1.15rem; }
+  .pk-prose :where(h2) { font-size: 1.05rem; }
+  .pk-prose :where(h3) { font-size: 0.95rem; }
+  .pk-prose :where(ul) { list-style: disc; padding-left: 1.35rem; }
+  .pk-prose :where(ol) { list-style: decimal; padding-left: 1.35rem; }
+  .pk-prose :where(li) { margin: 0.15rem 0; }
+  .pk-prose :where(a) { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+  .pk-prose :where(blockquote) {
+    border-left: 3px solid var(--border);
+    padding-left: 0.85rem;
+    color: var(--muted-foreground);
+  }
+  .pk-prose :where(table) { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .pk-prose :where(th, td) { border: 1px solid var(--border); padding: 0.35rem 0.6rem; text-align: left; }
+  .pk-prose :where(th) { background: var(--muted); font-weight: 600; }
+  .pk-prose :where(hr) { border: 0; border-top: 1px solid var(--border); margin: 1.1rem 0; }
+  .pk-prose :where(:not(pre) > code) {
+    padding: 0.1rem 0.35rem;
+    border-radius: 5px;
+    background: var(--muted);
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+  }
+}
+
+/* ===================== Window drag region ===================== */
+@layer utilities {
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+  .app-no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
+
+/* ===================== Third-party surface bridges ===================== */
+@layer base {
+  /* dockview (right workbench) — map host theme onto --dv-* variables */
+  .dockview-host {
+    --dv-background-color: var(--background);
+    --dv-group-view-background-color: var(--background);
+    --dv-tabs-and-actions-container-background-color: var(--sidebar);
+    --dv-activegroup-visiblepanel-tab-background-color: var(--background);
+    --dv-activegroup-hiddenpanel-tab-background-color: var(--sidebar);
+    --dv-inactivegroup-visiblepanel-tab-background-color: var(--muted);
+    --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+    --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+    --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+    --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
+    --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+    --dv-tab-divider-color: var(--border);
+    --dv-separator-border: var(--border);
+    --dv-paneview-header-border-color: var(--border);
+    --dv-icon-hover-background-color: var(--accent);
+    --dv-drag-over-background-color: color-mix(in oklab, var(--primary) 20%, transparent);
+    --dv-active-sash-color: var(--primary);
+  }
+  .dockview-host .dv-tabs-and-actions-container {
+    font-family: var(--font-sans);
+  }
+
+  /* xterm terminal inherits the app surface */
+  .terminal-host .xterm {
+    padding: 6px 4px;
+  }
+  .terminal-host .xterm-viewport {
+    background-color: var(--background) !important;
+  }
+
+  /* CodeMirror editors fill their rounded container */
+  .cm-host .cm-editor {
+    background: transparent;
+    height: 100%;
+  }
+  .cm-host .cm-editor.cm-focused {
+    outline: none;
+  }
+  .cm-host .cm-scroller {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .cm-host .cm-gutters {
+    background: transparent;
+    border-right: 1px solid var(--border);
+    color: var(--muted-foreground);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
