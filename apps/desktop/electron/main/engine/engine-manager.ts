@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from "electron";
 import { execFile } from "node:child_process";
-import { writeFileSync, mkdirSync, readFileSync, statSync, readdirSync, rmSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, statSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -12,10 +12,7 @@ import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
 import { permissionGateExtension, type ApprovalPolicy } from "../security/approval-gate";
-import {
-  createPiWoodSubagentRuntime,
-  type SubagentRuntimeHandle,
-} from "../subagent/pi-wood-subagent";
+import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
 
@@ -74,8 +71,8 @@ let activeSnapshots: SnapshotService | undefined;
 // T7.6：与主会话完全隔离的「侧边问答」第二运行时（独立 session/事件流，绝不影响主 adapter）
 let btwAdapter: SdkAdapter | undefined;
 let btwUnsub: (() => void) | undefined;
-// T6.2：当前项目的子代理运行时（in-process vendored pi-subagent），切项目/停用时回收重建。
-let subagentHandle: SubagentRuntimeHandle | undefined;
+// T6.2（方案 1）：子代理运行时由 SDK/jiti 加载的 ESM 扩展创建，经桥回传，供切项目/停用时回收。
+let subagentRuntime: PiWoodSubagentRuntimeRef | undefined;
 // T7.9：会话辅助——采集每轮 用户输入 / 助手正文，settled 后触发一次辅助生成
 let assistUserText = "";
 let assistTextBuf = "";
@@ -191,12 +188,20 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
   reinjectProviderEnv();
   const next = new SdkAdapter();
-  // T6.2：in-process 子代理运行时。child session 复用桌面审批策略与 ApprovalCard
-  // 通道（闭包注入），使子代理 bash/edit/write 仍过审批门，杜绝审批旁路。
-  subagentHandle = createPiWoodSubagentRuntime({
-    getPolicy: () => getPolicy(),
-    confirm: (title, message) => confirmViaRenderer(title, message),
-  });
+  // T6.2（方案 1）：子代理以 SDK 托管的 ESM 扩展经 jiti 运行时加载（不打进 CJS 主进程）。
+  // child 审批门通过 globalThis 桥复用桌面 getPolicy + ApprovalCard confirm，杜绝审批旁路。
+  const subagentEntryPath = join(__dirname, "../../electron/main/subagent/pi-wood-subagent-entry.ts");
+  const subagentEnabled = existsSync(subagentEntryPath);
+  globalThis.__piwoodSubagentBridge = {
+    buildChildGate: () =>
+      permissionGateExtension(
+        () => getPolicy(),
+        (title, message) => confirmViaRenderer(title, message),
+      ),
+    onRuntime: (rt) => {
+      subagentRuntime = rt;
+    },
+  };
   await next.start({
     projectDir,
     uiBridge: uiBridge(),
@@ -207,8 +212,8 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
         (title, message) => confirmViaRenderer(title, message),
         () => isAutoAcceptForSession(next),
       ),
-      subagentHandle.inlineExtension,
     ],
+    ...(subagentEnabled ? { additionalExtensionPaths: [subagentEntryPath] } : {}),
   });
   const snapshots = new SnapshotService(projectDir, (m) => console.warn(m));
   activeSnapshots = snapshots;
@@ -349,15 +354,21 @@ async function closeBtw(): Promise<void> {
   btwAdapter = undefined;
 }
 
-/** T6.2：回收当前项目的子代理运行时（关所有 child 会话 + 清投递）。best-effort。 */
+/** T6.2：回收当前项目由 ESM 扩展经桥回传的子代理运行时（关 child 会话 + 清投递）。best-effort。 */
 async function disposeSubagent(): Promise<void> {
-  const handle = subagentHandle;
-  subagentHandle = undefined;
-  if (!handle) return;
+  globalThis.__piwoodSubagentBridge = undefined;
+  const rt = subagentRuntime;
+  subagentRuntime = undefined;
+  if (!rt) return;
   try {
-    await handle.dispose();
+    await rt.subagents.shutdown();
   } catch {
-    /* 回收失败不影响切换 */
+    /* ignore */
+  }
+  try {
+    rt.delivery.shutdown();
+  } catch {
+    /* ignore */
   }
 }
 

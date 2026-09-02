@@ -17,17 +17,32 @@ const require = createRequire(join(root, "apps/desktop/placeholder.js"));
 
 const pkgDir = dirname(require.resolve("electron/package.json"));
 const version = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")).version;
-const exe = join(pkgDir, "dist", process.platform === "win32" ? "electron.exe" : "electron");
+const binaryRel =
+  process.platform === "win32"
+    ? "electron.exe"
+    : process.platform === "darwin"
+      ? join("Electron.app", "Contents", "MacOS", "Electron")
+      : "electron";
+const exe = join(pkgDir, "dist", binaryRel);
 
 if (existsSync(exe)) {
   process.exit(0);
 }
 console.warn(`[ensure-electron] ${exe} missing, repairing...`);
 
+if (process.platform !== "win32") {
+  // 自愈（缓存 zip + Expand-Archive）是 Windows 专用；非 win 平台直接给下载指引。
+  console.error(
+    `[ensure-electron] Electron binary not found for ${process.platform}. Download it:\n` +
+    `  cd ${pkgDir} && node install.js`,
+  );
+  process.exit(1);
+}
+
 const pnpmDir = join(root, "node_modules/.pnpm");
 // 1) 同版本兄弟目录里找完整 dist
 const sibling = readdirSync(pnpmDir).find(
-  (name) => name.startsWith(`electron@${version}`) && join(pnpmDir, name, "node_modules/electron/dist") !== join(pkgDir, "dist") && existsSync(join(pnpmDir, name, "node_modules/electron/dist", process.platform === "win32" ? "electron.exe" : "electron")),
+  (name) => name.startsWith(`electron@${version}`) && join(pnpmDir, name, "node_modules/electron/dist") !== join(pkgDir, "dist") && existsSync(join(pnpmDir, name, "node_modules/electron/dist", binaryRel)),
 );
 if (sibling) {
   cpSync(join(pnpmDir, sibling, "node_modules/electron/dist"), join(pkgDir, "dist"), { recursive: true });

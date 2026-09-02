@@ -1,0 +1,26 @@
+/**
+ * 子代理桥（方案 1）：主进程（CJS）与被 SDK/jiti 以 ESM 加载的 vendored pi-subagent
+ * 扩展之间的**同进程**契约。扩展在 ESM 世界，拿不到主进程里的 confirmViaRenderer，
+ * 故由主进程在启动引擎前把能力挂到 globalThis，扩展读取并回传 runtime 以便回收。
+ *
+ * 声明为 ambient，会被 tsconfig.node（纳入 electron 目录下的 ts 源码）自动收集。
+ */
+export interface PiWoodSubagentBridge {
+  /** 产出一个 child 内联审批门（结构等价 SDK InlineExtension 的 {name, factory} 形态）。 */
+  buildChildGate: () => { name: string; factory: (pi: unknown) => void };
+  /** 扩展建好运行时后回传，供主进程在切项目/停用时回收。 */
+  onRuntime: (runtime: PiWoodSubagentRuntimeRef) => void;
+}
+
+/** 主进程只需调这两个 shutdown，故用最小结构类型，避免把 vendor 类型牵进 CJS 主进程。 */
+export interface PiWoodSubagentRuntimeRef {
+  subagents: { shutdown: () => Promise<void> };
+  delivery: { shutdown: () => void };
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __piwoodSubagentBridge: PiWoodSubagentBridge | undefined;
+}
+
+export {};

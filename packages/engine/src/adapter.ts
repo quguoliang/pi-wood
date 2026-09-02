@@ -21,6 +21,12 @@ export interface EngineStartOptions {
   customTools?: unknown[];
   /** 宿主 inline 扩展（如审批门），经 resourceLoaderOptions.extensionFactories 注入 */
   inlineExtensions?: unknown[];
+  /**
+   * 宿主指定的扩展源路径（.ts/.js 文件或含 index.ts 的目录），经
+   * resourceLoaderOptions.additionalExtensionPaths 交 SDK 的 jiti/ESM 管线在运行时加载。
+   * 用于 ESM-only 的第一方扩展（如 vendored pi-subagent）——不能被打进 CJS 主进程 bundle。
+   */
+  additionalExtensionPaths?: string[];
 }
 
 /** 方案 §5.2：ctx.ui 桌面桥。阻塞式对话框（select/confirm/input）由宿主经 IPC 往返渲染层实现 */

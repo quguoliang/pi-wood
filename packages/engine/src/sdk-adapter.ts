@@ -52,7 +52,12 @@ export class SdkAdapter implements EngineAdapter {
       const services: AgentSessionServicesLike = await this.pi!.createAgentSessionServices({
         cwd: factoryOpts.cwd,
         agentDir: factoryOpts.agentDir,
-        resourceLoaderOptions: { extensionFactories: opts.inlineExtensions as never },
+        resourceLoaderOptions: {
+          extensionFactories: opts.inlineExtensions as never,
+          ...(opts.additionalExtensionPaths && opts.additionalExtensionPaths.length > 0
+            ? { additionalExtensionPaths: opts.additionalExtensionPaths }
+            : {}),
+        } as never,
       });
       const result: { session: AgentSessionLike } = await this.pi!.createAgentSessionFromServices({
         services,
