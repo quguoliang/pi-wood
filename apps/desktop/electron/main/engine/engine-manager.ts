@@ -5,7 +5,7 @@ import { basename, dirname, extname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type GitInfo, type RuntimeInfo } from "@pi-wood/ipc-schema";
+import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type GitInfo, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
@@ -73,6 +73,8 @@ let btwAdapter: SdkAdapter | undefined;
 let btwUnsub: (() => void) | undefined;
 // T6.2（方案 1）：子代理运行时由 SDK/jiti 加载的 ESM 扩展创建，经桥回传，供切项目/停用时回收。
 let subagentRuntime: PiWoodSubagentRuntimeRef | undefined;
+// T6.3：订阅 vendored runs 注册表变更，实时把子代理状态推给渲染层面板。
+let subagentRunsUnsub: (() => void) | undefined;
 // T7.9：会话辅助——采集每轮 用户输入 / 助手正文，settled 后触发一次辅助生成
 let assistUserText = "";
 let assistTextBuf = "";
@@ -208,6 +210,15 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
     },
     onRuntime: (rt) => {
       subagentRuntime = rt;
+      // T6.3：runs 注册表变更 → 推送子代理状态快照给渲染层面板。
+      subagentRunsUnsub?.();
+      const push = (): void => send(ENGINE_CHANNELS.subagentRuns, mapSubagentRuns(rt.runs.list()));
+      try {
+        subagentRunsUnsub = rt.runs.subscribe(push);
+        push();
+      } catch {
+        subagentRunsUnsub = undefined;
+      }
     },
   };
   await next.start({
@@ -362,9 +373,36 @@ async function closeBtw(): Promise<void> {
   btwAdapter = undefined;
 }
 
+/** T6.3：把 vendored runs 视图映射成渲染层子代理面板用的 SubagentRunInfo[]。 */
+function mapSubagentRuns(
+  views: readonly {
+    id: string;
+    agent: string;
+    harness: string;
+    description: string;
+    status: "running" | "completed" | "failed" | "cancelled";
+    elapsedMs: number;
+    turns: number;
+    activity?: string;
+  }[],
+): SubagentRunInfo[] {
+  return views.map((v) => ({
+    id: v.id,
+    agent: v.agent,
+    harness: v.harness,
+    description: v.description,
+    status: v.status,
+    elapsedMs: v.elapsedMs,
+    turns: v.turns,
+    activity: v.activity,
+  }));
+}
+
 /** T6.2：回收当前项目由 ESM 扩展经桥回传的子代理运行时（关 child 会话 + 清投递）。best-effort。 */
 async function disposeSubagent(): Promise<void> {
   globalThis.__piwoodSubagentBridge = undefined;
+  subagentRunsUnsub?.();
+  subagentRunsUnsub = undefined;
   const rt = subagentRuntime;
   subagentRuntime = undefined;
   if (!rt) return;
@@ -433,6 +471,11 @@ export function initEngineIpc(): void {
     await closeBtw();
     return true;
   });
+
+  // T6.3：子代理面板挂载时拉一次 runs 快照初值（后续增量走 subagentRuns 推送）。
+  ipcMain.handle(ENGINE_CHANNELS.subagentList, () =>
+    subagentRuntime ? mapSubagentRuns(subagentRuntime.runs.list()) : [],
+  );
 
   ipcMain.handle("engine:diffRevert", (_e, raw: unknown) => {
     const { changeId } = z.object({ changeId: z.string().min(1) }).parse(raw);

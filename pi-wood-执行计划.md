@@ -479,7 +479,8 @@
 > **依赖**：全部依赖 §7.5（goofansu in-process 引擎接线）完成后开工；§7.5 S5「子代理进度/完成通知上屏」由本节 T6.3~T6.7 具体化。
 > **现状核实**（源码级）：`session-store.ts` 单会话 zustand（无 parentID/多会话追踪）；`RightPane.tsx` Chrome 式单标签，`WorkbenchTab = "diff"|"term"|"browser"|"files"`（定义在 `workbench-store.ts`），`panelMeta`/`panelNode` switch 扩展点清晰；`runtime-store.ts` 跟踪 RuntimeInfo/tasks/todos，无成本汇总；`ipc-schema/engine.ts` `EngineEventSchema` 已有 `approval_request`/`permission_granted` 自定义事件，`ENGINE_CHANNELS` 可加 subagent 通道；`tool-card.tsx` `ToolCard` 有 footer 扩展点。
 
-### [ ] T6.3 子代理运行时追踪 + 状态面板（基础，最高优先级）
+### [x] T6.3 子代理运行时追踪 + 状态面板（基础，最高优先级）
+> **✅ 2026-09-02 落地（真机 dev11 验证：面板自动弹出、状态 running→completed）**。**数据源与本（方案1 前）规格的差异**：不新建 `subagent-registry.ts` 类、不拦截 child session 事件打 `_origin`——改用 vendored **`runtime.runs` 注册表**（`list(): RunView[]` + `subscribe`）作为唯一事实源。落地：① `bridge.ts` 的 `PiWoodSubagentRuntimeRef` 拓宽暴露 `runs`；② `engine-manager` 在 `onRuntime` 里 `runs.subscribe`→`send(engine:subagentRuns, mapSubagentRuns(list))`，`disposeSubagent` 退订；③ `ipc-schema` 加 `SubagentRunInfoSchema` + 通道 `subagentRuns`(推)/`subagentList`(拉初值)；④ preload+global.d.ts `onSubagentRuns`/`subagentList`；⑤ 渲染层 `subagent-store`（runs + refresh）；⑥ `SubagentPanel`（agent 名/状态徽章/耗时/轮次/activity + 空态）；⑦ `workbench-store` 加 `"subagent"` tab、`RightPane` `panelMeta`(icon `brain`, `Ctrl+Shift+A`)+`panelNode` case、`App` 订阅 + **0→N 自动开面板 once**。**两处有意未做**：(a) **child 审批上浮到面板**——现仍由 `guardChildTool` 在**对话流**弹 ApprovalCard（重路由到面板留后续）；(b) **child 执行内容/只读子会话视图 = T6.5**——面板只有 runs 元数据（状态/耗时/轮次/activity 一行），看不到子代理内部消息流/工具/思考，需转发 child session 事件才能补。
 - 来源：OpenChamber `WorkStatusSubagentsSection.tsx`（parentID 过滤 + 状态/审批/成本 + 出现即展开）
 - 前置：§7.5 S4（引擎侧注入，child session 可创建）
 - 步骤：

@@ -135,6 +135,16 @@ const api = {
     ipcRenderer.invoke("engine:btwAsk", { question, context }),
   btwAbort: (): Promise<boolean> => ipcRenderer.invoke("engine:btwAbort"),
   btwClose: (): Promise<boolean> => ipcRenderer.invoke("engine:btwClose"),
+  // T6.3 子代理运行时状态
+  onSubagentRuns: (
+    cb: (runs: Array<{ id: string; agent: string; harness: string; description: string; status: string; elapsedMs: number; turns: number; activity?: string }>) => void,
+  ): (() => void) => {
+    const h = (_e: unknown, runs: Array<{ id: string; agent: string; harness: string; description: string; status: string; elapsedMs: number; turns: number; activity?: string }>): void => cb(runs);
+    ipcRenderer.on("engine:subagentRuns", h);
+    return () => ipcRenderer.removeListener("engine:subagentRuns", h);
+  },
+  subagentList: (): Promise<Array<{ id: string; agent: string; harness: string; description: string; status: string; elapsedMs: number; turns: number; activity?: string }>> =>
+    ipcRenderer.invoke("engine:subagentList"),
   // T3.2/T4.1
   providerList: (): Promise<unknown> => ipcRenderer.invoke("provider:list"),
   providerSetKey: (provider: string, key: string): Promise<boolean> =>

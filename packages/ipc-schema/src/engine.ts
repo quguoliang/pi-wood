@@ -208,6 +208,27 @@ export const BtwAskCommandSchema = z.object({
 });
 export type BtwAskCommand = z.infer<typeof BtwAskCommandSchema>;
 
+// ---------- T6.3 子代理运行时状态（vendored pi-subagent 的 runs 注册表快照） ----------
+
+export const SubagentRunInfoSchema = z.object({
+  /** run id（agent_start/agent_wait 用的那个） */
+  id: z.string(),
+  /** 子代理 profile 名（agent_start 的 agent 参数） */
+  agent: z.string(),
+  /** harness 名（当前恒为 pi） */
+  harness: z.string(),
+  /** 该 run 的一句话标签（description） */
+  description: z.string(),
+  status: z.enum(["running", "completed", "failed", "cancelled"]),
+  /** 已用/总耗时（毫秒；running 时为截至最近一次事件的耗时） */
+  elapsedMs: z.number(),
+  /** 轮次数 */
+  turns: z.number(),
+  /** 实时活动（当前工具/思考摘要），仅展示用 */
+  activity: z.string().optional(),
+});
+export type SubagentRunInfo = z.infer<typeof SubagentRunInfoSchema>;
+
 // ---------- 通道名常量（main/preload/render 共用） ----------
 
 export const ENGINE_CHANNELS = {
@@ -232,4 +253,7 @@ export const ENGINE_CHANNELS = {
   btwAbort: "engine:btwAbort",
   btwClose: "engine:btwClose",
   assistResult: "engine:assistResult",
+  // T6.3：子代理 runs 快照（subagentRuns=main→renderer 推送；subagentList=renderer→main 拉取初值）
+  subagentRuns: "engine:subagentRuns",
+  subagentList: "engine:subagentList",
 } as const;

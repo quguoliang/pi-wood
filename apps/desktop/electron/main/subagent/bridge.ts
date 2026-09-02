@@ -17,10 +17,26 @@ export interface PiWoodSubagentBridge {
   onRuntime: (runtime: PiWoodSubagentRuntimeRef) => void;
 }
 
-/** 主进程只需调这两个 shutdown，故用最小结构类型，避免把 vendor 类型牵进 CJS 主进程。 */
+/** 主进程只需调 shutdown + 读 runs，故用最小结构类型，避免把 vendor 类型牵进 CJS 主进程。 */
+export interface PiWoodSubagentRunView {
+  id: string;
+  agent: string;
+  harness: string;
+  description: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  elapsedMs: number;
+  turns: number;
+  activity?: string;
+}
+
 export interface PiWoodSubagentRuntimeRef {
   subagents: { shutdown: () => Promise<void> };
   delivery: { shutdown: () => void };
+  /** T6.3：runs 注册表快照 + 变更订阅（供推送到渲染层子代理面板）。 */
+  runs: {
+    list(): readonly PiWoodSubagentRunView[];
+    subscribe(listener: () => void): () => void;
+  };
 }
 
 declare global {

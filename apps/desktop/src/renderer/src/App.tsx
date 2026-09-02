@@ -16,6 +16,7 @@ import { Toaster } from "./components/ui/sonner";
 import { useSessionStore } from "./stores/session-store";
 import { useRuntimeStore } from "./stores/runtime-store";
 import { useBtwStore } from "./stores/btw-store";
+import { useSubagentStore } from "./stores/subagent-store";
 import { useAssistStore } from "./stores/assist-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
 import { cycleColumnFocus, focusColumn } from "./hooks/use-column-focus";
@@ -47,6 +48,9 @@ export default function App() {
       } else if (mod && e.shiftKey && key === "b") {
         e.preventDefault();
         openWorkbench("btw");
+      } else if (mod && e.shiftKey && key === "a") {
+        e.preventDefault();
+        openWorkbench("subagent");
       } else if (mod && !e.shiftKey && key === "k") {
         e.preventDefault();
         setPaletteOpen(true);
@@ -102,6 +106,17 @@ export default function App() {
       }
     });
     const offBtwEvt = window.pi.onBtwEvent((event) => useBtwStore.getState().handleEvent(event));
+    // T6.3：子代理 runs 推送 → store；0→N 自动打开子代理面板一次（之后尊重手动关闭）。
+    let hadSubagentRuns = false;
+    const offSubagentRuns = window.pi.onSubagentRuns((runs) => {
+      useSubagentStore.getState().setRuns(runs);
+      if (runs.length > 0 && !hadSubagentRuns) {
+        hadSubagentRuns = true;
+        openWorkbench("subagent");
+      } else if (runs.length === 0) {
+        hadSubagentRuns = false;
+      }
+    });
     const offAssist = window.pi.onAssistResult((data) => {
       const s = useSessionStore.getState();
       useAssistStore.getState().set({ recap: data.recap, suggestions: data.suggestions, session: s.currentSessionId ?? "", forItemsLen: s.items.length });
@@ -114,6 +129,7 @@ export default function App() {
       offNotify();
       offEvt();
       offBtwEvt();
+      offSubagentRuns();
       offAssist();
       offDiff();
       window.removeEventListener("keydown", onKey);

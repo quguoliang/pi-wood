@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -95,6 +95,8 @@ declare global {
       btwAsk(question: string, context?: string): Promise<boolean>;
       btwAbort(): Promise<boolean>;
       btwClose(): Promise<boolean>;
+      onSubagentRuns(cb: (runs: SubagentRunInfo[]) => void): () => void;
+      subagentList(): Promise<SubagentRunInfo[]>;
     };
   }
 }
