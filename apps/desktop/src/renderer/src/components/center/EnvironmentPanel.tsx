@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "../../stores/session-store";
-import { useRuntimeStore } from "../../stores/runtime-store";
+import { useRuntimeStore, type TodoItem } from "../../stores/runtime-store";
 import { Icon, type IconName } from "../ui/Icon";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,35 @@ function Row({ icon, title, spin, children }: { icon: IconName; title?: string; 
   );
 }
 
+function TodoRow({ item, blocked }: { item: TodoItem; blocked: boolean }): React.JSX.Element {
+  if (item.status === "completed") {
+    return (
+      <div className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
+        <Icon name="check" className="mt-0.5 size-3.5 shrink-0 text-success/70" />
+        <span className="min-w-0 break-words line-through">{item.subject}</span>
+      </div>
+    );
+  }
+  if (item.status === "in_progress") {
+    return (
+      <div className="flex items-start gap-2 text-[12.5px] text-foreground">
+        <Icon name="spinner" className="mt-0.5 size-3.5 shrink-0 animate-spin text-warning" />
+        <span className="min-w-0 break-words">{item.activeForm || item.subject}</span>
+      </div>
+    );
+  }
+  // pending（被未完成依赖阻塞时更弱化并标出依赖）
+  return (
+    <div className={cn("flex items-start gap-2 text-[12.5px]", blocked ? "text-muted-foreground/60" : "text-muted-foreground")}>
+      <Icon name="circle" className={cn("mt-0.5 size-3.5 shrink-0", blocked ? "text-warning/50" : "text-muted-foreground/50")} />
+      <span className="min-w-0 break-words">
+        {item.subject}
+        {blocked && item.blockedBy?.length ? <span className="ml-1 text-[11px]">· 依赖 {item.blockedBy.map((d) => `#${d}`).join(" ")}</span> : null}
+      </span>
+    </div>
+  );
+}
+
 const fmtK = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
 
 export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): React.JSX.Element {
@@ -46,6 +75,7 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
   const queue = useSessionStore((s) => s.queue);
   const info = useRuntimeStore((s) => s.info);
   const tasks = useRuntimeStore((s) => s.tasks);
+  const todos = useRuntimeStore((s) => s.todos);
   const refresh = useRuntimeStore((s) => s.refresh);
   const [showTools, setShowTools] = useState(false);
   const projectName = activeProject?.split(/[\\/]/).filter(Boolean).pop() ?? "未选择项目";
@@ -64,6 +94,11 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
   const usage = info?.contextUsage;
   const showTasks = streaming || tasks.length > 0;
   const queued = queue.steering.length + queue.followUp.length;
+  const visibleTodos = todos.filter((t) => t.status !== "deleted");
+  const doneTodos = visibleTodos.filter((t) => t.status === "completed").length;
+  const completedIds = new Set(todos.filter((t) => t.status === "completed").map((t) => t.id));
+  const isBlocked = (t: TodoItem): boolean =>
+    t.status === "pending" && (t.blockedBy?.some((id) => !completedIds.has(id)) ?? false);
 
   return (
     <aside aria-label="运行时信息" className="absolute right-3 top-12 z-30 w-[19rem]">
@@ -135,6 +170,25 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
                 ) : (
                   <Row icon="wrench" title={info.tools.join(", ")}>{info.tools.slice(0, 6).join("、")}{info.tools.length > 6 ? " …" : ""}</Row>
                 )}
+              </Group>
+            )}
+
+            {visibleTodos.length > 0 && (
+              <Group
+                title="任务"
+                action={<span className="text-[11px] text-muted-foreground">{doneTodos}/{visibleTodos.length}</span>}
+              >
+                <div className="mb-1.5 h-1 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary/70 transition-[width]"
+                    style={{ width: `${Math.round((doneTodos / visibleTodos.length) * 100)}%` }}
+                  />
+                </div>
+                <div className="max-h-52 space-y-1 overflow-y-auto">
+                  {visibleTodos.map((t) => (
+                    <TodoRow key={t.id} item={t} blocked={isBlocked(t)} />
+                  ))}
+                </div>
               </Group>
             )}
 

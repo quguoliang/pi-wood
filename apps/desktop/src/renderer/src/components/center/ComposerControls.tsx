@@ -167,7 +167,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
             onClick={props.onSend}
             aria-label="发送消息"
             className={cn(
-              "ml-0.5 rounded-full transition-colors",
+              "ml-0.5 rounded-full",
               props.canSend ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground",
             )}
           >

@@ -29,6 +29,19 @@ export interface AgentSessionLike {
   bindExtensions(bindings: Record<string, unknown>): Promise<void>;
   reload(options?: Record<string, unknown>): Promise<void>;
   dispose?(): void;
+  /** T5.1：文件型 prompt 模板（聚合到命令面板「模板」） */
+  promptTemplates?: ReadonlyArray<{ name: string; description?: string }>;
+  /** T5.1：资源加载器（skills / prompts 单一真实来源） */
+  resourceLoader?: {
+    getSkills?(): {
+      skills: Array<{ name: string; description?: string }>;
+      prompts: Array<{ name: string; description?: string }>;
+    };
+  };
+  /** T5.1：扩展注册命令（registerCommand，如 /plan） */
+  extensionRunner?: {
+    getRegisteredCommands?(): Array<{ invocationName: string; description?: string }>;
+  };
 }
 
 export interface AgentSessionServicesLike {

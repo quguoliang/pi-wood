@@ -109,7 +109,7 @@ function TabButton({
         onClick={onClose}
         aria-label={`关闭${meta.title}`}
         className={cn(
-          "grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-opacity hover:bg-foreground/10 hover:text-foreground",
+          "grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[opacity,background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-foreground/10 hover:text-foreground",
           active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
@@ -124,12 +124,13 @@ function Launcher({ onPick }: { onPick(tab: WorkbenchTab): void }): React.JSX.El
   return (
     <div className="flex h-full items-center justify-center px-5">
       <div className="flex w-full max-w-72 flex-col gap-1.5">
-        {LAUNCH_ORDER.map((tab) => (
+        {LAUNCH_ORDER.map((tab, i) => (
           <button
             key={tab}
             type="button"
             onClick={() => onPick(tab)}
-            className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-white/[0.03] px-3.5 py-3 text-left transition-colors hover:border-border hover:bg-white/[0.06]"
+            style={{ animationDelay: `${i * 55}ms` }}
+            className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out [animation-fill-mode:both] flex items-center gap-2.5 rounded-lg border border-border/60 bg-white/[0.03] px-3.5 py-3 text-left transition-colors hover:border-border hover:bg-white/[0.06]"
           >
             <Icon name={panelMeta[tab].icon} className="size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-sm text-foreground">{panelMeta[tab].title}</span>

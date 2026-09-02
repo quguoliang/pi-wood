@@ -160,7 +160,7 @@ export function PackageMarket({ onClose }: { onClose(): void }): React.JSX.Eleme
     <button
       type="button"
       onClick={() => setTab(id)}
-      className={cn("rounded-md px-3 py-1.5 text-xs font-medium transition-colors", tab === id ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground")}
+      className={cn("rounded-md px-3 py-1.5 text-xs font-medium transition-[background-color,color,transform] motion-safe:active:scale-[0.97]", tab === id ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground")}
     >
       {label}
     </button>

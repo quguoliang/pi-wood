@@ -13,9 +13,43 @@ export interface RunningTask {
   input?: Record<string, unknown>;
 }
 
+/** rpiv-todo 的任务项（仅取渲染所需字段；快照来自 todo 工具 result.details.tasks） */
+export interface TodoItem {
+  id: number;
+  subject: string;
+  status: "pending" | "in_progress" | "completed" | "deleted";
+  activeForm?: string;
+  blockedBy?: number[];
+}
+
+/**
+ * 从 tool_execution_end 的 result 提取 todo 全量快照。
+ * 判据用特征（details.tasks 为带 id+status 的对象数组）而非工具名，
+ * 与 rpiv-todo 版本解耦——它每次成功调用都回传全量 tasks，渲染层无需自跑 reducer。
+ */
+function extractTodoSnapshot(result: unknown): TodoItem[] | undefined {
+  const tasks = (result as { details?: { tasks?: unknown } } | undefined)?.details?.tasks;
+  if (!Array.isArray(tasks)) return undefined;
+  const parsed: TodoItem[] = [];
+  for (const t of tasks) {
+    if (!t || typeof t !== "object") continue;
+    const item = t as Record<string, unknown>;
+    if (typeof item.id !== "number" || typeof item.status !== "string") continue;
+    parsed.push({
+      id: item.id,
+      subject: typeof item.subject === "string" ? item.subject : "",
+      status: item.status as TodoItem["status"],
+      activeForm: typeof item.activeForm === "string" ? item.activeForm : undefined,
+      blockedBy: Array.isArray(item.blockedBy) ? (item.blockedBy as number[]) : undefined,
+    });
+  }
+  return parsed;
+}
+
 interface RuntimeState {
   info: RuntimeInfo | undefined;
   tasks: RunningTask[];
+  todos: TodoItem[];
   planText: string | undefined;
   refresh(): Promise<void>;
   trackEvent(e: Record<string, unknown>): void;
@@ -25,6 +59,7 @@ interface RuntimeState {
 export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   info: undefined,
   tasks: [],
+  todos: [],
   planText: undefined,
 
   async refresh() {
@@ -52,10 +87,15 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
     }
     if (type === "tool_execution_end") {
       const callId = String(e.toolCallId ?? "");
+      if (!e.isError) {
+        const snapshot = extractTodoSnapshot(e.result);
+        if (snapshot) set({ todos: snapshot });
+      }
       set({ tasks: get().tasks.filter((t) => t.toolCallId !== callId) });
       return;
     }
     if (type === "agent_start") {
+      // 仅清运行中的瞬时任务；todos 跨轮累积，只在 reset（切/新会话）时清
       set({ tasks: [], planText: undefined });
       return;
     }
@@ -70,6 +110,6 @@ export const useRuntimeStore = create<RuntimeState>((set, get) => ({
   },
 
   reset() {
-    set({ info: undefined, tasks: [], planText: undefined });
+    set({ info: undefined, tasks: [], todos: [], planText: undefined });
   },
 }));

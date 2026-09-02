@@ -202,7 +202,7 @@ export function MessageList(): React.JSX.Element | null {
 
           {/* live 尾块：流式思考 / 流式正文（不进虚拟列表，避免每 token 重排） */}
           {(liveThinking || liveText || streaming) && (
-            <div className="flex w-full flex-col gap-3 pb-2">
+            <div className="animate-in fade-in-0 duration-200 flex w-full flex-col gap-3 pb-2">
               {liveThinking && <ThinkingCard text={liveThinking} streaming />}
               {liveText && <AssistantProse text={liveText} streaming />}
               {streaming && !liveText && !liveThinking && (
@@ -223,7 +223,7 @@ export function MessageList(): React.JSX.Element | null {
           type="button"
           onClick={scrollToBottom}
           aria-label="滚动到底部"
-          className="absolute bottom-4 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-border bg-popover text-muted-foreground shadow-lg transition-colors hover:text-foreground"
+          className="animate-in fade-in-0 duration-150 absolute bottom-4 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full border border-border bg-popover text-muted-foreground shadow-lg transition-[background-color,color,transform] motion-safe:active:scale-[0.95] hover:text-foreground"
         >
           <ArrowDown className="size-4" />
         </button>

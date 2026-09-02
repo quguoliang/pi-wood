@@ -364,6 +364,11 @@ export function initEngineIpc(): void {
     return adapter ? adapter.getAvailableModels() : [];
   });
 
+  ipcMain.handle(ENGINE_CHANNELS.listCommands, () => {
+    // T5.1 只读聚合：引擎未启动时降级为空（渲染层另以 resources:list 兜底 skill/prompt）
+    return adapter ? adapter.listCommands() : [];
+  });
+
   ipcMain.handle("engine:getState", async () => {
     return adapter ? adapter.getState() : {};
   });

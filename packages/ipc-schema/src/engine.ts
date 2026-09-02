@@ -177,6 +177,15 @@ export const RuntimeInfoSchema = z.object({
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>;
 
+// ---------- T5.1 命令面板聚合项（Pi 内建 / 扩展 / 模板 / Skill 命令） ----------
+
+export const EngineCommandSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  source: z.enum(["extension", "prompt", "skill", "builtin"]),
+});
+export type EngineCommand = z.infer<typeof EngineCommandSchema>;
+
 // ---------- 通道名常量（main/preload/render 共用） ----------
 
 export const ENGINE_CHANNELS = {
@@ -194,4 +203,5 @@ export const ENGINE_CHANNELS = {
   fork: "engine:fork",
   getState: "engine:getState",
   getRuntimeInfo: "engine:getRuntimeInfo",
+  listCommands: "engine:listCommands",
 } as const;

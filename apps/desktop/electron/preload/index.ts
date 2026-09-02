@@ -65,6 +65,8 @@ const api = {
   engineNewSession: (): Promise<void> => ipcRenderer.invoke("engine:newSession"),
   engineModels: (): Promise<Array<{ provider: string; id: string }>> =>
     ipcRenderer.invoke("engine:getAvailableModels"),
+  engineCommands: (): Promise<Array<{ name: string; description?: string; source: "extension" | "prompt" | "skill" | "builtin" }>> =>
+    ipcRenderer.invoke("engine:listCommands"),
   engineState: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("engine:getState"),
   runtimeInfo: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("engine:getRuntimeInfo"),
   engineThinkingLevels: (): Promise<string[]> => ipcRenderer.invoke("engine:getThinkingLevels"),

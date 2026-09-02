@@ -1,4 +1,4 @@
-import type { EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
+import type { EngineCommand, EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
 
 /**
  * EngineAdapter 接口（方案 §2.1）——渲染层与主进程引擎之间唯一的抽象边界。
@@ -64,4 +64,7 @@ export interface EngineAdapter {
 
   /** Pi 会话真实运行时信息（模型/思考级别/激活工具/会话统计）；git 等宿主侧字段由主进程补充 */
   getRuntimeInfo(): Promise<Omit<RuntimeInfo, "git" | "cwd" | "platform" | "node">>;
+
+  /** T5.1：聚合可执行命令（扩展命令 + prompt 模板 + Skill），复用 session 公共成员；未启动返回空 */
+  listCommands(): EngineCommand[];
 }

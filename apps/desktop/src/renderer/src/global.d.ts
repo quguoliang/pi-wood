@@ -39,6 +39,7 @@ declare global {
       engineAbort(): Promise<void>;
       engineNewSession(): Promise<void>;
       engineModels(): Promise<Array<{ provider: string; id: string }>>;
+      engineCommands(): Promise<Array<{ name: string; description?: string; source: "extension" | "prompt" | "skill" | "builtin" }>>;
       engineState(): Promise<{ sessionId?: string; model?: string; thinkingLevel?: string; isStreaming?: boolean; contextUsage?: { tokens: number | null; contextWindow: number; percent: number | null } }>;
       runtimeInfo(): Promise<RuntimeInfo>;
       engineThinkingLevels(): Promise<string[]>;

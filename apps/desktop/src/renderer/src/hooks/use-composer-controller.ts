@@ -79,6 +79,28 @@ export function useComposerController() {
     textarea.style.height = `${Math.min(200, Math.max(36, textarea.scrollHeight))}px`;
   }, [input]);
 
+  // T5.1：命令面板向输入框注入文本（slash/skill 命令 replace、@文件 追加）
+  useEffect(() => {
+    const onInsert = (e: Event): void => {
+      const { text, replace } = ((e as CustomEvent).detail ?? {}) as { text?: string; replace?: boolean };
+      if (!text) return;
+      setInput((prev) => {
+        if (replace) return text;
+        const base = prev.trimEnd();
+        return base ? `${base} ${text}` : text;
+      });
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      });
+    };
+    window.addEventListener("piwood:composer-insert", onInsert);
+    return () => window.removeEventListener("piwood:composer-insert", onInsert);
+  }, []);
+
   const send = useCallback(
     async (mode: "prompt" | "followUp" = "prompt"): Promise<void> => {
       const text = input.trim();

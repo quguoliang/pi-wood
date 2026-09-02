@@ -23,7 +23,7 @@ import type {
   EngineAdapter,
   EngineStartOptions,
 } from "./adapter";
-import type { EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
+import type { EngineCommand, EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
 
 const noopBridge: DesktopUiBridge = {
   notify: () => {},
@@ -74,22 +74,91 @@ export class SdkAdapter implements EngineAdapter {
     });
 
     await this.runtime.session.bindExtensions({
-      uiContext: {
-        notify: (message: string, type?: "info" | "warning" | "error") =>
-          this.uiBridge.notify(message, type),
-        select: (title: string, options: string[]) => this.uiBridge.select(title, options),
-        confirm: (title: string, message: string) => this.uiBridge.confirm(title, message),
-        input: (title: string, placeholder?: string) => this.uiBridge.input(title, placeholder),
-        onTerminalInput: () => () => {},
-        setStatus: () => {},
-        setWorkingMessage: () => {},
-        setWorkingVisible: () => {},
-        setWorkingIndicator: () => {},
-        setHiddenThinkingLabel: () => {},
-        setWidget: () => {},
-        setFooter: () => {},
-      },
+      uiContext: this.createUiContext(),
       mode: "rpc",
+    });
+  }
+
+  /**
+   * 构建桌面 ctx.ui 面（方案 §5.2）。
+   *
+   * 升级容错要点：Pi SDK 的 runRpcMode 内部有一份完整的 createExtensionUIContext()
+   * （select/confirm/input/notify/custom/editor/setTitle/setWidget/getAllThemes…），
+   * 我们只需实现真正要落到桌面 UI 的子集；其余一律由 Proxy 兜底为 no-op。
+   * 这样即便 pi-agent 升级新增了 ctx.ui.someMethod，扩展无条件调用也只会拿到
+   * undefined 而非 "not a function" 崩溃——无需每次升级回来手工补 stub。
+   */
+  private createUiContext(): Record<string, unknown> {
+    const bridge = this.uiBridge;
+    // 纯文本主题垫片：pi-rpiv 等扩展的 TUI 渲染会读 ui.theme.fg(...)/bold(...) 链式取色。
+    // 桌面 RPC 下没有真主题，这里降级为“原样返回字符串”，任何 chain 都不抛错（返回可继续调用+可取值的函数）。
+    const lastStr = (args: unknown[]): string => {
+      for (let i = args.length - 1; i >= 0; i--) if (typeof args[i] === "string") return args[i] as string;
+      return "";
+    };
+    const plain: (this: unknown, ...args: unknown[]) => string = (...args: unknown[]) => lastStr(args);
+    let themeShim: (this: unknown, ...args: unknown[]) => string;
+    themeShim = new Proxy(plain, {
+      apply: (_t, _s, args: unknown[]) => lastStr(args),
+      // 返回代理自身（而非裸 target），保证 theme.a.b.c… 任意链式都不脱离垫片
+      get: (_t, prop) => (typeof prop === "symbol" ? undefined : themeShim),
+    });
+    // ⚠ SDK 消费 uiContext 时做结构性拷贝（{...uiContext}），只保留 own enumerable key，
+    //   所以下面外层 Proxy 对"被解构/引用调用"的方法（如 setStatus）不生效——
+    //   已知 ctx.ui 成员必须逐个显式列出（对齐 SDK runRpcMode.createExtensionUIContext 全集）。
+    //   Proxy 仅作"未来新增方法"的兜底安全网（动态访问时才生效）。
+    const noop = () => {};
+    const base: Record<string, unknown> = {
+      // 阻塞式对话框经 IPC 往返渲染层（→ UiRequestDialogs）
+      notify: (message: string, type?: "info" | "warning" | "error") =>
+        bridge.notify(message, type),
+      select: (title: string, options: string[]) => bridge.select(title, options),
+      confirm: (title: string, message: string) => bridge.confirm(title, message),
+      input: (title: string, placeholder?: string) => bridge.input(title, placeholder),
+      // TUI-only / fire-and-forget：给安全返回值或 no-op，缺失即 "not a function" 崩
+      custom: async () => undefined,
+      editor: async () => undefined,
+      onTerminalInput: () => () => {},
+      setStatus: noop,
+      setWorkingMessage: noop,
+      setWorkingVisible: noop,
+      setWorkingIndicator: noop,
+      setHiddenThinkingLabel: noop,
+      setWidget: noop,
+      setFooter: noop,
+      setHeader: noop,
+      setTitle: noop,
+      pasteToEditor: noop,
+      setEditorText: noop,
+      getEditorText: () => "",
+      addAutocompleteProvider: noop,
+      setEditorComponent: noop,
+      getEditorComponent: () => undefined,
+      getToolsExpanded: () => false,
+      setToolsExpanded: noop,
+      getAllThemes: () => [],
+      getTheme: () => themeShim,
+      setTheme: () => ({ success: false, error: "桌面宿主不支持切换主题" }),
+      theme: themeShim, // 属性值型成员（非方法），必须显式给，否则被 Proxy 兜底成函数
+    };
+    return new Proxy(base, {
+      get(target, prop, recv) {
+        if (prop in target) return Reflect.get(target, prop, recv);
+        // 避免被误当作 thenable / 元属性；symbol 交回默认行为
+        if (
+          typeof prop === "symbol" ||
+          prop === "then" ||
+          prop === "catch" ||
+          prop === "finally" ||
+          prop === "toJSON" ||
+          prop === "constructor" ||
+          prop === "inspect" ||
+          prop === "nodeType"
+        ) {
+          return undefined;
+        }
+        return () => undefined; // 未预置成员：可调用 no-op，覆盖未来 SDK 新增方法
+      },
     });
   }
 
@@ -202,6 +271,23 @@ export class SdkAdapter implements EngineAdapter {
   }
 
   // ---- 内部 ----
+
+  /** T5.1：聚合扩展命令 + prompt 模板 + Skill，复用 session 公共成员；未启动降级为空 */
+  listCommands(): EngineCommand[] {
+    const s = this.runtime?.session;
+    if (!s) return [];
+    const out: EngineCommand[] = [];
+    for (const c of s.extensionRunner?.getRegisteredCommands?.() ?? []) {
+      out.push({ name: c.invocationName, description: c.description, source: "extension" });
+    }
+    for (const t of s.promptTemplates ?? []) {
+      out.push({ name: t.name, description: t.description, source: "prompt" });
+    }
+    for (const sk of s.resourceLoader?.getSkills?.().skills ?? []) {
+      out.push({ name: `skill:${sk.name}`, description: sk.description, source: "skill" });
+    }
+    return out;
+  }
 
   private session(): AgentSessionLike {
     if (!this.runtime) throw new Error("SdkAdapter not started");

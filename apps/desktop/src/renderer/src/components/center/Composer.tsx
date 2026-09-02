@@ -23,7 +23,7 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
             <span key={item.path} title={item.path} className="flex h-7 max-w-48 shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground">
               <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5" />
               <span className="truncate">{item.name}</span>
-              <button type="button" onClick={() => c.removeAttachment(item.path)} aria-label={`移除 ${item.name}`} className="grid size-4 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground">
+              <button type="button" onClick={() => c.removeAttachment(item.path)} aria-label={`移除 ${item.name}`} className="grid size-4 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground">
                 <Icon name="x" className="size-3" />
               </button>
             </span>
@@ -93,32 +93,37 @@ function ComposerBody({ c, header }: { c: ComposerController; header?: React.Rea
   );
 }
 
-/** 空态：垂直居中 + 时间问候 + 叠拼卡片 + 快捷提示。 */
+/** 空态：垂直居中 + 时间问候 + 叠拼卡片 + 快捷提示。首屏低频，用克制的错峰淡入。 */
 function OnboardingComposer({ c }: { c: ComposerController }): React.JSX.Element {
+  const enter = "animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out [animation-fill-mode:both]";
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-8">
       <div className="w-full max-w-[var(--pk-chat-width,48rem)]">
-        <h1 className="mb-8 text-center text-[27px] font-semibold leading-tight tracking-tight">
+        <h1 className={`mb-8 text-center text-[27px] font-semibold leading-tight tracking-tight ${enter}`}>
           {greeting()}
           <span className="text-muted-foreground">有什么想让我帮忙的？</span>
         </h1>
 
-        <ComposerBody
-          c={c}
-          header={
-            <>
-              <ProjectPicker activeProject={c.activeProject} />
-              <GitBranchChip git={c.runtime?.git} />
-            </>
-          }
-        />
+        <div className={enter} style={{ animationDelay: "80ms" }}>
+          <ComposerBody
+            c={c}
+            header={
+              <>
+                <ProjectPicker activeProject={c.activeProject} />
+                <GitBranchChip git={c.runtime?.git} />
+              </>
+            }
+          />
+        </div>
 
         {c.error && <div role="alert" className="mt-2 text-center text-xs text-destructive">{c.error}</div>}
         <div className="mt-4 flex flex-wrap justify-center gap-2" aria-label="常用任务">
-          {quickPrompts.map((prompt) => (
-            <PromptSuggestion key={prompt} onClick={() => { c.setInput(prompt); requestAnimationFrame(() => c.textareaRef.current?.focus()); }}>
-              {prompt}
-            </PromptSuggestion>
+          {quickPrompts.map((prompt, i) => (
+            <div key={prompt} className={enter} style={{ animationDelay: `${160 + i * 45}ms` }}>
+              <PromptSuggestion onClick={() => { c.setInput(prompt); requestAnimationFrame(() => c.textareaRef.current?.focus()); }}>
+                {prompt}
+              </PromptSuggestion>
+            </div>
           ))}
         </div>
       </div>
