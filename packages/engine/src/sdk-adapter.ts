@@ -37,6 +37,7 @@ export class SdkAdapter implements EngineAdapter {
   private runtime: { session: AgentSessionLike; services: AgentSessionServicesLike } | undefined;
   private listeners = new Set<(e: EngineEvent) => void>();
   private uiBridge: DesktopUiBridge = noopBridge;
+  private customUiWarned = false;
   private projectDir = "";
   private agentDir: string | undefined;
   private opts: EngineStartOptions | undefined;
@@ -135,7 +136,14 @@ export class SdkAdapter implements EngineAdapter {
       confirm: (title: string, message: string) => bridge.confirm(title, message),
       input: (title: string, placeholder?: string) => bridge.input(title, placeholder),
       // TUI-only / fire-and-forget：给安全返回值或 no-op，缺失即 "not a function" 崩
-      custom: async () => undefined,
+      custom: async () => {
+        // 方案 §5.2：桌面宿主无自定义渲染面 → 降级为无操作，并向用户标注一次「桌面暂不支持」
+        if (!this.customUiWarned) {
+          this.customUiWarned = true;
+          bridge.notify("扩展请求自定义 UI（ctx.ui.custom），桌面宿主暂不支持，已降级", "warning");
+        }
+        return undefined;
+      },
       editor: async () => undefined,
       onTerminalInput: () => () => {},
       setStatus: noop,

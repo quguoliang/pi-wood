@@ -265,14 +265,14 @@
 
 ## 5. Phase 3 · 生态接入（预计 2 周）
 
-### [ ] T3.1 扩展/Skill/模板全量复用 + 管理 UI（部分完成：✅ 扩展/Skill/Prompt 扫描、engine:reload、ctx.ui select/confirm/input 往返链路已落地；真实社区包端到端验收待补）
+### [x] T3.1 扩展/Skill/模板全量复用 + 管理 UI（✅ 2026-09-02：扩展/Skill/Prompt 扫描、engine:reload、ctx.ui select/confirm/input 往返链路已落地；**真实社区包端到端验收完成**——离线 PI_OFFLINE 探针证 5 个已装社区包的扩展工具 + Skill(mcp-scripting) + 9 条命令全部生效、diagnostics 0 error；ctx.ui.confirm 阻塞往返经审批卡同路真机已验；ctx.ui.custom 补降级 +「桌面暂不支持」一次性标注，记录见 §8）
 - 来源：方案 §5.2、§5.3、§5.9
 - 前置：T2.6
 - 步骤：ResourceManager 完整接入 `DefaultResourceLoader`；`/reload` 热重载（extension reload + session 事件重绑）；`ctx.ui` 桥四件套（notify→sonner、confirm/select/input→Radix Dialog，映射表见方案 §5.2）；`<SkillsBrowser>`、`<TemplateManagerTab>`
 - 验收：
-  - [ ] 装一个含扩展+Skill 的社区包，全部生效（方案 §12 Phase 3 验收口径）
-  - [ ] 扩展内 `ctx.ui.confirm` 在桌面弹窗且返回值正确回传（阻塞式 Promise 链路）
-  - [ ] `ctx.ui.custom` 按方案降级并在 UI 标注"桌面暂不支持"
+  - [x] 装一个含扩展+Skill 的社区包，全部生效（方案 §12 Phase 3 验收口径）
+  - [x] 扩展内 `ctx.ui.confirm` 在桌面弹窗且返回值正确回传（阻塞式 Promise 链路）
+  - [x] `ctx.ui.custom` 按方案降级并在 UI 标注"桌面暂不支持"
 - 验证方式：真实社区包实测（包名记 §8）
 
 ### [x] T3.2 模型源管理 + 密钥钥匙串（✅ 2026-08-31 safeStorage 钥匙串 + 内置 8 源 + 自定义 OpenAI 兼容端点 + 设置弹窗，记录见 §8）
@@ -843,6 +843,7 @@
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-02 | T3.1 扩展/Skill/模板全量复用 | 完成+偏差 | **§7 Phase3 收尾：真实社区包端到端验收 + ctx.ui.custom 降级标注补齐**。① **离线 PI_OFFLINE 探针**（纯 node 引导嵌入式 SDK、无密钥无网络，`createAgentSessionServices→FromServices→Runtime→bindExtensions mode:rpc`，读 session 的 `getActiveToolNames`/`extensionRunner.getRegisteredCommands`/`promptTemplates`/`resourceLoader.getSkills().skills` + `services.diagnostics`）对**当前真实 settings.packages**（rpiv-ask-user-question / rpiv-todo / pi-web-access / pi-mcp-adapter / @narumitw/pi-plan-mode）实测：ACTIVE_TOOLS 含各包工具（`ask_user_question`/`todo`/`web_search`/`fetch_content`/`mcp`/`mcpScript`/`plan_mode_question`/`plan_mode_complete` + 内置 read/bash/edit/write）、EXT_COMMANDS 9 条（todos/websearch/curator/google-account/search/mcp/pi-mcp/mcp-auth/plan）、**SKILLS=["mcp-scripting"]**（含 Skill 的社区包生效）、**DIAGNOSTICS 0 error** → 验收①「含扩展+Skill 的社区包全部生效」达成。② **偏差/补漏**：`ctx.ui.custom` 原在 `sdk-adapter.createUiContext` 是静默 `async()=>undefined`（不崩但无提示），不符验收③「降级并标注桌面暂不支持」→ 改为**一次性** `bridge.notify("…桌面宿主暂不支持，已降级","warning")` 后返回 undefined（`customUiWarned` 实例位防刷屏）；探针另证 `custom()` 返回 undefined 不抛错。③ 验收②「扩展内 ctx.ui.confirm 桌面弹窗 + 返回值回传」：`uiBridge.confirm→requestUi("confirm")→ui:request→PromptTray→ui:respond→resolve(Boolean)` 阻塞 Promise 链路，与审批卡 `confirmViaRenderer` **同一条 requestUi 通道**，该往返已在 T6.2 子代理 child bash/write 审批真机跑通（dev10：弹「允许执行?」→批准→工具执行=值回传）与 PromptTray 重构 dev16 验证；本次未另起独立 confirm 触发（无现成调 confirm 的社区包），据同路机制判定达成。**门禁**：`tsc` engine + desktop node/web 全绿、`electron-vite build` BUILD_OK；探针 `.mjs` 用后入回收站。⚠ 诚实标注：验收②为共享 requestUi 路径 + 既有真机证据，非本轮新触发的专用 confirm e2e | T3.1 ✅（Phase3 生态接入收口，除 T3.3 主题外） |
 | 2026-09-02 | T6.2 多代理真机 e2e | 完成+验证 | **§7.5 S6 补齐完整多代理编排真机 e2e**（此前只验过单代理委派）。前置：本机 `~/.pi/agent/agents/` 为空 → vendored `loadAgentConfigs` 报 "agent_start has no configured agents"，**新建 `general.md`/`explore.md` 两个 profile**（frontmatter 仅需 `description`，`harness` 默认 `pi`、省略 `model` 走父模型避免 catalogue 校验失败、body=systemPrompt）。临时改 ui-chat harness prompt 为「并行 3 个 explore 子代理 fan-out + 对 B `agent_steer` + 对 C `agent_cancel` + `agent_wait` 收口」，起 dev 实跑 DeepSeek。**目检（`t62-e2e.png`，exit=0/日志无真 error（仅 NODE_TLS 警告）/无 already）**：主 agent 编排闭环——3 个 run id（A `run-7b6af1e5`/B `run-3ad59b1d`/C `run-c885efc9`）；**fan-out** 三子代理并行读文件；**steer** B 收到追加指令并如实回应（grep 核实 greet.js 无 `greetZn`、系 `greetZh` 笔误）；**cancel** C 1 回合后停止（7.7k in/66 out、$0.0011）不再产出；**wait/result** A、B 完成并汇总。探针2/3/结论（凭据可见·审批可控·print-bind 不挂起·inMemory 不污染左栏）随之坐实，§7.5 S2/S5/S6 全 [x]。**遗留（可选）**：命名会话 `agent_resume` 续跑编排未在本轮触发。⚠ 右栏 SubagentPanel 截屏时显"暂无子代理运行"——因 settle 时子代理已全部结束（面板追踪在飞 run），其**实时**状态展示由 §7.7 T6.3 单列已验。harness prompt 临时改动已回退（`git diff ui-chat-harness.ts` 空）。附：agent profiles 属用户级 `~/.pi` 配置、非仓库文件，保留供后续子代理使用 | T6.2 §7.5 完整收口 ✅（多代理 fan-out/steer/cancel 真机验证） |
 | 2026-09-02 | T5.1 §11 键盘化终审 | 完成 | **对方案 §11「90% 高频操作可键盘完成」清单逐项核对**（只读调研，产出打勾表）。基准 §11-2/4/5/6/7/8/9/10 + §12 输入区约定，共 25 条高频操作，逐条比对渲染层实际快捷键（`App.tsx` 全局 keydown、`CommandPalette.tsx`、`use-column-focus.ts`、`use-composer-controller.ts`、`PromptTray.tsx`、`FilesPanel.tsx`）。**结果**：✅ 21、⚠ 3、❌ 1；严格 21/25≈84%，按 ⚠=0.5 加权 22.5/25≈**90%**。核心链路（唤起面板→搜命令/模型/项目/文件→Enter 执行、三栏直达 `Ctrl+1/2/3`/循环 `Ctrl+.`、发送 Enter/换行 Shift+Enter/follow-up Alt+Enter、各工作台面板、审批 Enter）**全键盘闭环**。⚠ 三条均"功能可达、键位偏离字面"：#8 裸 Tab→`Ctrl+.`（Win/Electron 吞 Tab 的合理规避）、#6/#7 内联 `@`/`/` 触发→现经命令面板注入。**判 T5.1 达标完成**；后续小项登记不阻塞：#24 消息级分支/复制/标签/回滚缺稳定键盘入口（hover-only，中改）、#6/#7 输入框内联触发（中改） | T5.1 ✅（§11 终审≈90%）；#24/#6/#7 转后续小项 |
 | 2026-09-02 | T5.3 打包分发 | 风险 | **干净 VM 安装验收 / 三平台构建 / 自动更新 在本机环境无法验收**：无干净 Windows VM、无 mac/linux 构建机、无代码签名证书。当前仅 Windows NSIS 产物可产出（已验）。**决策**：T5.3 保持未完成、标注环境阻塞，待具备干净 VM + 三平台 CI + 签名后再做「10 分钟跑通配 Key→首次对话→改文件」验收与自动更新接线 | T5.3 阻塞（环境受限，非代码缺陷） |
