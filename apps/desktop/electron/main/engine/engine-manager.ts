@@ -11,7 +11,7 @@ import { normalizeEngineEvent, type DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
-import { permissionGateExtension, decide, type ApprovalPolicy } from "../security/approval-gate";
+import { permissionGateExtension, decide, describeApprovalCall, type ApprovalPolicy } from "../security/approval-gate";
 import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
@@ -130,9 +130,9 @@ function send(channel: string, data: unknown): void {
 }
 
 /** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise） */
-function confirmViaRenderer(title: string, message: string): Promise<boolean> {
+function confirmViaRenderer(title: string, message: string, toolName?: string): Promise<boolean> {
   const id = ++approvalSeq;
-  send("approval:request", { id, title, message });
+  send("approval:request", { id, title, message, toolName });
   return new Promise<boolean>((resolve) => {
     pendingApprovals.set(id, resolve);
     setTimeout(() => {
@@ -198,14 +198,14 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
     buildChildGate: () =>
       permissionGateExtension(
         () => getPolicy(),
-        (title, message) => confirmViaRenderer(title, message),
+        (title, message, tool) => confirmViaRenderer(title, message, tool),
       ),
     guardChildTool: async (toolName, input) => {
       const decision = decide(getPolicy(), toolName, input);
       if (decision === "allow") return undefined;
       if (decision === "deny") return "已由安全策略拦截（path-guard / denyAll）";
-      const summary = JSON.stringify(input ?? {}).slice(0, 300);
-      const ok = await confirmViaRenderer(`允许执行 ${toolName}？`, summary || "(无参数)");
+      const { title, message } = describeApprovalCall(toolName, input);
+      const ok = await confirmViaRenderer(title, message, toolName);
       return ok ? undefined : "用户拒绝该操作";
     },
     onRuntime: (rt) => {
@@ -237,7 +237,7 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
     inlineExtensions: [
       permissionGateExtension(
         () => getPolicy(),
-        (title, message) => confirmViaRenderer(title, message),
+        (title, message, tool) => confirmViaRenderer(title, message, tool),
         () => isAutoAcceptForSession(next),
       ),
     ],

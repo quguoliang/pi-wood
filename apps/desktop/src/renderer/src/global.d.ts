@@ -71,7 +71,7 @@ declare global {
       approvalDecide(id: number, allow: boolean): Promise<boolean>;
       approvalAcceptAll(): Promise<number>;
       onApprovalRequest(
-        cb: (d: { id: number; title: string; message: string }) => void,
+        cb: (d: { id: number; title: string; message: string; toolName?: string }) => void,
       ): () => void;
       extensionsList(): Promise<unknown>;
       resourcesList(): Promise<unknown>;

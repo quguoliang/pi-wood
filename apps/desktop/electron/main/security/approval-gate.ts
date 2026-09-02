@@ -68,10 +68,69 @@ function matchRules(policy: ApprovalPolicy, toolName: string, input: unknown): D
   return undefined;
 }
 
+/** 折叠成一行、限长。 */
+function oneLine(s: string, max: number): string {
+  const flat = s.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+const asStr = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
+
+/** 默认摘要：把入参摊成几行 key: value（而非原始 JSON）。 */
+function summarizeInput(input: Record<string, unknown>): string {
+  const entries = Object.entries(input).filter(([, v]) => v != null && v !== "");
+  if (entries.length === 0) return "(无参数)";
+  const lines = entries.slice(0, 6).map(([k, v]) => {
+    const val = Array.isArray(v) ? `${v.length} 项` : typeof v === "object" ? oneLine(JSON.stringify(v), 80) : asStr(v);
+    return `${k}: ${oneLine(val, 100)}`;
+  });
+  if (entries.length > 6) lines.push(`… 还有 ${entries.length - 6} 项`);
+  return lines.join("\n");
+}
+
+/**
+ * 把一次工具调用翻成审批卡的友好标题 + 摘要（替代原始 JSON）。
+ * 父审批门与子代理审批门共用。
+ */
+export function describeApprovalCall(toolName: string, input: unknown): { title: string; message: string } {
+  const i = (input ?? {}) as Record<string, unknown>;
+  switch (toolName) {
+    case "bash":
+      return { title: "运行命令？", message: asStr(i.command) || "(无命令)" };
+    case "powershell":
+      return { title: "运行 PowerShell 命令？", message: asStr(i.command) || "(无命令)" };
+    case "edit": {
+      const edits = Array.isArray(i.edits) ? (i.edits as Array<Record<string, unknown>>) : [];
+      const lines = [`文件：${asStr(i.path)}`];
+      for (const e of edits.slice(0, 4)) {
+        const o = oneLine(asStr(e.oldText), 70);
+        const n = oneLine(asStr(e.newText), 70);
+        if (o) lines.push(`− ${o}`);
+        if (n) lines.push(`+ ${n}`);
+      }
+      if (edits.length > 4) lines.push(`… 还有 ${edits.length - 4} 处修改`);
+      return { title: "编辑文件？", message: lines.join("\n") };
+    }
+    case "write": {
+      const content = asStr(i.content);
+      const contentLines = content.split("\n");
+      const preview = contentLines.slice(0, 6).join("\n");
+      return {
+        title: "写入文件？",
+        message: `文件：${asStr(i.path)}\n${preview}${contentLines.length > 6 ? `\n… 共 ${contentLines.length} 行` : ""}`,
+      };
+    }
+    default:
+      if (toolName.startsWith("browser_")) {
+        return { title: "浏览器操作？", message: asStr(i.url) || summarizeInput(i) };
+      }
+      return { title: `执行 ${toolName}？`, message: summarizeInput(i) };
+  }
+}
+
 /** inline extension 工厂（经 resourceLoaderOptions.extensionFactories 注入） */
 export function permissionGateExtension(
   getPolicy: () => ApprovalPolicy,
-  confirm: (title: string, message: string) => Promise<boolean>,
+  confirm: (title: string, message: string, toolName?: string) => Promise<boolean>,
   isAutoAccept?: () => boolean,
 ): { name: string; factory: (pi: unknown) => void } {
   return {
@@ -87,11 +146,8 @@ export function permissionGateExtension(
         // T7.2：当前会话开启自动接受时，把「需确认」直接升级为「允许」，不弹审批卡。
         // 只在 ask 分支生效 → denyAll / path-guard 的 deny 永不被绕过（安全底线）。
         if (isAutoAccept?.()) return;
-        const summary = JSON.stringify(event.input ?? {}).slice(0, 300);
-        const ok = await (ctx?.ui?.confirm ?? confirm)(
-          `允许执行 ${event.toolName}？`,
-          summary || "(无参数)",
-        );
+        const { title, message } = describeApprovalCall(event.toolName, event.input);
+        const ok = await (ctx?.ui?.confirm ?? confirm)(title, message, event.toolName);
         if (!ok) return { block: true, reason: "用户拒绝该操作" };
         return;
       });

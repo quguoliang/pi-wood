@@ -164,9 +164,9 @@ const api = {
     ipcRenderer.invoke("approval:decide", { id, allow }),
   approvalAcceptAll: (): Promise<number> => ipcRenderer.invoke("approval:acceptAll"),
   onApprovalRequest: (
-    cb: (d: { id: number; title: string; message: string }) => void,
+    cb: (d: { id: number; title: string; message: string; toolName?: string }) => void,
   ): (() => void) => {
-    const h = (_e: unknown, d: { id: number; title: string; message: string }): void => cb(d);
+    const h = (_e: unknown, d: { id: number; title: string; message: string; toolName?: string }): void => cb(d);
     ipcRenderer.on("approval:request", h);
     return () => ipcRenderer.removeListener("approval:request", h);
   },

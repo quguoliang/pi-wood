@@ -3,11 +3,10 @@ import { toast } from "sonner";
 import { AppShell } from "./components/layout/AppShell";
 import { MessageList } from "./components/center/MessageList";
 import { Composer } from "./components/center/Composer";
-import { ApprovalCards } from "./components/center/ApprovalCards";
+import { PromptTray } from "./components/center/PromptTray";
 import { SettingsModal } from "./components/center/SettingsModal";
 import { PackageMarket } from "./components/center/PackageMarket";
 import { CommandPalette } from "./components/center/CommandPalette";
-import { UiRequestDialogs } from "./components/center/UiRequestDialogs";
 import { LeftPane } from "./components/left/LeftPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
@@ -171,8 +170,8 @@ export default function App() {
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
             <MessageList />
             <ConversationAssist className="pt-1" />
+            <PromptTray />
             <Composer />
-            <ApprovalCards />
             <EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} />
           </div>
         }
@@ -189,7 +188,6 @@ export default function App() {
       {paletteOpen && (
         <CommandPalette onClose={() => setPaletteOpen(false)} onOpenSettings={() => setSettingsOpen(true)} />
       )}
-      <UiRequestDialogs />
       <Toaster />
     </>
   );
