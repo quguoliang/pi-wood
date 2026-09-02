@@ -64,6 +64,8 @@ interface SessionState extends LiveState {
   streaming: boolean;
   activeProject: string | undefined;
   engineReady: boolean;
+  /** T7.2：当前引擎会话 id（供 per-session 自动接受按会话取状态）。 */
+  currentSessionId: string | undefined;
   queue: { steering: string[]; followUp: string[] };
   handleEvent(e: Record<string, unknown>): void;
   addUserMessage(text: string): void;
@@ -71,6 +73,7 @@ interface SessionState extends LiveState {
   reset(): void;
   setActiveProject(projectDir: string | undefined): void;
   setEngineReady(ready: boolean): void;
+  refreshSessionId(): Promise<void>;
 }
 
 let seq = 0;
@@ -162,6 +165,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
     streaming: false,
     activeProject: undefined,
     engineReady: false,
+    currentSessionId: undefined,
     queue: { steering: [], followUp: [] },
 
     handleEvent(e) {
@@ -327,15 +331,20 @@ export const useSessionStore = create<SessionState>((set, get) => {
     },
 
     reset() {
-      set({ items: [], liveText: "", liveThinking: "", streaming: false, queue: { steering: [], followUp: [] } });
+      set({ items: [], liveText: "", liveThinking: "", streaming: false, currentSessionId: undefined, queue: { steering: [], followUp: [] } });
     },
 
     setActiveProject(projectDir) {
-      set({ activeProject: projectDir });
+      set({ activeProject: projectDir, currentSessionId: undefined });
     },
 
     setEngineReady(ready) {
       set({ engineReady: ready });
+    },
+
+    async refreshSessionId() {
+      const state = await window.pi.engineState().catch(() => undefined);
+      set({ currentSessionId: state?.sessionId });
     },
   };
 });

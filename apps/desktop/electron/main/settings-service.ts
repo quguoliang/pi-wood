@@ -19,6 +19,8 @@ export interface PiWoodSettings {
     mode: "auto" | "highRisk" | "allAsk" | "denyAll";
     rules: Array<{ pattern: string; action: "allow" | "ask" | "deny" }>;
   };
+  /** T7.2：按会话 id 记录「自动接受审批」开关；缺省（无 key）视为未开启（fail closed）。 */
+  autoAcceptSessions: Record<string, boolean>;
   workbench: { layout: unknown | null };
 }
 
@@ -30,6 +32,7 @@ export function defaultSettings(): PiWoodSettings {
     recentProjects: [],
     model: { provider: "deepseek", id: "deepseek-v4-flash" },
     approval: { mode: "highRisk", rules: [] },
+    autoAcceptSessions: {},
     workbench: { layout: null },
   };
 }

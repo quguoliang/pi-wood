@@ -27,6 +27,8 @@ declare global {
       uiRespond(id: number, value?: string | boolean): Promise<boolean>;
       onProbeLog(cb: (line: string) => void): () => void;
       onEngineEvent(cb: (event: Record<string, unknown>) => void): () => void;
+      onBtwEvent(cb: (event: Record<string, unknown>) => void): () => void;
+      onAssistResult(cb: (data: { recap: string; suggestions: string[] }) => void): () => void;
       onDiff(cb: (data: { id?: string; file: string; before?: string; after?: string; patch?: string }) => void): () => void;
       diffRevert(changeId: string): Promise<{ file: string; content: string }>;
       onE2EDone(cb: (data: { ok: boolean; error?: string }) => void): () => void;
@@ -49,10 +51,12 @@ declare global {
       projectAdd(path: string): Promise<unknown>;
       projectPick(): Promise<string | undefined>;
       projectPickAttachments(): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>>;
+      stagePastedText(text: string): Promise<{ path: string; name: string; size: number; kind: "file" | "image" }>;
       projectTrust(path: string): Promise<string>;
       sessionsList(path: string): Promise<unknown>;
       sessionsTree(file: string): Promise<unknown>;
       sessionsMessages(file: string): Promise<unknown>;
+      exportSessionMarkdown(defaultFileName: string, markdown: string): Promise<string | undefined>;
       engineSwitchSession(file: string): Promise<boolean>;
       debugStress(count: number): Promise<number>;
       debugCapture(file: string): Promise<boolean>;
@@ -65,6 +69,7 @@ declare global {
       providerRemoveKey(provider: string): Promise<boolean>;
       providerAddCustom(cfg: unknown): Promise<boolean>;
       approvalDecide(id: number, allow: boolean): Promise<boolean>;
+      approvalAcceptAll(): Promise<number>;
       onApprovalRequest(
         cb: (d: { id: number; title: string; message: string }) => void,
       ): () => void;
@@ -86,6 +91,10 @@ declare global {
       browserNavigate(url: string): Promise<{ title: string }>;
       browserScreenshot(): Promise<{ screenshot: string; url: string }>;
       onBrowserShot(cb: (d: { screenshot: string }) => void): () => void;
+      listDevServers(): Promise<Array<{ port: number; pid: number | null; command: string | null; host: string; url: string }>>;
+      btwAsk(question: string, context?: string): Promise<boolean>;
+      btwAbort(): Promise<boolean>;
+      btwClose(): Promise<boolean>;
     };
   }
 }

@@ -68,6 +68,7 @@ export function useSidebarProjects() {
       if (activation === activationSeq.current) {
         setEngineReady(true);
         void refreshRuntime();
+        void useSessionStore.getState().refreshSessionId();
       }
     } catch (error) {
       if (activation === activationSeq.current) {
@@ -98,12 +99,14 @@ export function useSidebarProjects() {
     loadMessages(messages);
     await window.pi.engineSwitchSession(session.file);
     void refreshRuntime();
+    void useSessionStore.getState().refreshSessionId();
   }, [activeProject, activateProject, loadMessages, refreshRuntime]);
 
   const createSession = useCallback(async (project: ProjectRecord) => {
     setExpandedProjects((current) => new Set(current).add(project.path));
     await activateProject(project);
     await window.pi.engineNewSession();
+    void useSessionStore.getState().refreshSessionId();
     await refreshProjectSessions(project);
   }, [activateProject, refreshProjectSessions]);
 

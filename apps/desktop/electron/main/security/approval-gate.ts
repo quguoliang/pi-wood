@@ -72,6 +72,7 @@ function matchRules(policy: ApprovalPolicy, toolName: string, input: unknown): D
 export function permissionGateExtension(
   getPolicy: () => ApprovalPolicy,
   confirm: (title: string, message: string) => Promise<boolean>,
+  isAutoAccept?: () => boolean,
 ): { name: string; factory: (pi: unknown) => void } {
   return {
     name: "piwood-permission-gate",
@@ -83,6 +84,9 @@ export function permissionGateExtension(
         if (decision === "deny") {
           return { block: true, reason: "已由安全策略拦截（path-guard / denyAll）" };
         }
+        // T7.2：当前会话开启自动接受时，把「需确认」直接升级为「允许」，不弹审批卡。
+        // 只在 ask 分支生效 → denyAll / path-guard 的 deny 永不被绕过（安全底线）。
+        if (isAutoAccept?.()) return;
         const summary = JSON.stringify(event.input ?? {}).slice(0, 300);
         const ok = await (ctx?.ui?.confirm ?? confirm)(
           `允许执行 ${event.toolName}？`,

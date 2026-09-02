@@ -186,6 +186,28 @@ export const EngineCommandSchema = z.object({
 });
 export type EngineCommand = z.infer<typeof EngineCommandSchema>;
 
+// ---------- T7.4 Dev Server 自动发现（本地 loopback 监听进程） ----------
+
+export const DevServerInfoSchema = z.object({
+  port: z.number().int(),
+  pid: z.number().int().nullable(),
+  command: z.string().nullable(),
+  /** 绑定地址（如 127.0.0.1 / ::1 / 0.0.0.0 / *） */
+  host: z.string(),
+  /** 可直接在浏览器面板打开的预览 URL */
+  url: z.string(),
+});
+export type DevServerInfo = z.infer<typeof DevServerInfoSchema>;
+
+// ---------- T7.6 侧边问答（/btw：不扰动主会话的独立临时提问） ----------
+
+export const BtwAskCommandSchema = z.object({
+  question: z.string().min(1),
+  /** 由渲染层从主会话裁剪的最近若干轮纯文本上下文（仅供参考，不继承执行） */
+  context: z.string().optional(),
+});
+export type BtwAskCommand = z.infer<typeof BtwAskCommandSchema>;
+
 // ---------- 通道名常量（main/preload/render 共用） ----------
 
 export const ENGINE_CHANNELS = {
@@ -204,4 +226,10 @@ export const ENGINE_CHANNELS = {
   getState: "engine:getState",
   getRuntimeInfo: "engine:getRuntimeInfo",
   listCommands: "engine:listCommands",
+  listDevServers: "engine:listDevServers",
+  btwEvent: "engine:btwEvent",
+  btwAsk: "engine:btwAsk",
+  btwAbort: "engine:btwAbort",
+  btwClose: "engine:btwClose",
+  assistResult: "engine:assistResult",
 } as const;

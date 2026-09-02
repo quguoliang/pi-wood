@@ -11,9 +11,12 @@ import { UiRequestDialogs } from "./components/center/UiRequestDialogs";
 import { LeftPane } from "./components/left/LeftPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
+import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
 import { useSessionStore } from "./stores/session-store";
 import { useRuntimeStore } from "./stores/runtime-store";
+import { useBtwStore } from "./stores/btw-store";
+import { useAssistStore } from "./stores/assist-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
 import { cycleColumnFocus, focusColumn } from "./hooks/use-column-focus";
 
@@ -41,6 +44,9 @@ export default function App() {
       if (mod && e.shiftKey && key === "p") {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+      } else if (mod && e.shiftKey && key === "b") {
+        e.preventDefault();
+        openWorkbench("btw");
       } else if (mod && !e.shiftKey && key === "k") {
         e.preventDefault();
         setPaletteOpen(true);
@@ -95,6 +101,11 @@ export default function App() {
         else if (tool.startsWith("browser_")) openWorkbench("browser");
       }
     });
+    const offBtwEvt = window.pi.onBtwEvent((event) => useBtwStore.getState().handleEvent(event));
+    const offAssist = window.pi.onAssistResult((data) => {
+      const s = useSessionStore.getState();
+      useAssistStore.getState().set({ recap: data.recap, suggestions: data.suggestions, session: s.currentSessionId ?? "", forItemsLen: s.items.length });
+    });
     const offDiff = window.pi.onDiff((data) => {
       addDiff(data);
       openWorkbench("diff");
@@ -102,6 +113,8 @@ export default function App() {
     return () => {
       offNotify();
       offEvt();
+      offBtwEvt();
+      offAssist();
       offDiff();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("piwood:open-command-palette", openPalette);
@@ -127,6 +140,7 @@ export default function App() {
           >
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
             <MessageList />
+            <ConversationAssist className="pt-1" />
             <Composer />
             <ApprovalCards />
             <EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} />

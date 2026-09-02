@@ -9,6 +9,7 @@ const FilesPanel = lazy(() => import("./FilesPanel").then((module) => ({ default
 const TerminalPanel = lazy(() => import("./TerminalPanel").then((module) => ({ default: module.TerminalPanel })));
 const BrowserPanel = lazy(() => import("./BrowserPanel").then((module) => ({ default: module.BrowserPanel })));
 const DiffPanel = lazy(() => import("./DiffPanel").then((module) => ({ default: module.DiffPanel })));
+const BtwPanel = lazy(() => import("./BtwPanel").then((module) => ({ default: module.BtwPanel })));
 
 interface PanelMeta {
   title: string;
@@ -22,6 +23,7 @@ const panelMeta: Record<WorkbenchTab, PanelMeta> = {
   term: { title: "终端", icon: "terminal", kbd: "Ctrl+`" },
   browser: { title: "浏览器", icon: "browser", kbd: "Ctrl+T" },
   files: { title: "文件", icon: "folder", kbd: "Ctrl+P" },
+  btw: { title: "侧边问答", icon: "message", kbd: "Ctrl+Shift+B" },
 };
 const LAUNCH_ORDER: WorkbenchTab[] = ["diff", "term", "browser", "files"];
 
@@ -31,6 +33,7 @@ function panelNode(tab: WorkbenchTab): React.ReactNode {
     case "term": return <TerminalPanel />;
     case "browser": return <BrowserPanel />;
     case "diff": return <DiffPanel />;
+    case "btw": return <BtwPanel />;
   }
 }
 

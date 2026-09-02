@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { RuntimeInfo } from "@pi-wood/ipc-schema";
 import { useSessionStore } from "../stores/session-store";
+import { useBtwStore, buildContextBlock } from "../stores/btw-store";
+import { useWorkbenchStore } from "../stores/workbench-store";
+import { countLines } from "../lib/utils";
+import { readDraft, writeDraft, clearDraft } from "../lib/chat-draft-persistence";
 import type { ApprovalMode } from "../components/center/ComposerControls";
 
 export interface AttachmentItem {
@@ -34,12 +39,17 @@ export function useComposerController() {
   const [aborting, setAborting] = useState(false);
   const [error, setError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // T7.11：草稿持久化——实时镜像当前输入/附件供切换时同步落盘，追踪上次会话 id、防抖计时器
+  const liveRef = useRef<{ input: string; attachments: AttachmentItem[] }>({ input: "", attachments: [] });
+  const prevSessionRef = useRef<string | undefined>(undefined);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const streaming = useSessionStore((s) => s.streaming);
   const engineReady = useSessionStore((s) => s.engineReady);
   const activeProject = useSessionStore((s) => s.activeProject);
   const items = useSessionStore((s) => s.items);
   const liveText = useSessionStore((s) => s.liveText);
+  const currentSessionId = useSessionStore((s) => s.currentSessionId);
   const hasConversation = items.length > 0 || Boolean(liveText) || streaming;
 
   const refreshRuntime = useCallback(async (): Promise<void> => {
@@ -101,10 +111,64 @@ export function useComposerController() {
     return () => window.removeEventListener("piwood:composer-insert", onInsert);
   }, []);
 
+  // T7.11：实时镜像当前输入/附件，供切换会话时同步落盘（避免 debounce 竞态丢最后输入）
+  useEffect(() => {
+    liveRef.current = { input, attachments };
+  }, [input, attachments]);
+
+  // T7.11：输入/附件变更防抖 500ms 写入当前会话草稿
+  useEffect(() => {
+    if (!currentSessionId) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      writeDraft(currentSessionId, { text: input, attachments });
+    }, 500);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [input, attachments, currentSessionId]);
+
+  // T7.11：切换会话——先把上一会话最新输入落盘，再载入新会话草稿（无草稿则真实切换时清空）
+  useEffect(() => {
+    const prev = prevSessionRef.current;
+    prevSessionRef.current = currentSessionId;
+    if (prev && prev !== currentSessionId) {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      writeDraft(prev, { text: liveRef.current.input, attachments: liveRef.current.attachments });
+    }
+    if (!currentSessionId) return;
+    const draft = readDraft(currentSessionId);
+    if (draft) {
+      setInput(draft.text);
+      setAttachments(draft.attachments);
+    } else if (prev && prev !== currentSessionId) {
+      // 真实切换到无草稿的会话：清空输入，不把上一会话文本带过去
+      setInput("");
+      setAttachments([]);
+    }
+    // prev 未定义（引擎会话首次实体化）→ 不动输入，保留 onboarding 已敲内容
+  }, [currentSessionId]);
+
   const send = useCallback(
     async (mode: "prompt" | "followUp" = "prompt"): Promise<void> => {
       const text = input.trim();
       if (!text || !engineReady) return;
+
+      // T7.6：/btw 前缀 → 走侧边问答的独立第二会话，绝不进主会话（主会话流式进行中也可用）
+      if (mode === "prompt" && /^\/btw(\s|$)/.test(text)) {
+        const question = text.replace(/^\/btw\s*/, "").trim();
+        if (!question) {
+          setError("请输入侧边问题，例如 /btw 这个函数是做什么的？");
+          return;
+        }
+        setError("");
+        setInput("");
+        const parentId = useSessionStore.getState().currentSessionId;
+        useWorkbenchStore.getState().openTab("btw");
+        void useBtwStore.getState().ask(parentId ?? "", question, buildContextBlock(items));
+        return;
+      }
+
       if (streaming && mode === "prompt") return;
       if (streaming && attachments.length > 0) {
         setError("生成过程中排队的消息暂不支持附件，请等待当前回复结束。");
@@ -114,12 +178,15 @@ export function useComposerController() {
       setAttachments([]);
       setError("");
       setSending(true);
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
       try {
         if (mode === "followUp") await window.pi.engineFollowUp(text);
         else {
           useSessionStore.getState().addUserMessage(text);
           await window.pi.prompt(text, attachments.map((item) => item.path));
         }
+        // T7.11：已发出 → 清除该会话草稿（liveRef 也已随 setInput("") 归零，防抖不再复活）
+        clearDraft(currentSessionId ?? "");
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
       } finally {
@@ -127,7 +194,7 @@ export function useComposerController() {
         void refreshRuntime();
       }
     },
-    [input, engineReady, streaming, attachments, refreshRuntime],
+    [input, engineReady, streaming, attachments, items, currentSessionId, refreshRuntime],
   );
 
   const onKeyDown = useCallback(
@@ -152,6 +219,22 @@ export function useComposerController() {
 
   const removeAttachment = useCallback((path: string): void => {
     setAttachments((current) => current.filter((entry) => entry.path !== path));
+  }, []);
+
+  // T7.1：大文本粘贴 → 落盘为临时文件并加入附件（不进入输入框）。
+  const addPastedText = useCallback(async (text: string): Promise<void> => {
+    try {
+      const staged = await window.pi.stagePastedText(text);
+      setAttachments((current) => {
+        const merged = [...current];
+        if (!merged.some((entry) => entry.path === staged.path)) merged.push(staged);
+        return merged.slice(0, 12);
+      });
+      toast(`已作为文件附件添加（${text.length} 字符 / ${countLines(text)} 行）`);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    } catch (err) {
+      setError(String((err as Error)?.message ?? err));
+    }
   }, []);
 
   const changeApproval = useCallback(
@@ -234,6 +317,7 @@ export function useComposerController() {
     send,
     onKeyDown,
     pickFiles,
+    addPastedText,
     changeApproval,
     changeModel,
     changeThinking,

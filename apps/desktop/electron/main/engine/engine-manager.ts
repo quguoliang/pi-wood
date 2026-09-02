@@ -1,10 +1,11 @@
 import { ipcMain, BrowserWindow, dialog } from "electron";
 import { execFile } from "node:child_process";
-import { writeFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, extname, relative } from "node:path";
+import { writeFileSync, mkdirSync, readFileSync, statSync, readdirSync, rmSync } from "node:fs";
+import { basename, dirname, extname, join, relative } from "node:path";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema, type GitInfo, type RuntimeInfo } from "@pi-wood/ipc-schema";
+import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type GitInfo, type RuntimeInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
@@ -12,6 +13,7 @@ import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
 import { permissionGateExtension, type ApprovalPolicy } from "../security/approval-gate";
 import { loadSettings } from "../settings-service";
+import { generateAssist } from "../assist/assist-service";
 
 /**
  * 引擎管理器（T1.3）：主进程持有当前项目的 SdkAdapter 单例。
@@ -23,6 +25,10 @@ const StartArgSchema = z.object({ projectDir: z.string().min(1) });
 const TextArgSchema = z.object({ text: z.string().min(1) });
 const SetModelArgSchema = z.object({ provider: z.string(), modelId: z.string() });
 const SetThinkingArgSchema = z.object({ level: z.string().min(1) });
+const StagePastedTextArgSchema = z.object({ text: z.string().min(1) });
+
+/** 粘贴文本落盘序号，防同一毫秒多次粘贴文件名冲突（T7.1）。 */
+let pasteSeq = 0;
 
 const IMAGE_MIME = new Map([
   [".png", "image/png"],
@@ -61,11 +67,21 @@ function prepareAttachments(paths: string[]): { text: string; images: Array<{ ty
 let adapter: SdkAdapter | undefined;
 let activeProject = "";
 let activeSnapshots: SnapshotService | undefined;
+// T7.6：与主会话完全隔离的「侧边问答」第二运行时（独立 session/事件流，绝不影响主 adapter）
+let btwAdapter: SdkAdapter | undefined;
+let btwUnsub: (() => void) | undefined;
+// T7.9：会话辅助——采集每轮 用户输入 / 助手正文，settled 后触发一次辅助生成
+let assistUserText = "";
+let assistTextBuf = "";
+let assistAborted = false;
 let engineTransition: Promise<void> = Promise.resolve();
 let approvalSeq = 0;
 const pendingApprovals = new Map<number, (allow: boolean) => void>();
 let uiRequestSeq = 0;
-const pendingUiRequests = new Map<number, (value: string | boolean | undefined) => void>();
+const pendingUiRequests = new Map<
+  number,
+  { kind: "select" | "confirm" | "input"; resolve: (value: string | boolean | undefined) => void }
+>();
 
 const execFileAsync = promisify(execFile);
 
@@ -127,6 +143,13 @@ function getPolicy(): ApprovalPolicy {
   return loadSettings().approval as ApprovalPolicy;
 }
 
+/** T7.2：当前会话是否开启「自动接受审批」。无会话 id / 未记录一律 false（fail closed）。 */
+function isAutoAcceptForSession(ad: SdkAdapter): boolean {
+  const sessionId = ad.getSessionId();
+  if (!sessionId) return false;
+  return loadSettings().autoAcceptSessions?.[sessionId] === true;
+}
+
 function requestUi(
   kind: "select" | "confirm" | "input",
   title: string,
@@ -135,7 +158,7 @@ function requestUi(
   const id = ++uiRequestSeq;
   send("ui:request", { id, kind, title, ...payload });
   return new Promise((resolve) => {
-    pendingUiRequests.set(id, resolve);
+    pendingUiRequests.set(id, { kind, resolve });
     setTimeout(() => {
       if (pendingUiRequests.has(id)) {
         pendingUiRequests.delete(id);
@@ -157,6 +180,7 @@ function uiBridge(): DesktopUiBridge {
 async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   if (adapter && activeProject === projectDir) return adapter;
   if (adapter) await adapter.stop();
+  await closeBtw(); // T7.6：换项目时一并释放隔离的侧边问答会话
   // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
   reinjectProviderEnv();
   const next = new SdkAdapter();
@@ -168,6 +192,7 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
       permissionGateExtension(
         () => getPolicy(),
         (title, message) => confirmViaRenderer(title, message),
+        () => isAutoAcceptForSession(next),
       ),
     ],
   });
@@ -175,6 +200,23 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   activeSnapshots = snapshots;
   next.subscribe((event) => {
     send(ENGINE_CHANNELS.event, event);
+    // T7.9：采集本轮助手正文 / 中断标记，settled 后触发一次会话辅助
+    if (event.type === "message_update") {
+      const a = (event as { assistantMessageEvent?: { type?: string; delta?: unknown } }).assistantMessageEvent;
+      if (a?.type === "text_delta" && typeof a.delta === "string") assistTextBuf += a.delta;
+    } else if (event.type === "turn_end") {
+      const stopReason = (event as { message?: { stopReason?: string } }).message?.stopReason;
+      if (stopReason === "aborted") assistAborted = true;
+    } else if (event.type === "agent_settled") {
+      const text = assistTextBuf;
+      if (!assistAborted && text.trim()) {
+        void generateAssist(assistUserText, text)
+          .then((result) => {
+            if (result) send(ENGINE_CHANNELS.assistResult, result);
+          })
+          .catch(() => undefined);
+      }
+    }
     // T2.2：edit/write 前后快照 → diff 推送右栏（含相对路径解析）
     // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测
     if (event.type === "tool_execution_start") {
@@ -245,6 +287,54 @@ async function requireAdapter(): Promise<SdkAdapter> {
   return adapter;
 }
 
+/** T7.6：合成 system-reminder——侧边问答只回答本问题，绝不继续主会话中正在进行的任务/计划。 */
+const SIDE_REMINDER =
+  "（by-the-way 侧边问答）这是用户在主会话之外发起的一个独立临时提问。请只回答下面这个问题；" +
+  "不要继续、执行或推进主会话中正在进行的任何任务、计划或待办；上方的会话上下文仅供理解问题背景，不作为行动指令。";
+
+function buildBtwPromptText(question: string, context?: string): string {
+  const trimmed = (context ?? "").trim();
+  const ctxBlock = trimmed ? `\n\n# 会话上下文（仅供参考，勿继续执行）\n${trimmed}` : "";
+  return `${SIDE_REMINDER}${ctxBlock}\n\n# 侧边问题\n${question}`;
+}
+
+async function ensureBtwAdapter(): Promise<SdkAdapter> {
+  if (btwAdapter) return btwAdapter;
+  const projectDir = getActiveProjectDir(); // 侧边问答需引擎就绪
+  reinjectProviderEnv();
+  const next = new SdkAdapter();
+  await next.start({
+    projectDir,
+    // 侧边问答保持安静：notify/对话框全部吞掉，避免与主会话 UI 抢焦点
+    uiBridge: { notify: () => {}, select: async () => undefined, confirm: async () => false, input: async () => undefined },
+    customTools: [],
+    // denyAll 门：只读工具放行、其余一律拒绝 → 杜绝副作用与审批弹窗（纯问答）
+    inlineExtensions: [permissionGateExtension(() => ({ mode: "denyAll", rules: [] }), async () => false)],
+  });
+  // 尽力套用与主会话一致的默认模型（best-effort，失败则用会话自带默认）
+  try {
+    const models = await next.getAvailableModels();
+    const pref = loadSettings().model as { provider?: string; id?: string } | undefined;
+    const picked =
+      pref?.provider && pref.id && models.some((m) => m.provider === pref.provider && m.id === pref.id)
+        ? { provider: pref.provider, id: pref.id }
+        : models[0];
+    if (picked) await next.setModel(picked.provider, picked.id);
+  } catch {
+    /* 忽略：交给 SDK 默认模型 */
+  }
+  btwUnsub = next.subscribe((event) => send(ENGINE_CHANNELS.btwEvent, event));
+  btwAdapter = next;
+  return next;
+}
+
+async function closeBtw(): Promise<void> {
+  btwUnsub?.();
+  btwUnsub = undefined;
+  await btwAdapter?.stop();
+  btwAdapter = undefined;
+}
+
 /** T2.2：diff 快照逻辑已迁至 workbench/snapshot-service.ts */
 
 export function initEngineIpc(): void {
@@ -261,8 +351,41 @@ export function initEngineIpc(): void {
       id: z.number().int().positive(),
       value: z.union([z.string(), z.boolean()]).optional(),
     }).parse(raw);
-    pendingUiRequests.get(id)?.(value);
+    pendingUiRequests.get(id)?.resolve(value);
     pendingUiRequests.delete(id);
+    return true;
+  });
+
+  // T7.2：开启 per-session 自动接受时，立即放行当前所有在飞的审批/确认（select/input 不动）。
+  ipcMain.handle("approval:acceptAll", () => {
+    let accepted = 0;
+    for (const [id, resolve] of pendingApprovals) {
+      resolve(true);
+      pendingApprovals.delete(id);
+      accepted += 1;
+    }
+    for (const [id, entry] of pendingUiRequests) {
+      if (entry.kind !== "confirm") continue;
+      entry.resolve(true);
+      pendingUiRequests.delete(id);
+      accepted += 1;
+    }
+    return accepted;
+  });
+
+  // T7.6：侧边问答——独立第二会话，不影响主会话；引擎未就绪时 ensureBtwAdapter 会抛错由渲染层提示。
+  ipcMain.handle(ENGINE_CHANNELS.btwAsk, async (_e, raw: unknown) => {
+    const { question, context } = BtwAskCommandSchema.parse(raw);
+    const btw = await ensureBtwAdapter();
+    await btw.prompt({ text: buildBtwPromptText(question, context) });
+    return true;
+  });
+  ipcMain.handle(ENGINE_CHANNELS.btwAbort, async () => {
+    await btwAdapter?.abort();
+    return true;
+  });
+  ipcMain.handle(ENGINE_CHANNELS.btwClose, async () => {
+    await closeBtw();
     return true;
   });
 
@@ -314,6 +437,10 @@ export function initEngineIpc(): void {
     const cmd = PromptCommandSchema.parse(raw);
     const a = await requireAdapter();
     const prepared = prepareAttachments(cmd.attachments ?? []);
+    // T7.9：本轮辅助采集边界
+    assistUserText = cmd.text;
+    assistTextBuf = "";
+    assistAborted = false;
     await a.prompt({
       text: prepared.text ? `${cmd.text}\n\n${prepared.text}` : cmd.text,
       images: [...(cmd.images ?? []), ...prepared.images],
@@ -423,5 +550,31 @@ export function initEngineIpc(): void {
       size: statSync(path).size,
       kind: IMAGE_MIME.has(extname(path).toLowerCase()) ? "image" : "file",
     }));
+  });
+
+  // T7.1：大文本粘贴 → 落盘为临时文件，复用现有基于路径的附件管线（agent 经 <file> 块读取）。
+  ipcMain.handle("engine:stagePastedText", async (_e, raw: unknown) => {
+    const { text } = StagePastedTextArgSchema.parse(raw);
+    const dir = join(tmpdir(), "pi-wood-pastes");
+    mkdirSync(dir, { recursive: true });
+    // 尽力回收 24h 前的旧粘贴文件，失败不影响本次写入。
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    try {
+      for (const f of readdirSync(dir)) {
+        if (!f.startsWith("pasted-text-")) continue;
+        const fp = join(dir, f);
+        try {
+          if (statSync(fp).mtimeMs < cutoff) rmSync(fp, { force: true });
+        } catch {
+          /* 单个文件清理失败忽略 */
+        }
+      }
+    } catch {
+      /* 目录读取失败忽略，不影响主流程 */
+    }
+    const fileName = `pasted-text-${Date.now()}-${pasteSeq++}.txt`;
+    const path = join(dir, fileName);
+    writeFileSync(path, text, "utf8");
+    return { path, name: fileName, size: Buffer.byteLength(text, "utf8"), kind: "file" as const };
   });
 }

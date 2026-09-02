@@ -9,6 +9,7 @@ import { initEngineIpc, getActiveProjectDir, getActiveProjectDirSafe } from "./e
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc } from "./workbench/browser-service";
+import { initDevServerIpc } from "./workbench/dev-server-detector";
 import { initProviderIpc } from "./provider/provider-manager";
 import { initWindowIpc } from "./window-controls";
 import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
@@ -149,6 +150,7 @@ if (!gotLock) {
     initFileIpc(getActiveProjectDir);
     initTerminalIpc(sendToRenderer);
     initBrowserIpc();
+    initDevServerIpc();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

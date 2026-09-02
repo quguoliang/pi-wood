@@ -1,7 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { ipcMain } from "electron";
+import { ipcMain, dialog, BrowserWindow } from "electron";
 import { z } from "zod";
 import {
   PROJECT_CHANNELS,
@@ -99,6 +99,23 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
   ipcMain.handle(SESSION_CHANNELS.messages, (_e, raw: unknown) => {
     const { file } = FileArgSchema.parse(raw);
     return loadSessionMessages(file);
+  });
+
+  // T7.3：导出会话为 Markdown（渲染层已生成内容，主进程弹保存对话框并落盘）
+  ipcMain.handle("session:export", async (_e, raw: unknown) => {
+    const { defaultFileName, markdown } = z
+      .object({ defaultFileName: z.string().min(1), markdown: z.string() })
+      .parse(raw);
+    const win = BrowserWindow.getAllWindows()[0];
+    const projectDir = getProjectDir();
+    const result = await dialog.showSaveDialog(win, {
+      title: "导出会话为 Markdown",
+      defaultPath: projectDir ? join(projectDir, defaultFileName) : defaultFileName,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (result.canceled || !result.filePath) return undefined;
+    writeFileSync(result.filePath, markdown, "utf8");
+    return result.filePath;
   });
 
   // ---- T3.1 扩展列表（全局 agentDir/extensions + 项目 .pi/extensions）----

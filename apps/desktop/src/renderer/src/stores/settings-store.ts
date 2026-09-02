@@ -7,6 +7,8 @@ export interface PiWoodSettings {
   editor: { fontSize: number; tabSize: number };
   ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean };
   recentProjects: string[];
+  /** T7.2：按会话 id 记录「自动接受审批」开关（与主进程 settings 同源）。 */
+  autoAcceptSessions: Record<string, boolean>;
 }
 
 const defaults: PiWoodSettings = {
@@ -15,6 +17,7 @@ const defaults: PiWoodSettings = {
   editor: { fontSize: 14, tabSize: 2 },
   ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false },
   recentProjects: [],
+  autoAcceptSessions: {},
 };
 
 interface SettingsState {
@@ -34,6 +37,7 @@ const merge = (raw: Partial<PiWoodSettings> | undefined): PiWoodSettings => ({
   theme: { ...defaults.theme, ...raw?.theme },
   editor: { ...defaults.editor, ...raw?.editor },
   ui: { ...defaults.ui, ...raw?.ui },
+  autoAcceptSessions: { ...defaults.autoAcceptSessions, ...raw?.autoAcceptSessions },
 });
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({

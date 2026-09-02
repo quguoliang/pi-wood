@@ -4,6 +4,7 @@ import { ProjectPicker } from "./ProjectPicker";
 import { GitBranchChip } from "./GitBranchChip";
 import { Icon } from "../ui/Icon";
 import { greeting } from "../../lib/time";
+import { isLargePaste } from "../../lib/utils";
 import { useComposerController, type ComposerController } from "../../hooks/use-composer-controller";
 
 const quickPrompts = [
@@ -35,6 +36,13 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
         value={c.input}
         onChange={(event) => c.setInput(event.target.value)}
         onKeyDown={c.onKeyDown}
+        onPaste={(event) => {
+          const text = event.clipboardData.getData("text");
+          if (text && isLargePaste(text)) {
+            event.preventDefault();
+            void c.addPastedText(text);
+          }
+        }}
         placeholder={c.engineReady ? "描述任务，或添加文件作为上下文" : "先在上方选择一个项目"}
         rows={1}
         disabled={!c.engineReady}

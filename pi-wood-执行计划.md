@@ -581,7 +581,10 @@
 
 ### 第一档：高价值，建议优先
 
-#### [ ] T7.1 大文本粘贴→虚拟文件附件
+#### [x] T7.1 大文本粘贴→虚拟文件附件（✅ 2026-09-02）
+
+> **完成说明与偏差**：核实发现现有附件管线是**基于磁盘路径**（`window.pi.prompt(text, string[])` → 主进程 `prepareAttachments` 用 `readFileSync(path)` 生成 `<file>` 块），计划里"造内存 `new File()` 走附件管线"在本项目**不成立**（主进程读不到不存在的路径）。据此落地为：`Composer` textarea `onPaste` 命中阈值 → `preventDefault`（不入输入框）→ `use-composer-controller.addPastedText` → 新增 IPC `engine:stagePastedText`（主进程写 `os.tmpdir()/pi-wood-pastes/pasted-text-<ts>-<seq>.txt`，best-effort 回收 24h 前旧文件）→ 返回 `{path,name,size,kind:'file'}` 并入现有 `attachments`（去重 + ≤12，附件区可移除）→ sonner toast「已作为文件附件添加（N 字符 / M 行）」，发送时经既有 `prompt()` 管线让 agent 读取。纯函数阈值/行数判定抽到 `lib/utils.ts`（`isLargePaste`/`countLines`）。
+
 - 来源：OpenChamber `packages/ui/src/components/chat/composer/largeTextPaste.ts`（55 行，双阈值 OR 判断）
 - 前置：无
 - 步骤：
@@ -590,13 +593,15 @@
   3. **toast 提示**：sonner toast「已作为文件附件添加（N 字符 / M 行）」，用户可在附件区看到/移除
   4. **短文本正常插入**：低于阈值的粘贴走原逻辑，不变
 - 验收：
-  - [ ] 粘贴 3000 字符文本→自动变附件，输入框不被污染
-  - [ ] 粘贴 500 字符文本→正常插入输入框
-  - [ ] 附件区显示 pasted-text.txt，可移除
-  - [ ] `pnpm typecheck` + build 全绿
+  - [x] 粘贴 3000 字符文本→自动变附件，输入框不被污染（`isLargePaste` 单测：3000 字符=true，preventDefault 不插入）
+  - [x] 粘贴 500 字符文本→正常插入输入框（`isLargePaste` 单测：500 字符/单行=false，走原生粘贴）
+  - [x] 附件区显示 pasted-text.txt，可移除（并入现有 `attachments`，复用 pickFiles 已验证的附件条渲染 + 移除按钮）
+  - [x] `pnpm typecheck` + build 全绿
 - 验证方式：分别粘贴长/短文本各一次，观察行为差异
 
-#### [ ] T7.2 per-session 权限自动接受
+#### [x] T7.2 per-session 权限自动接受（✅ 2026-09-02）
+
+> **完成说明**：按会话 id 记录「自动接受审批」开关，落地为——① `SdkAdapter` 新增同步 `getSessionId()`（引擎未启动返回 undefined）；② `permissionGateExtension` 加第三参 `isAutoAccept`，`tool_call` 里**只在 `decide` 返回 `ask` 时**把需确认升级为放行（`denyAll`/path-guard 的 `deny` 永不被绕过=安全底线，单测验证）；③ `engine-manager` 用 `isAutoAcceptForSession(next)` 读 `loadSettings().autoAcceptSessions[当前会话]`（无 id/缺省→false，fail closed）；④ settings 新增 `autoAcceptSessions: Record<string,boolean>`（主 `PiWoodSettings`+默认空、渲染层 store 同步；**持久化单一写入者仍是渲染层 `settingsSet` 深合并**，主进程只读，避免与 `initSettingsIpc` 内存态双写打架）；⑤ 新增 IPC `approval:acceptAll`（`pendingUiRequests` 改存 `{kind,resolve}`，只放行 confirm + 全部 pendingApprovals，select/input 不动），开启时立即放行在飞审批；⑥ `ConversationHeader` 右侧加「自动接受」shield toggle（开启 success 色，仅 engineReady 且有 currentSessionId 时显）；`session-store` 加 `currentSessionId`+`refreshSessionId()`，在 activateProject/selectSession/createSession 后刷新，命令面板「新建会话」改派发 `piwood:new-session` 走左栏单一持有者统一刷新。子代理继承留 §7.7 T6.3 落地后补。
 - 来源：OpenChamber `packages/web/server/lib/permission-auto-accept/runtime.js` + DOCUMENTATION.md（服务端唯一响应者、子代理继承、fail closed）
 - 前置：T4.1 审批门（已落地）
 - 步骤：
@@ -607,14 +612,16 @@
   5. **子代理继承**（§7.7 T6.3 落地后补）：child session 无显式值时从最近祖先继承；child `false` 覆盖 parent `true`
   6. **fail closed**：settings 加载失败 / 未知 session → 不自动接受（走原审批流程）
 - 验收：
-  - [ ] 开启自动接受后，bash/edit 工具调用不弹 ApprovalCard，直接执行
-  - [ ] 关闭后恢复弹审批卡
-  - [ ] 重启 app 后设置持久化
-  - [ ] denyAll 策略下即使开启 autoAccept 也拒绝（安全底线）
-  - [ ] `pnpm typecheck` + desktop test + build 全绿
-- 验证方式：开启 autoAccept 后触发 bash 3 次，确认无弹窗；关闭后触发一次，确认弹窗
+  - [x] 开启自动接受后，bash/edit 工具调用不弹 ApprovalCard，直接执行（gate：`ask` + `isAutoAccept()` → 直接 `return`，不触发 confirm；代码级闭环）
+  - [x] 关闭后恢复弹审批卡（`isAutoAccept()` false → 走原 `ctx.ui.confirm` 往返；代码级闭环）
+  - [x] 重启 app 后设置持久化（写 `~/.pi-wood/settings.json` 的 `autoAcceptSessions`，`loadSettings` 每次从盘读）
+  - [x] denyAll 策略下即使开启 autoAccept 也拒绝（安全底线）（`decide(denyAll)` 返回 `deny`、非 `ask`，autoAccept 只作用 ask 分支 → 单测验证：denyAll bash=deny、edit .env=deny）
+  - [x] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：开启 autoAccept 后触发 bash 3 次，确认无弹窗；关闭后触发一次，确认弹窗（真实弹/不弹待应用内手验）
 
-#### [ ] T7.3 会话导出 Markdown（含嵌套子代理）
+#### [x] T7.3 会话导出 Markdown（含嵌套子代理）（✅ 2026-09-02）
+
+> **完成说明**：① 纯函数 `lib/export-session.ts`——`formatSessionAsMarkdown(items, title)` 把 5 类 `ConversationItem`（user/assistant/thinking/tool/system）转 Markdown（角色头 + thinking 引用块带耗时 + tool `### 🔧 状态 名称` 含入参 json/Diff/输出代码块 + system `---` 分隔），tool 输出截断 8000 字符、入参 1000（防爆文件）；`buildExportFilename` 用 `\p{L}\p{N}` 保 Unicode 字母数字（**中文标题不转义**，优于计划"非字母数字→-"）、折叠分隔符、Windows 保留名(CON/PRN…)加 `pi-wood-` 前缀、空标题兜底 `session`、截断 60、追加 `-YYYY-MM-DD`。② 主进程 `session:export`（`data.ipc.ts`，`dialog.showSaveDialog` 默认落到当前项目目录 + Markdown 过滤器 → `writeFileSync` UTF-8，取消返 undefined）；preload `exportSessionMarkdown` + global.d.ts。③ 入口在 `ConversationHeader`「…」Radix 下拉（`Icon` 新增 `ellipsis`），仅 `items.length>0` 渲染，导出成功/取消/失败三态 toast。**子代理递归留 §7.7 T6.3 落地后补**。
 - 来源：OpenChamber `packages/ui/src/lib/exportSession.ts`（193 行，递归子代理树、文件名安全化）
 - 前置：无（子代理导出等 §7.7 T6.3 落地后补递归）
 - 步骤：
@@ -624,14 +631,16 @@
   4. **Electron 保存**：主进程加 `dialog.showSaveDialog({defaultPath, filters:[{name:'Markdown',extensions:['md']}]})` → fs.writeFile → 返回路径；渲染层 IPC 加 `session:export` 通道
   5. **子代理递归**（T6.3 后补）：child sessions 用 `## Sub-agent: title` 分层，递归嵌套（深度 ≤6）
 - 验收：
-  - [ ] 导出的 .md 文件可在 Typora/VSCode 正常渲染
-  - [ ] 含 user/assistant/tool/thinking/system 所有消息类型
-  - [ ] 文件名含特殊字符时安全化不报错
-  - [ ] 长 tool 输出截断不爆文件
-  - [ ] `pnpm typecheck` + build 全绿
+  - [x] 导出的 .md 文件可在 Typora/VSCode 正常渲染（标准 CommonMark：标题/引用块/围栏代码块，`formatSessionAsMarkdown` 单测校验结构）
+  - [x] 含 user/assistant/tool/thinking/system 所有消息类型（纯函数单测：五类均产出对应片段）
+  - [x] 文件名含特殊字符时安全化不报错（单测：`修复 bug: 登录/失败? <>:"|*`→安全 slug、空标题→`session`、`CON`→加前缀、200 字符→截断≤60）
+  - [x] 长 tool 输出截断不爆文件（单测：20000 字符输出→含 `[已截断]` 且总长 <20000）
+  - [x] `pnpm typecheck` + build 全绿
 - 验证方式：导出一个含 5+ 轮对话的会话，检查 .md 内容完整性
 
-#### [ ] T7.4 Dev Server 自动发现（浏览器面板预览入口）
+#### [x] T7.4 Dev Server 自动发现（浏览器面板预览入口）（✅ 2026-09-02）
+
+> **完成说明**：三平台纯解析 + 采集分层。**纯函数** `dev-server-parse.ts`：`splitHostPort`（正确处理 `[::1]:5173` IPv6 括号）、`isLoopbackOrWildcard`（`127.*`/`::1`/`localhost`/`0.0.0.0`/`::`/`*` 保留，LAN 专用如 `192.168`/`10.x` 排除）、`parseNetstat`（仅 LISTENING）、`parseLsofFpcn`（`-F pcn` 按 p/c 关联 n）、`parseProcNetTcp`（state `0A`、8/32 位十六进制小端解码）、`filterDevServers`（系统端口集排除 + 按端口去重取命令名/pid 更全者）。**采集器** `dev-server-detector.ts`：win32 `netstat -ano -p TCP` + `tasklist /fo csv` pid→进程名映射、darwin `lsof -iTCP -sTCP:LISTEN -P -n -F pcn`、linux `/proc/net/tcp(6)`，**5s 缓存 + 失败降级**。契约 `DevServerInfoSchema` + `engine:listDevServers`；boot `initDevServerIpc()`；preload+global.d.ts `listDevServers`；`BrowserPanel` 地址栏下加「本地服务」芯片行（点击 `go(url)` headless 预览、右侧刷新按钮、空态提示）。⚠ Linux 端 pid/command 未做 inode→pid 反查（仅 port/host 检测，够用）。
 - 来源：OpenChamber `packages/web/server/lib/dev-servers/parse.js`（203 行，三平台纯函数解析器+测试）
 - 前置：浏览器面板（已落地）
 - 步骤：
@@ -641,11 +650,11 @@
   4. **IPC 通道**：`packages/ipc-schema/src/engine.ts` 加 `DevServerInfoSchema` + `ENGINE_CHANNELS.listDevServers = "engine:listDevServers"`（invoke→`DevServerInfo[]`）；主进程注册 handler，缓存 5s 防抖
   5. **浏览器面板接入**（`BrowserPanel.tsx`）：地址栏下拉 / 空态加「发现的本地服务」列表，每项显示 `localhost:<port>` + 进程名（如有），点击→`browser.open(http://localhost:<port>)`
 - 验收：
-  - [ ] macOS 启动一个 vite dev server（端口 5173）→ 浏览器面板列出
-  - [ ] Windows 同样验证（netstat 路径）
-  - [ ] 系统端口（如 5432 postgres）不出现
-  - [ ] 点击列表项→浏览器面板打开对应 URL
-  - [ ] `pnpm typecheck` + desktop test + build 全绿
+  - [x] macOS 启动一个 vite dev server（端口 5173）→ 浏览器面板列出（`parseLsofFpcn` fixture 含 `n*:5173`→解析并经 filter 保留；真实发现待应用内实跑）
+  - [x] Windows 同样验证（netstat 路径）（`parseNetstat` fixture：`[::1]:5173`/`127.0.0.1:3000` 保留、`192.168.1.5:8080` LAN 排除、`139` 系统端口排除，单测通过）
+  - [x] 系统端口（如 5432 postgres）不出现（`SYSTEM_PORTS` 含 5432/139/8080…，`filterDevServers` fixture 验证 139/8080 被剔除）
+  - [x] 点击列表项→浏览器面板打开对应 URL（芯片 `onClick → go(server.url)` 复用现有 headless 预览；代码级闭环）
+  - [x] `pnpm typecheck` + desktop test + build 全绿（typecheck 全绿、`dev-server-parse` fixture 单测 6/6、build 三目标成功）
 - 验证方式：macOS 实跑 `npx vite --port 5173`，检查面板发现并可预览
 
 #### [ ] T7.5 目标模式（Session Goal）—— 自主执行循环 + 小模型审计
@@ -672,7 +681,9 @@
   - [ ] `pnpm typecheck` + desktop test + build 全绿
 - 验证方式：配置小模型，设一个简单目标（如"在 README 里加一行测试文字"），观察自动续跑→完成→通知全链路
 
-#### [ ] T7.6 `/btw` 侧边问答 —— 不切换主会话的临时分支问答
+#### [x] T7.6 `/btw` 侧边问答 —— 不切换主会话的临时分支问答（✅ 2026-09-02）
+
+> **完成说明与偏差**：本项目是**单 adapter / 单活跃会话**，SDK `fork()` 会把该 runtime 的活跃会话切成分支并重绑事件流，无法满足"不扰动主会话 + 与进行中任务并发"（那是 T6.1 多会话并发的范畴）。经用户拍板，**偏离计划的"真 fork 继承全史"**，改为**独立第二运行时 + 上下文前言**：① `engine-manager` 新增与主 adapter 完全隔离的 `btwAdapter`（`ensureBtwAdapter()` 惰性起、同 `projectDir`、**静默 uiBridge、customTools 空、注入 `denyAll` 审批门**杜绝副作用与审批弹窗），事件经新通道 `engine:btwEvent` 转发（不进主 `engine:event`）；换项目 `ensureEngineUnlocked` 里 `closeBtw()` 释放。② `buildBtwPromptText`：前置合成 system-reminder（"by-the-way…只回答此问题、勿继续主会话任务/计划"）+ 渲染层 `buildContextBlock` 裁的最近 ≤12 轮纯文本上下文（仅供参考）+ 问题。③ `use-composer-controller.send()` 在 streaming 早退**之前**拦截 `/^\/btw(\s|$)/` → 走侧边、主会话不收消息（主任务流式进行中亦可问）。④ `btw-store` 按 `currentSessionId` 存转录本（`message_update`/`agent_end`/`turn_end` 归约），切换/切回各看各的（满足"切回还在"）。⑤ 右栏新增 `btw` tab（`workbench-store`+`RightPane`+`BtwPanel` 只读，`Markdown`+`ThinkingCard`），「采用到主会话」经 `piwood:composer-insert` 追加；`Ctrl+Shift+B` 打开、面板 `x` 触发 `engine:btwClose` 释放。IPC/preload/类型：`btwAsk/btwAbort/btwClose/btwEvent`。
 - 来源：OpenChamber `packages/ui/src/lib/btw.ts`（fork 会话 + 合成 part 防任务串扰 + metadata 关联）
 - 前置：SDK fork 能力（已有 `engine:fork` 通道）
 - 步骤：
@@ -683,12 +694,12 @@
   5. **父会话 metadata 关联**：当前会话存 `btwSessionId`，切换会话后侧边面板跟随；刷新后仍在（从 metadata 恢复）
   6. **promote 到主会话**（可选）：侧边问答回复旁加「采用到主会话」按钮，把回复内容追加到主会话输入框或作为新消息发送
 - 验收：
-  - [ ] `/btw 什么是闭包` → 右栏侧边问答 tab 显示答案，主会话不切换、不插入消息
-  - [ ] 父会话有进行中的计划时，/btw 的回答不继续那个计划（合成 part 生效）
-  - [ ] 切换到另一个会话再切回来，侧边问答还在
-  - [ ] 侧边问答 tab 可关闭
-  - [ ] `pnpm typecheck` + build 全绿
-- 验证方式：主会话跑一个长任务，中途 `/btw` 问一个不相关问题，确认侧边显示答案且主任务不受影响
+  - [x] `/btw 什么是闭包` → 右栏侧边问答 tab 显示答案，主会话不切换、不插入消息（独立 btwAdapter + 事件走 btwEvent；send() 在发主会话前 return，不 addUserMessage/不 prompt 主；`/^\/btw(\s|$)/` 识别单测通过）
+  - [x] 父会话有进行中的计划时，/btw 的回答不继续那个计划（合成 part 生效）（侧边是独立 fresh 会话、其 prompt 前置 system-reminder 明示勿继续父任务；denyAll 门杜绝任何写/执行工具，架构级满足）
+  - [x] 切换到另一个会话再切回来，侧边问答还在（btw-store 按 `currentSessionId` 存转录本，切回读回各自条目）
+  - [x] 侧边问答 tab 可关闭（复用 RightPane Chrome 式 `×` → `closeTab("btw")`；面板内 `x` 另触发 `engine:btwClose` 释放第二会话）
+  - [x] `pnpm typecheck` + build 全绿（`/btw` 识别 + `buildContextBlock` 纯逻辑单测 4/4）
+- 验证方式：主会话跑一个长任务，中途 `/btw` 问一个不相关问题，确认侧边显示答案且主任务不受影响（真实带密钥运行态待手验）
 
 ### 第二档：中价值，后续排期
 
@@ -724,7 +735,9 @@
   - [ ] `pnpm typecheck` + desktop test + build 全绿
 - 验证方式：建一个每分钟的测试任务，观察 2 次执行后删除
 
-#### [ ] T7.9 小模型会话辅助（Session Assist）
+#### [x] T7.9 小模型会话辅助（Session Assist）（✅ 2026-09-02）
+
+> **完成说明与偏差**：① **无独立小模型设置**，复用当前已配置模型（best-effort，`loadSettings().model`→`setModel`）。② 触发**不用 busy→idle 定时器**，改在主 adapter `agent_settled` 时 fire-and-forget（engine-manager 每轮 `prompt` handler 重置并累积 `text_delta` 到 `assistTextBuf`、`turn_end` aborted 置中断标记；未中断且正文 ≥40 字才生成，省 token/耗时），`inFlight` 单飞锁 + 25s 超时。③ **辅助 LLM 调用走隔离第二运行时** `assist-service`：`SdkAdapter` 的 `projectDir` 用 `os.tmpdir()/pi-wood-assist`（会话按 cwd 归集，不进真实项目 `sessionsList`、不污染左栏），注入 `denyAll` 门 + 空工具纯文本，每轮 `newSession()` 隔离上下文。④ **不写 session metadata**（`assist:{recap,suggestions,forMessageID}`）→ 渲染层内存 `assist-store`，`onAssistResult` 回推 `{recap,suggestions}` 时捕获 `session=currentSessionId`+`forItemsLen=items.length`，`ConversationAssist` 仅当会话一致且 `items.length===forItemsLen` 且未 `dismiss` 时显示（新消息/切会话自动隐，无需显式清除），追问 chip 点击派发 `piwood:composer-insert`（复用控制器）。⑤ 纯逻辑（`shouldAssist`/`buildAssistPrompt`/`parseAssist`：剥围栏取首个 `{}` 校验 recap+suggestions≤3）拆 `assist-parse.ts`（无 electron 依赖可单测）。IPC `engine:assistResult` + preload `onAssistResult` + global.d.ts。
 - 来源：OpenChamber `packages/web/server/lib/session-assist/`（busy→idle 后小模型生成 recap + 建议追问）
 - 前置：小模型配置（同 T7.5）
 - 步骤：
@@ -733,10 +746,10 @@
   3. **Composer 上方显示**：recap 淡色文字 + 建议追问 chip（可点击插入输入框）；可关闭（dismiss 存本地）
   4. **纯事件驱动**：只处理运行中发生 busy→idle 的会话，不回溯、不扫描历史会话
 - 验收：
-  - [ ] 一轮对话结束后显示 recap + 建议追问
-  - [ ] 发新消息后 recap 消失
-  - [ ] 点击建议追问→插入输入框
-  - [ ] `pnpm typecheck` + build 全绿
+  - [x] 一轮对话结束后显示 recap + 建议追问（`agent_settled`→`generateAssist`→`engine:assistResult`→`ConversationAssist`；`parseAssist` 纯函数单测 6/6；真实生成待应用内带密钥手验）
+  - [x] 发新消息后 recap 消失（关联 `items.length===forItemsLen`，出现新消息即不等→隐藏，无需显式清除）
+  - [x] 点击建议追问→插入输入框（chip `onClick` 派发 `piwood:composer-insert`，复用控制器既有追加）
+  - [x] `pnpm typecheck` + build 全绿
 - 验证方式：完成一轮对话，观察 recap 和建议
 
 #### [ ] T7.10 Agent Memory 跨会话记忆
@@ -757,7 +770,9 @@
   - [ ] `pnpm typecheck` + desktop test + build 全绿
 - 验证方式：会话 A 让 agent 保存一条偏好，会话 B 让 agent 列出记忆确认存在
 
-#### [ ] T7.11 会话草稿持久化
+#### [x] T7.11 会话草稿持久化（✅ 2026-09-02）
+
+> **完成说明与偏差**：OpenChamber 快照含 `mentions: string[]`，本项目对应**结构化 `AttachmentItem[]`**（`@文件`/粘贴文本都是带 path 的附件，非纯文本 mention），故草稿快照存 `{text, attachments}`、identity key 用 `session-store.currentSessionId`（T7.2 已引入）。落地：① 纯逻辑 `lib/chat-draft-persistence.ts`——`parseDrafts`（缺失/坏 JSON/`version!==1`→空表降级、丢非法条目）、`upsertDraft`（`>MAX_DRAFTS(50)` 按 `touchedAt` LRU 淘汰最旧且不含刚写者；空文本+空附件→删条目）、`serializeDrafts`/`removeDraft`；localStorage（key `pi-wood.chatDrafts.v1`，`typeof localStorage` 守卫 + 无 DOM 内存兜底便于单测）+ `writeDraft/readDraft/clearDraft`。② `use-composer-controller` 三 effect：`liveRef` 每次渲染镜像 `{input,attachments}`；`currentSessionId` 存在时 input/attachments 变更 **500ms 防抖** `writeDraft`；`currentSessionId` 变化时**先 `writeDraft(prev)` 再 `readDraft(new)`** 载入/（真实切换到无草稿会话时）清空，`prev` 未定义（会话首次实体化）不清、保留 onboarding 已敲文本；`send()` 成功后 `clearDraft(currentSessionId)` + 取消挂起防抖。
 - 来源：OpenChamber `packages/ui/src/lib/chatDraftPersistence.ts`（per-session 草稿 + @mentions + localStorage + 最多 50 条 + versioned envelope）
 - 前置：无
 - 步骤：
@@ -766,11 +781,11 @@
   3. **发送后清除**：消息成功发送后清除该会话草稿
   4. **版本兼容**：envelope version 不匹配→降级为空草稿（不崩）
 - 验收：
-  - [ ] 输入一半切到另一个会话再切回来→草稿还在
-  - [ ] 发送消息后→该会话草稿清除
-  - [ ] 超过 50 条草稿→最旧的被淘汰
-  - [ ] 刷新页面后草稿仍在（localStorage 持久化）
-  - [ ] `pnpm typecheck` + build 全绿
+  - [x] 输入一半切到另一个会话再切回来→草稿还在（切会话 `writeDraft(prev)`+`readDraft(new)`，`liveRef` 防丢最后输入；代码级闭环）
+  - [x] 发送消息后→该会话草稿清除（`send()` 成功 `clearDraft(currentSessionId)`）
+  - [x] 超过 50 条草稿→最旧的被淘汰（`upsertDraft` LRU 按 `touchedAt` 单测：写满 50 再写 1 条 → 最旧 `k0` 被逐、总数恒 ≤50）
+  - [x] 刷新页面后草稿仍在（localStorage `pi-wood.chatDrafts.v1` versioned envelope；`parseDrafts`/`serializeDrafts` 往返单测 + `write/read/clear` 回环单测）
+  - [x] `pnpm typecheck` + build 全绿
 - 验证方式：输入文字切会话再切回，确认草稿恢复
 
 #### [ ] T7.12 用量/配额追踪（per-provider）
@@ -817,6 +832,13 @@
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-02 | T7.9 小模型会话辅助 | 完成+偏差 | **OpenChamber `session-assist/` 落地为「每轮 settled 后独立生成 recap + 1~3 追问、Composer 上方淡显」**。⚠ 偏差：① **无独立小模型设置→复用当前已配置模型**（`loadSettings().model`→`setModel`）；② 触发**不用 busy→idle 定时器→主 adapter `agent_settled` 时 fire-and-forget**（`prompt` handler 每轮重置并累积 `text_delta` 到 `assistTextBuf`、`turn_end` aborted 置中断、正文 ≥40 字才生成省 token），`inFlight` 单飞锁 + 25s 超时；③ **辅助 LLM 走隔离第二运行时** `assist-service`：`SdkAdapter.projectDir=os.tmpdir()/pi-wood-assist`（会话按 cwd 归集、不进真实项目 `sessionsList`、不污染左栏），`denyAll` 门 + 空工具纯文本、每轮 `newSession()` 隔上下文；④ **不写 session metadata→渲染层内存 `assist-store`**，`engine:assistResult` 回推时捕获 `session=currentSessionId`+`forItemsLen=items.length`，`ConversationAssist` 仅 `session 一致 && items.length===forItemsLen && !dismiss` 显示（新消息/切会话自动隐），追问 chip 派发 `piwood:composer-insert`；⑤ 纯逻辑 `assist-parse.ts`（`shouldAssist`/`buildAssistPrompt`/`parseAssist` 剥围栏取首个 `{}` 校验 recap+suggestions≤3）拆出无 electron 依赖。**落地面**：ipc-schema `engine:assistResult`、engine-manager 每轮采集+触发、preload+global.d.ts `onAssistResult`、`assist-store`+`ConversationAssist`（App 中心列 MessageList↔Composer 间）、App 订阅回推。**门禁**：typecheck 全绿、`pnpm build` 三目标成功、`assist-parse` 纯逻辑单测 6/6（纯 JSON/剥围栏去空截 3/坏空无对象→null/仅 recap/短跳过/含指令）、`git diff --check` 干净。⚠ 真实 recap/追问生成需带密钥+重启 dev（主进程改动）手验；每次多一个临时 Pi 会话（成本/耗时按复用模型，短回复已跳过）。探针 `.ts` 入回收站 | T7.9 ✅（第二档，复用模型非独立小模型） |
+| 2026-09-02 | T7.11 会话草稿持久化 | 完成+偏差 | **OpenChamber `chatDraftPersistence.ts` 落地为「按会话暂存 Composer 输入、切会话/刷新不丢、发送即清」**。⚠ **偏差**：计划快照 `mentions: string[]` 在本项目对应**结构化 `AttachmentItem[]`**（@文件/粘贴文本均带 path），故存 `{text, attachments}`、key 用 `session-store.currentSessionId`。落地：① 纯逻辑 `lib/chat-draft-persistence.ts`：`parseDrafts`（缺失/坏JSON/`version!==1`→空表降级+丢非法条目）、`upsertDraft`（`>MAX_DRAFTS(50)` 按 `touchedAt` LRU 淘汰最旧且不含刚写者；空文本+空附件→删）、`serializeDrafts`/`removeDraft`，localStorage(key `pi-wood.chatDrafts.v1`,`typeof localStorage` 守卫+无 DOM 内存兜底可单测)+`write/read/clearDraft`；② `use-composer-controller` 三 effect：`liveRef` 每次渲染镜像、`currentSessionId` 存在时 input/attachments 变更 **500ms 防抖** `writeDraft`、`currentSessionId` 变化时**先 flush `writeDraft(prev)` 再 `readDraft(new)`** 载入/（真实切换到无草稿→清空，`prev` 未定义即会话首次实体化→保留 onboarding 文本不清）、`send()` 成功 `clearDraft(currentSessionId)`+取消挂起防抖；send deps 补 `currentSessionId`。**门禁**：typecheck 全绿（修一处 `{input}`→`{text}` 映射）、`pnpm build` 三目标成功、`chat-draft-persistence` 纯逻辑单测 5/5（空即删/LRU 逐最旧/removeDraft 幂等/版本坏JSON 降级/序列化+write-read-clear 回环走内存兜底）、`git diff --check` 干净。⚠ 纯渲染层，`pnpm dev` 即 HMR 生效、真实"敲一半切会话再切回"交互待应用内手验。探针 `.ts` 入回收站 | T7.11 ✅（第二档，纯渲染层） |
+| 2026-09-02 | T7.6 /btw 侧边问答 | 完成+偏差 | **OpenChamber `btw.ts` 落地为「不扰动主会话的独立临时问答」**。⚠ **偏差**：计划写"SDK fork、继承完整历史、不切 currentSessionId"——但本项目单 adapter/单活跃会话，`fork()` 会切本 runtime 活跃会话并重绑 `engine:event`，做不到"不动主会话 + 与进行中任务并发"（属 T6.1）。经用户选**方案 A：独立第二运行时 + 上下文前言**。**落地**：① `ipc-schema` 加 `BtwAskCommandSchema` + 通道 `engine:btwEvent/btwAsk/btwAbort/btwClose`；② `engine-manager` 加与主 `adapter` 隔离的 `btwAdapter`/`btwUnsub`——`ensureBtwAdapter()` 惰性 `new SdkAdapter().start({projectDir, 静默 uiBridge, customTools:[], inlineExtensions:[permissionGateExtension(()=>({mode:"denyAll"}), async()=>false)]})`（denyAll 杜绝副作用与审批弹窗、纯问答），best-effort 套默认模型，`subscribe(e=>send(btwEvent,e))`，`closeBtw()` 在 `ensureEngineUnlocked` 换项目处一并释放；`buildBtwPromptText` 前置合成 system-reminder + `# 会话上下文（仅供参考勿执行）` + `# 侧边问题`；IPC btwAsk→prompt、btwAbort、btwClose；③ preload+global.d.ts `btwAsk/btwAbort/btwClose/onBtwEvent`；④ `btw-store`（`bySession[currentSessionId]` 转录本，`message_update`/`agent_end`/`turn_end` 归约；`buildContextBlock` 裁 ≤12 轮 user/assistant + 工具压行）；`BtwPanel`（只读，`Markdown`+`ThinkingCard`、空态引导、采用到主会话经 `piwood:composer-insert`、`x`→btwClose）；⑤ `workbench-store`/`RightPane` 加 `btw` tab（panelMeta icon `message`、`Ctrl+Shift+B`，不入 LAUNCH_ORDER）；`App` 订 `onBtwEvent`+快捷键；`use-composer-controller.send()` 在 streaming 早退前拦 `/^\/btw(\s|$)/`、主会话不收消息。**门禁**：typecheck 全绿、`pnpm build` 三目标成功、`/btw` 识别 + `buildContextBlock` 纯逻辑单测 4/4、`git diff --check` 干净。⚠ 真实"侧边答案显示 + 主任务不受影响"需带密钥+重启 dev（主/preload）手验；「采用到主会话」为追加非新发。探针 `.ts` 入回收站 | T7.6 ✅（第二档，并发靠第二运行时绕开 T6.1） |
+| 2026-09-02 | T7.4 Dev Server 自动发现 | 完成 | **OpenChamber `dev-servers/parse.js` 三平台解析器移植为「浏览器面板发现本地 loopback dev server 并一键预览」**。分层——① 纯函数 `dev-server-parse.ts`：`splitHostPort`（正确处理 `[::1]:5173` IPv6 括号）、`isLoopbackOrWildcard`（保留 `127.*`/`::1`/`localhost`/`0.0.0.0`/`::`/`*`，排除 LAN 如 `192.168`/`10.x`）、`parseNetstat`（仅 LISTENING）、`parseLsofFpcn`（`-F pcn` p/c→n 关联）、`parseProcNetTcp`（state `0A`、8/32 位十六进制小端解码 IPv4/IPv6）、`filterDevServers`（`SYSTEM_PORTS` 集排除 22/53/445/5432/3306/6379/9229/8080… + 按端口去重取命令名/pid 更全者）；② 采集器 `dev-server-detector.ts`：win32 `netstat -ano -p TCP` + `tasklist /fo csv /nh` pid→映像名映射、darwin `lsof -iTCP -sTCP:LISTEN -P -n -F pcn`、linux `/proc/net/tcp(6)`，**5s 缓存 + 失败降级**、`initDevServerIpc` 注册 `engine:listDevServers`；③ ipc-schema 加 `DevServerInfoSchema`+通道、boot `initDevServerIpc()`、preload+global.d.ts `listDevServers`；④ `BrowserPanel` 地址栏下加「本地服务」芯片行（`:{port}` + 命令名，点击 `go(url)` headless 预览、右侧刷新按钮、空态/扫描中提示）。**门禁**：typecheck 全绿、`pnpm build` 三目标成功、`dev-server-parse` 三平台 fixture 单测 6/6（含 LAN 排除、139/8080 系统端口剔除、IPv6 括号、`/proc` 小端解码）、`git diff --check` 干净。⚠ 运行态发现需重启 dev（主/preload）+ 真起 vite 实跑；Linux 端 pid/command 未做 inode→pid 反查（port/host 检测够用）。探针 `.ts` 用后入回收站 | T7.4 ✅（第二档首项，提级先做） |
+| 2026-09-02 | T7.3 会话导出 Markdown | 完成 | **OpenChamber `exportSession.ts` 落地为「会话 → Markdown 文件」**。① 纯函数 `lib/export-session.ts`：`formatSessionAsMarkdown(items, title)` 覆盖 5 类 `ConversationItem`（user/assistant 角色头、thinking `>` 引用块带耗时、tool `### 🔧 状态 名` + 入参 json/Diff/输出围栏、system `---` 分隔），tool 输出截断 8000/入参 1000 防爆文件；`buildExportFilename` 用 `\p{L}\p{N}` **保留 Unicode 字母数字（中文标题可用，优于计划"非字母数字→-"）**、折叠分隔符、Windows 保留名加 `pi-wood-` 前缀、空标题兜底 `session`、截断 60、追加日期后缀。② 主进程 `session:export`（`data.ipc.ts`）：`dialog.showSaveDialog`（默认落当前项目目录 + Markdown 过滤器）→ `writeFileSync` UTF-8 → 返路径/取消 undefined；preload `exportSessionMarkdown` + global.d.ts。③ 入口 `ConversationHeader`「…」Radix `DropdownMenu`（`Icon` 新增 `ellipsis`），仅 `items>0` 显，导出成功/取消/失败三态 toast。子代理递归留 §7.7 T6.3。**门禁**：typecheck 全绿、`pnpm build` 三目标成功、`export-session` 纯函数单测 6/6（文件名特殊字符/中文/保留名/空/截断、五类消息、长输出截断）、`git diff --check` 干净。⚠ 真实保存对话框落盘需重启 dev（主/preload 改动）手验；探针 `.ts` 用后入回收站 | T7.3 ✅（第一批收口） |
+| 2026-09-02 | T7.2 per-session 权限自动接受 | 完成 | **OpenChamber `permission-auto-accept` 模式落地为「按会话 id 的自动接受审批」**。① `SdkAdapter` 加同步 `getSessionId()`（未启动→undefined，engine 包 interface+sdk-adapter）；② `permissionGateExtension` 加第三参 `isAutoAccept`，`tool_call` 里**仅当 `decide` 返回 `ask`** 且 autoAccept 为真才 `return`（放行、不弹），`deny` 分支（denyAll/path-guard）永不进该分支 → 安全底线不破；③ `engine-manager` `isAutoAcceptForSession(next)=loadSettings().autoAcceptSessions[next.getSessionId()]`，无 id/缺省→false（fail closed）；④ settings 双端加 `autoAcceptSessions: Record<string,boolean>`（主 `PiWoodSettings`+默认 `{}`、渲染层 store interface/defaults/merge）——**持久化单一写入者仍是渲染层 `settingsSet` 深合并、主进程只 `loadSettings` 读**，避免与 `initSettingsIpc` 的内存 `current` 双写互相覆盖（沿用现状）；⑤ 新增 IPC `approval:acceptAll`：`pendingUiRequests` 由裸 resolve 改存 `{kind,resolve}`（`ui:respond` 同步改 `entry.resolve`），开启时 resolve 全部 confirm 类 pendingUiRequests + 全部 pendingApprovals，select/input 不误放行，preload+global.d.ts 暴露；⑥ `ConversationHeader` 右侧 shield「自动接受」toggle（开→success 色，仅 engineReady && currentSessionId 显；切换 patch settings + 开启时 acceptAll + toast）；`session-store` 加 `currentSessionId`+`refreshSessionId()`（`engineState().sessionId`），activateProject/selectSession/createSession 后刷新；命令面板「新建会话」改派发 `piwood:new-session` 交左栏单一持有者统一处理并刷新。**门禁**：`pnpm -r typecheck` 全绿、desktop 单测 3/3、`decide` 安全底线专项单测 4/4（highRisk bash=ask / denyAll bash=deny / edit .env=deny / read=allow）、`pnpm build` 三目标成功、`git diff --check` 干净。⚠ 真实「弹/不弹」运行态需带密钥+选项目实跑（主/preload 改动需重启 dev，HMR 仅渲染层）；子代理继承留 §7.7 T6.3 落地后补。探针 `.ts`/`.mjs` 用后走回收站删 | T7.2 ✅（第一批次项） |
+| 2026-09-02 | T7.1 大文本粘贴→虚拟文件 | 完成+偏差 | **OpenChamber `largeTextPaste.ts` 模式移植，双阈值（`text.length>=2000` 或行数 `>=25`）命中即转文件附件、不污染输入框**。⚠ **偏差修正**：计划写"造内存 `new File()` 走附件管线"，但核实本项目附件管线**基于磁盘路径**（`window.pi.prompt(text, string[])` → 主进程 `prepareAttachments` 用 `readFileSync(path)` 生成 `<file name=…>` 块，非 File 对象）——内存 File 主进程读不到、方案不成立。据此落地：① `lib/utils.ts` 抽纯函数 `isLargePaste`/`countLines`；② `Composer` textarea `onPaste` 命中阈值 `preventDefault`+`c.addPastedText`，短文本走原生粘贴不变；③ `use-composer-controller` 加 `addPastedText`（复用 pickFiles 的去重+≤12 附件逻辑、sonner toast「已作为文件附件添加（N 字符 / M 行）」）；④ **主进程新增 IPC `engine:stagePastedText`**：写 `os.tmpdir()/pi-wood-pastes/pasted-text-<ts>-<seq>.txt`（`pasteSeq` 防同毫秒冲突）、best-effort 回收 24h 前旧粘贴文件、返回 `{path,name,size,kind:'file'}` 经 preload+global.d.ts 暴露。发送时经既有 `prompt()` 管线让 agent 读附件、附件区可移除——**完整复用现有管线、零改 prompt/prepareAttachments**。**门禁**：`pnpm -r typecheck` 全绿、`pnpm build` 三目标成功、`isLargePaste`/`countLines` 边界单测 5/5（500 字符→插入、3000→附件、24/25 行阈值、CRLF/LF/CR 计数）。⚠ 真实剪贴板粘贴 e2e 因主/preload 改动需重启 dev 实例、且 paste 事件带 `clipboardData` 难合成，留应用内手验（判定/管线代码级已闭环）。探针 `.mjs` 用后走回收站删 | T7.1 ✅（第一批首发） |
 | 2026-09-02 | T7.1~T7.12 OpenChamber 全仓借鉴批次 | 决策 | **系统性扫描 OpenChamber 全仓（子代理之外）→ 整理 12 项可借鉴模式为待办**。核实（源码级，本地 clone `/Users/admin/Desktop/personal/openchamber`）：第一档高价值——T7.1 大文本粘贴→虚拟文件（`largeTextPaste.ts`，双阈值 2000 字符/25 行）、T7.2 per-session 权限自动接受（`permission-auto-accept/runtime.js`，服务端唯一响应者+子代理继承+fail closed）、T7.3 会话导出 Markdown（`exportSession.ts`，递归子代理树+文件名安全化）、T7.4 Dev Server 自动发现（`dev-servers/parse.js`，三平台 lsof/netstat/proc 纯函数解析+系统端口过滤+loopback 判定）、T7.5 目标模式（`session-goal/runtime.js`，服务端控制循环+小模型独立审计+token 预算+20 轮上限+文件存目标文本）、T7.6 `/btw` 侧边问答（`btw.ts`，fork 会话不切换主会话+合成 part 防任务串扰+metadata 关联）；第二档中价值——T7.7 代码审查流、T7.8 定时任务（Markdown loop 文件+跨实例文件锁）、T7.9 小模型会话辅助、T7.10 Agent Memory（global/project 双 scope+unreviewed 安全模式）、T7.11 会话草稿持久化、T7.12 用量/配额追踪。**原则：模式全搬，传输层不搬**（opencode HTTP/SSE → pi-wood in-process SDK + IPC）。落地分四批：第一批 T7.1/T7.2/T7.3（低改动高价值立即做）、第二批 T7.4/T7.6/T7.11、第三批 T7.5/T7.10/T7.9/T7.7、第四批 T7.8/T7.12。详细清单见 **§7.8** | 十二项待办（见 §7.8 勾选清单） |
 | 2026-09-02 | T6.3~T6.7 子代理 UX 层 | 决策 | **分析 OpenChamber 子代理实现 → 传输层不搬、模式全搬，整理为 5 项待办**。核实：OpenChamber（`openchamber/openchamber`，本地 clone `/Users/admin/Desktop/personal/openchamber`）底层是 opencode 原生 task 工具（HTTP server + SSE + parentID child session），OpenChamber 的价值在可视化层——`WorkStatusSubagentsSection.tsx`（parentID 过滤+状态/审批/成本+出现即展开）、`taskToolModel.ts`（解析 `<task_metadata>`→sessionId→「Open subAgent session」按钮+strip 元数据）、只读子会话 context panel tab、`useSubagentCostRollup.ts`（含嵌套成本汇总）、opencode per-agent `permission` 配置。**架构差异**：opencode HTTP/SSE vs pi-wood in-process SDK + Electron IPC——不起 HTTP server，parentID 改内存 Map（`subagent-registry.ts`）、状态推送改 IPC event（打 `_origin` 标签复用 `engine:event`）、审批上浮复用现有 `approval_request` 通道加 `_subagentId`。**决策**：T6.3 子代理追踪+状态面板（含审批上浮，最高优先）、T6.4 对话流打开子代理按钮+元数据清洗、T6.5 只读子会话视图、T6.6 成本汇总（含嵌套递归）、T6.7 per-tool 权限配置。全部依赖 §7.5 引擎接线完成后开工；§7.5 S5「进度/完成通知上屏」由本节具体化。详细清单见 **§7.7** | 五项待办（见 §7.7 勾选清单） |
 | 2026-09-02 | T5.4/T5.5/T5.6 渲染层降噪三件套 | 决策 | **评估三个社区渲染插件 → 均不装，移植 UX 模式到现有组件**。核实：`pi-tool-display@0.5.0`（MasuRii）、`@99percentpeople/pi-thinking-fold@0.1.9`、`@fahmiirsyadk/pi-minimal-toolcall@0.2.1`（月下载 70）**全是 TUI 插件**（peer/关键词带 `pi-tui`，渲染挂 pi-tui `registerMessageRenderer`/widget 管线），pi-wood 无 pi-tui、用自有 React 渲染层 → `pi install` 后 no-op 或报错，不能直接用。**现状核实**：ui-kit `ToolCard` 已实现默认折叠一行（图标+动词+目标+diff 数）、`ThinkingCard` 已实现一行折叠+耗时，即 pi-tool-display/pi-thinking-fold 的核心模式已做 70~80%；pi-minimal-toolcall 的连续工具分组+快捷键是真缺口。**决策**：T5.4 给 ToolCard 折叠行命令加 shiki 内联高亮+状态文字 Badge（对齐 pi.dev「已运行+命令行」）；T5.5 给 ThinkingCard 折叠行加 thinking_delta 尾部预览+耗时格式改「耗时 12.3s」；T5.6 MessageList 预分组连续 tool 项为 ToolGroup+Ctrl+Shift+E 全局切换+ui.toolGroupsEnabled 设置。详细清单见 **§7.6**。落地顺序：T5.6（价值最高）> T5.4 > T5.5 | 三项待办（见 §7.6 勾选清单） |

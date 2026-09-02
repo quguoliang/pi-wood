@@ -237,6 +237,10 @@ export class SdkAdapter implements EngineAdapter {
     this.rebindSession();
   }
 
+  getSessionId(): string | undefined {
+    return this.runtime?.session?.sessionId;
+  }
+
   async getState(): Promise<SessionState> {
     const s = this.session();
     return {

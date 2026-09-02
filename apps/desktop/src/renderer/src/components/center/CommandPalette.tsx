@@ -82,7 +82,7 @@ export function CommandPalette({
 
   const base: Cmd[] = [
     { id: "settings", label: "打开设置", hint: "命令", run: onOpenSettings },
-    { id: "new-session", label: "新建会话", hint: "命令", run: () => void window.pi.engineNewSession() },
+    { id: "new-session", label: "新建会话", hint: "命令", run: () => window.dispatchEvent(new Event("piwood:new-session")) },
     {
       id: "theme-light",
       label: "主题：切换到浅色",

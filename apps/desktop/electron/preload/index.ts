@@ -38,6 +38,16 @@ const api = {
     ipcRenderer.on("engine:event", handler);
     return () => ipcRenderer.removeListener("engine:event", handler);
   },
+  onBtwEvent: (cb: (event: Record<string, unknown>) => void): (() => void) => {
+    const handler = (_e: unknown, event: Record<string, unknown>): void => cb(event);
+    ipcRenderer.on("engine:btwEvent", handler);
+    return () => ipcRenderer.removeListener("engine:btwEvent", handler);
+  },
+  onAssistResult: (cb: (data: { recap: string; suggestions: string[] }) => void): (() => void) => {
+    const handler = (_e: unknown, data: { recap: string; suggestions: string[] }): void => cb(data);
+    ipcRenderer.on("engine:assistResult", handler);
+    return () => ipcRenderer.removeListener("engine:assistResult", handler);
+  },
   onDiff: (cb: (data: { id?: string; file: string; before?: string; after?: string; patch?: string }) => void): (() => void) => {
     const handler = (_e: unknown, data: { id?: string; file: string; before?: string; after?: string; patch?: string }): void => cb(data);
     ipcRenderer.on("engine:diff", handler);
@@ -77,11 +87,15 @@ const api = {
   projectPick: (): Promise<string | undefined> => ipcRenderer.invoke("project:pickDialog"),
   projectPickAttachments: (): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>> =>
     ipcRenderer.invoke("project:pickAttachments"),
+  stagePastedText: (text: string): Promise<{ path: string; name: string; size: number; kind: "file" | "image" }> =>
+    ipcRenderer.invoke("engine:stagePastedText", { text }),
   projectTrust: (path: string): Promise<string> => ipcRenderer.invoke("project:trustStatus", { path }),
   sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
   sessionsMessages: (file: string): Promise<unknown> =>
     ipcRenderer.invoke("sessions:messages", { file }),
+  exportSessionMarkdown: (defaultFileName: string, markdown: string): Promise<string | undefined> =>
+    ipcRenderer.invoke("session:export", { defaultFileName, markdown }),
   engineSwitchSession: (file: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:switchSession", { file }),
   debugStress: (count: number): Promise<number> => ipcRenderer.invoke("debug:stress", { count }),
@@ -115,6 +129,12 @@ const api = {
     ipcRenderer.invoke("browser:navigate", { url }),
   browserScreenshot: (): Promise<{ screenshot: string; url: string }> =>
     ipcRenderer.invoke("browser:screenshot"),
+  listDevServers: (): Promise<Array<{ port: number; pid: number | null; command: string | null; host: string; url: string }>> =>
+    ipcRenderer.invoke("engine:listDevServers"),
+  btwAsk: (question: string, context?: string): Promise<boolean> =>
+    ipcRenderer.invoke("engine:btwAsk", { question, context }),
+  btwAbort: (): Promise<boolean> => ipcRenderer.invoke("engine:btwAbort"),
+  btwClose: (): Promise<boolean> => ipcRenderer.invoke("engine:btwClose"),
   // T3.2/T4.1
   providerList: (): Promise<unknown> => ipcRenderer.invoke("provider:list"),
   providerSetKey: (provider: string, key: string): Promise<boolean> =>
@@ -125,6 +145,7 @@ const api = {
     ipcRenderer.invoke("provider:addCustom", cfg),
   approvalDecide: (id: number, allow: boolean): Promise<boolean> =>
     ipcRenderer.invoke("approval:decide", { id, allow }),
+  approvalAcceptAll: (): Promise<number> => ipcRenderer.invoke("approval:acceptAll"),
   onApprovalRequest: (
     cb: (d: { id: number; title: string; message: string }) => void,
   ): (() => void) => {

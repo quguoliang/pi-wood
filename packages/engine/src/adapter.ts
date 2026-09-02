@@ -62,6 +62,9 @@ export interface EngineAdapter {
 
   getState(): Promise<SessionState>;
 
+  /** T7.2：同步取当前会话 id（供审批门判定 per-session 自动接受）；引擎未启动返回 undefined。 */
+  getSessionId(): string | undefined;
+
   /** Pi 会话真实运行时信息（模型/思考级别/激活工具/会话统计）；git 等宿主侧字段由主进程补充 */
   getRuntimeInfo(): Promise<Omit<RuntimeInfo, "git" | "cwd" | "platform" | "node">>;
 

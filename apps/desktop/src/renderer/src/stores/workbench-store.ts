@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type WorkbenchTab = "files" | "term" | "browser" | "diff";
+export type WorkbenchTab = "files" | "term" | "browser" | "diff" | "btw";
 
 export interface DiffItem {
   id?: string;
@@ -26,7 +26,7 @@ interface WorkbenchState {
   hydrateTabs: (tabs: WorkbenchTab[], active: WorkbenchTab | null) => void;
 }
 
-const ALL_TABS: WorkbenchTab[] = ["files", "term", "browser", "diff"];
+const ALL_TABS: WorkbenchTab[] = ["files", "term", "browser", "diff", "btw"];
 
 export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   diffs: [],
