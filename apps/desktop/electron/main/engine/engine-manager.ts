@@ -12,6 +12,10 @@ import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
 import { permissionGateExtension, type ApprovalPolicy } from "../security/approval-gate";
+import {
+  createPiWoodSubagentRuntime,
+  type SubagentRuntimeHandle,
+} from "../subagent/pi-wood-subagent";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
 
@@ -70,6 +74,8 @@ let activeSnapshots: SnapshotService | undefined;
 // T7.6：与主会话完全隔离的「侧边问答」第二运行时（独立 session/事件流，绝不影响主 adapter）
 let btwAdapter: SdkAdapter | undefined;
 let btwUnsub: (() => void) | undefined;
+// T6.2：当前项目的子代理运行时（in-process vendored pi-subagent），切项目/停用时回收重建。
+let subagentHandle: SubagentRuntimeHandle | undefined;
 // T7.9：会话辅助——采集每轮 用户输入 / 助手正文，settled 后触发一次辅助生成
 let assistUserText = "";
 let assistTextBuf = "";
@@ -181,9 +187,16 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   if (adapter && activeProject === projectDir) return adapter;
   if (adapter) await adapter.stop();
   await closeBtw(); // T7.6：换项目时一并释放隔离的侧边问答会话
+  await disposeSubagent(); // T6.2：回收上一个项目的子代理运行时
   // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
   reinjectProviderEnv();
   const next = new SdkAdapter();
+  // T6.2：in-process 子代理运行时。child session 复用桌面审批策略与 ApprovalCard
+  // 通道（闭包注入），使子代理 bash/edit/write 仍过审批门，杜绝审批旁路。
+  subagentHandle = createPiWoodSubagentRuntime({
+    getPolicy: () => getPolicy(),
+    confirm: (title, message) => confirmViaRenderer(title, message),
+  });
   await next.start({
     projectDir,
     uiBridge: uiBridge(),
@@ -194,6 +207,7 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
         (title, message) => confirmViaRenderer(title, message),
         () => isAutoAcceptForSession(next),
       ),
+      subagentHandle.inlineExtension,
     ],
   });
   const snapshots = new SnapshotService(projectDir, (m) => console.warn(m));
@@ -333,6 +347,18 @@ async function closeBtw(): Promise<void> {
   btwUnsub = undefined;
   await btwAdapter?.stop();
   btwAdapter = undefined;
+}
+
+/** T6.2：回收当前项目的子代理运行时（关所有 child 会话 + 清投递）。best-effort。 */
+async function disposeSubagent(): Promise<void> {
+  const handle = subagentHandle;
+  subagentHandle = undefined;
+  if (!handle) return;
+  try {
+    await handle.dispose();
+  } catch {
+    /* 回收失败不影响切换 */
+  }
 }
 
 /** T2.2：diff 快照逻辑已迁至 workbench/snapshot-service.ts */
