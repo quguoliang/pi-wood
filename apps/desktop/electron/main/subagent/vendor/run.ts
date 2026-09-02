@@ -225,6 +225,8 @@ export type RunEnding =
  * and the signal that cancels it. The executor never sees the run record.
  */
 export interface SubagentRun {
+  /** pi-wood fork: registry run id, so forwarded child events can be attributed. */
+  readonly id: string;
   readonly report: RunReporter;
   readonly signal?: AbortSignal;
   /** The prepared Run's one neutral, synchronous single-consumer Control source. */

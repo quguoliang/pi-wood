@@ -117,6 +117,10 @@ export default function App() {
         hadSubagentRuns = false;
       }
     });
+    // T6.5：child 会话事件 → 按 runId 归约进只读子会话转录本。
+    const offSubagentEvent = window.pi.onSubagentEvent(({ runId, event }) =>
+      useSubagentStore.getState().handleEvent(runId, event),
+    );
     const offAssist = window.pi.onAssistResult((data) => {
       const s = useSessionStore.getState();
       useAssistStore.getState().set({ recap: data.recap, suggestions: data.suggestions, session: s.currentSessionId ?? "", forItemsLen: s.items.length });
@@ -130,6 +134,7 @@ export default function App() {
       offEvt();
       offBtwEvt();
       offSubagentRuns();
+      offSubagentEvent();
       offAssist();
       offDiff();
       window.removeEventListener("keydown", onKey);

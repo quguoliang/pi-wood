@@ -117,6 +117,7 @@ export function dispatchSubagentRun({
       let ending: RunEnding;
       try {
         ending = await prepared.execute({
+          id: handle.id,
           report,
           signal: controller.signal,
           controls: controlGate.controls,

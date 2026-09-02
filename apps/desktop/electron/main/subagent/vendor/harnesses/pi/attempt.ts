@@ -35,6 +35,8 @@ interface PiAttemptOptions {
   readonly task: SubagentTask;
   readonly run: SubagentRun;
   readonly conversation: PiConversationCapability;
+  /** pi-wood fork: forward every raw child-session event (tagged with run id) to the host. */
+  readonly onEvent?: (runId: string, event: AgentSessionEvent) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -190,6 +192,7 @@ export async function runPiAttempt({
   task,
   run,
   conversation,
+  onEvent,
 }: PiAttemptOptions): Promise<RunEnding> {
   const {
     isClosed,
@@ -242,6 +245,7 @@ export async function runPiAttempt({
   });
 
   const reportEvent = (event: AgentSessionEvent): void => {
+    onEvent?.(run.id, event);
     if (!accepting) return;
     const wire = event as unknown as Record<string, unknown>;
     if (wire.type === "message_end" && wire.message) {

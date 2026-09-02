@@ -38,6 +38,8 @@ export interface PiHarnessOptions {
   readonly sessionFactory?: PiSessionFactory;
   readonly sessionOptionsFactory?: PiSessionOptionsFactory;
   readonly agentDir?: string;
+  /** pi-wood fork: host sink for raw child-session events (run id, event) → 只读子会话视图。 */
+  readonly onRunEvent?: (runId: string, event: unknown) => void;
 }
 
 export function createPiHarness(options: PiHarnessOptions = {}): Harness {
@@ -96,6 +98,7 @@ export function createPiHarness(options: PiHarnessOptions = {}): Harness {
           ? { sessionOptionsFactory: options.sessionOptionsFactory }
           : {}),
         ...(options.agentDir ? { agentDir: options.agentDir } : {}),
+        ...(options.onRunEvent ? { onRunEvent: options.onRunEvent } : {}),
       });
       return {
         model,

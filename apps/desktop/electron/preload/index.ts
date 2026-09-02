@@ -145,6 +145,13 @@ const api = {
   },
   subagentList: (): Promise<Array<{ id: string; agent: string; harness: string; description: string; status: string; elapsedMs: number; turns: number; activity?: string }>> =>
     ipcRenderer.invoke("engine:subagentList"),
+  onSubagentEvent: (
+    cb: (d: { runId: string; event: Record<string, unknown> }) => void,
+  ): (() => void) => {
+    const h = (_e: unknown, d: { runId: string; event: Record<string, unknown> }): void => cb(d);
+    ipcRenderer.on("engine:subagentEvent", h);
+    return () => ipcRenderer.removeListener("engine:subagentEvent", h);
+  },
   // T3.2/T4.1
   providerList: (): Promise<unknown> => ipcRenderer.invoke("provider:list"),
   providerSetKey: (provider: string, key: string): Promise<boolean> =>

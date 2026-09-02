@@ -15,6 +15,8 @@ export interface PiWoodSubagentBridge {
   guardChildTool: (toolName: string, input: unknown) => Promise<string | undefined>;
   /** 扩展建好运行时后回传，供主进程在切项目/停用时回收。 */
   onRuntime: (runtime: PiWoodSubagentRuntimeRef) => void;
+  /** T6.5：child 会话原始事件回调（runId, 事件）→ 主进程归一后推给渲染层只读子会话视图。 */
+  pushChildEvent?: (runId: string, event: unknown) => void;
 }
 
 /** 主进程只需调 shutdown + 读 runs，故用最小结构类型，避免把 vendor 类型牵进 CJS 主进程。 */

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type GitInfo, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
-import type { DesktopUiBridge } from "@pi-wood/engine";
+import { normalizeEngineEvent, type DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
@@ -218,6 +218,15 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
         push();
       } catch {
         subagentRunsUnsub = undefined;
+      }
+    },
+    // T6.5：child 会话原始事件 → 归一后按 runId 推给渲染层只读子会话视图。
+    pushChildEvent: (runId, event) => {
+      try {
+        const normalized = normalizeEngineEvent(event, () => undefined);
+        send(ENGINE_CHANNELS.subagentEvent, { runId, event: normalized });
+      } catch {
+        /* 单条事件归一失败忽略 */
       }
     },
   };

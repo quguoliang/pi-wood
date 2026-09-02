@@ -256,4 +256,6 @@ export const ENGINE_CHANNELS = {
   // T6.3：子代理 runs 快照（subagentRuns=main→renderer 推送；subagentList=renderer→main 拉取初值）
   subagentRuns: "engine:subagentRuns",
   subagentList: "engine:subagentList",
+  // T6.5：单条 child 会话事件（{runId, event}）推送，供只读子会话视图实时渲染
+  subagentEvent: "engine:subagentEvent",
 } as const;

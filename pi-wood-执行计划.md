@@ -515,7 +515,8 @@
   - [ ] `pnpm typecheck` + build 全绿
 - 验证方式：触发 agent_start，检查工具卡按钮和输出清洗
 
-### [ ] T6.5 只读子会话视图
+### [x] T6.5 只读子会话视图
+> **✅ 2026-09-02 落地（真机 dev12 验证：点进子代理行 → 实时流式显示其思考/工具/输出）**。**与规格差异**：① 数据源 = **转发 child 会话事件**——vendored 加 `onRunEvent` 链（`createPiHarness`→`createPiManagedAdapter`→`runPiAttempt`，在 `reportEvent` 里 `onEvent(run.id, rawEvent)`），并给 `SubagentRun` 补 `id`（`runner.ts` 传 `handle.id`）；`engine-manager` 用 `normalizeEngineEvent`（新导出）归一后 `send(engine:subagentEvent, {runId, event})`。② **关键发现**：child print 会话虽不发 `tool_call` 钩子，但 `session.subscribe` 仍出 `message_update`/`tool_execution_*` → 在 session-subscribe 层转发可行。③ `subagent-store` 用**独立精简 reducer**（`itemsByRun`）而非从 `session-store` 抽共享 `eventToItem`（隔离、不碰主链路）。④ 详情视图用**自定义只读渲染**（Markdown/ThinkingCard/工具行），**未给 MessageList 加 readOnly prop**；入口 = 点面板行（T6.4 对话流「打开子代理」按钮仍未做）。
 - 来源：OpenChamber `openChildSession`（readOnly context panel tab——用户可观察不可干扰）
 - 前置：T6.3（子代理 store + 面板）、T6.4（打开按钮）
 - 步骤：

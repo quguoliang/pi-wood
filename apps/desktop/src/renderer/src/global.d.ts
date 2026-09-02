@@ -97,6 +97,7 @@ declare global {
       btwClose(): Promise<boolean>;
       onSubagentRuns(cb: (runs: SubagentRunInfo[]) => void): () => void;
       subagentList(): Promise<SubagentRunInfo[]>;
+      onSubagentEvent(cb: (d: { runId: string; event: Record<string, unknown> }) => void): () => void;
     };
   }
 }

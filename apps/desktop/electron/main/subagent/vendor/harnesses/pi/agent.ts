@@ -340,6 +340,8 @@ export function createPiManagedAdapter(
     sessionFactory?: PiSessionFactory;
     sessionOptionsFactory?: PiSessionOptionsFactory;
     agentDir?: string;
+    /** pi-wood fork: host sink for raw child-session events, tagged with run id. */
+    onRunEvent?: (runId: string, event: unknown) => void;
   } = {},
 ): PiManagedAdapter {
   const sessionFactory = options.sessionFactory ?? defaultPiSessionFactory;
@@ -408,6 +410,7 @@ export function createPiManagedAdapter(
           const execution = runPiAttempt({
             task,
             run,
+            onEvent: options.onRunEvent,
             conversation: {
               isClosed: () => closed,
               hasPendingCleanup: () =>

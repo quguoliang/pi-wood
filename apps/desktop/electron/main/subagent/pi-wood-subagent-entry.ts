@@ -30,6 +30,7 @@ export default function piWoodSubagentExtension(pi: ExtensionAPI): void {
     const childGate = bridge.buildChildGate() as unknown as InlineExtension;
     const harness = createPiHarness({
       agentDir,
+      onRunEvent: (runId, event) => bridge.pushChildEvent?.(runId, event),
       sessionOptionsFactory: (context, resolvedModel, resolvedThinking, dir, signal) =>
         createPiSessionOptions(
           context,
