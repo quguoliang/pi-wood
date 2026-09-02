@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-31T07:18:29Z",
+  "title": "Design System: pi-wood Desktop Conversation Workspace",
+  "extensions": {
+    "colorMeta": {
+      "workbench-ink": { "role": "neutral", "displayName": "Workbench Ink", "canonical": "#17181b", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "panel-graphite": { "role": "neutral", "displayName": "Panel Graphite", "canonical": "#1c1e22", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "composer-slate": { "role": "neutral", "displayName": "Composer Slate", "canonical": "#202226", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "hover-graphite": { "role": "neutral", "displayName": "Hover Graphite", "canonical": "#24262b", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "active-graphite": { "role": "neutral", "displayName": "Active Graphite", "canonical": "#2b2e34", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "control-hover": { "role": "neutral", "displayName": "Control Hover", "canonical": "#2d3035", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "chip-graphite": { "role": "neutral", "displayName": "Chip Graphite", "canonical": "#292b30", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "menu-graphite": { "role": "neutral", "displayName": "Menu Graphite", "canonical": "#292b2f", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "text-primary": { "role": "neutral", "displayName": "Primary Text", "canonical": "rgb(255 255 255 / 90%)", "tonalRamp": ["#17181b", "#2f3238", "#50545c", "#737881", "#9a9ea5", "#bec1c6", "#e3e4e6", "#f7f7f8"] },
+      "text-secondary": { "role": "neutral", "displayName": "Secondary Text", "canonical": "rgb(255 255 255 / 67%)", "tonalRamp": ["#17181b", "#2f3238", "#50545c", "#737881", "#9a9ea5", "#bec1c6", "#e3e4e6", "#f7f7f8"] },
+      "text-muted": { "role": "neutral", "displayName": "Muted Text", "canonical": "rgb(255 255 255 / 56%)", "tonalRamp": ["#17181b", "#2f3238", "#50545c", "#737881", "#9a9ea5", "#bec1c6", "#e3e4e6", "#f7f7f8"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "rgb(255 255 255 / 12%)", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "hairline-strong": { "role": "neutral", "displayName": "Strong Hairline", "canonical": "rgb(255 255 255 / 18%)", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] },
+      "action-blue": { "role": "primary", "displayName": "Action Blue", "canonical": "#4d8dff", "tonalRamp": ["#071a38", "#0b2d61", "#164993", "#2869c3", "#4d8dff", "#79aaff", "#adcaff", "#e8f0ff"] },
+      "ready-green": { "role": "secondary", "displayName": "Ready Green", "canonical": "#72b58b", "tonalRamp": ["#10271a", "#1d432c", "#326548", "#4b8b65", "#72b58b", "#9acdab", "#c3e3cd", "#edf7f0"] },
+      "permission-amber": { "role": "secondary", "displayName": "Permission Amber", "canonical": "#d9a45b", "tonalRamp": ["#2c1b08", "#53330e", "#7c511d", "#a87535", "#d9a45b", "#e8c185", "#f2dbb4", "#fbf2e3"] },
+      "error-coral": { "role": "tertiary", "displayName": "Error Coral", "canonical": "#f07b78", "tonalRamp": ["#370d0d", "#641c1b", "#943331", "#c4504d", "#f07b78", "#f5a3a0", "#f9c8c6", "#fdeceb"] },
+      "submit-porcelain": { "role": "neutral", "displayName": "Submit Porcelain", "canonical": "#e3e4e6", "tonalRamp": ["#17181b", "#2f3238", "#50545c", "#737881", "#9a9ea5", "#bec1c6", "#e3e4e6", "#f7f7f8"] },
+      "submit-ink": { "role": "neutral", "displayName": "Submit Ink", "canonical": "#1a1b1e", "tonalRamp": ["#111216", "#17181b", "#24262b", "#34373d", "#555960", "#7b8088", "#b2b5ba", "#eceef0"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Empty-state Display", "purpose": "The single centered starting question." },
+      "body": { "displayName": "Conversation Body", "purpose": "Long-form assistant and user messages." },
+      "input": { "displayName": "Composer Input", "purpose": "Task entry inside the primary composer." },
+      "label": { "displayName": "Compact Control", "purpose": "Controls, chips, prompts, and menu explanations." },
+      "mono": { "displayName": "Runtime Mono", "purpose": "Token counts, keyboard shortcuts, and tool metadata." }
+    },
+    "shadows": [
+      { "name": "composer-ambient", "value": "0 16px 42px rgb(0 0 0 / 20%)", "purpose": "Stabilizes the main input surface without making it float like a modal." },
+      { "name": "menu-lift", "value": "0 18px 50px rgb(0 0 0 / 42%)", "purpose": "Separates temporary composer menus from the workbench." },
+      { "name": "ready-glow", "value": "0 0 8px color-mix(in srgb, var(--ok) 60%, transparent)", "purpose": "Reserved for a runtime-confirmed ready state." }
+    ],
+    "motion": [
+      { "name": "control-state", "value": "140ms ease", "purpose": "Hover, color, and small submit-state feedback." },
+      { "name": "menu-enter", "value": "140ms cubic-bezier(.16, 1, .3, 1)", "purpose": "Short upward reveal for composer menus." },
+      { "name": "reduced-motion", "value": "0.01ms", "purpose": "Near-instant fallback under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "compact-workspace", "value": "900px" },
+      { "name": "compact-composer", "value": "720px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Composer Shell",
+      "kind": "input",
+      "refersTo": "composer-shell",
+      "description": "The project-bound task entry surface shared by empty and working states.",
+      "html": "<section class=\"ds-composer-shell\"><div class=\"ds-composer-project\">pi-wood <i aria-label=\"engine ready\"></i></div><textarea aria-label=\"Task\" placeholder=\"描述任务，或添加文件作为上下文\"></textarea></section>",
+      "css": ".ds-composer-shell{width:min(780px,100%);overflow:hidden;border:1px solid rgb(255 255 255 / 14%);border-radius:14px;background:#202226;color:rgb(255 255 255 / 90%);box-shadow:0 16px 42px rgb(0 0 0 / 20%);font-family:Inter,-apple-system,BlinkMacSystemFont,\"PingFang SC\",sans-serif}.ds-composer-project{display:flex;height:38px;align-items:center;gap:7px;padding:0 13px;border-bottom:1px solid rgb(255 255 255 / 8%);color:rgb(255 255 255 / 67%);font-size:12px}.ds-composer-project i{width:6px;height:6px;margin-left:auto;border-radius:50%;background:#72b58b;box-shadow:0 0 8px rgb(114 181 139 / 60%)}.ds-composer-shell textarea{display:block;width:100%;height:78px;padding:14px 15px 7px;border:0;outline:0;resize:none;background:transparent;color:inherit;font:400 14px/1.55 inherit}.ds-composer-shell textarea::placeholder{color:rgb(255 255 255 / 56%)}.ds-composer-shell:focus-within{border-color:rgb(255 255 255 / 22%)}"
+    },
+    {
+      "name": "Attachment Chip",
+      "kind": "chip",
+      "refersTo": "attachment-chip",
+      "description": "A removable file or image already attached to the next real Pi prompt.",
+      "html": "<span class=\"ds-attachment-chip\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48\"/></svg><span>Composer.tsx</span><button aria-label=\"Remove Composer.tsx\">×</button></span>",
+      "css": ".ds-attachment-chip{display:inline-flex;max-width:190px;height:30px;align-items:center;gap:6px;padding:0 5px 0 8px;border:1px solid rgb(255 255 255 / 10%);border-radius:7px;background:#292b30;color:rgb(255 255 255 / 67%);font:400 11px/1.4 Inter,-apple-system,sans-serif}.ds-attachment-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-attachment-chip svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.ds-attachment-chip button{display:grid;width:20px;height:20px;place-items:center;border:0;border-radius:5px;background:transparent;color:rgb(255 255 255 / 56%)}.ds-attachment-chip button:hover{background:#24262b;color:rgb(255 255 255 / 90%)}.ds-attachment-chip button:focus-visible{outline:2px solid #4d8dff;outline-offset:2px}"
+    },
+    {
+      "name": "Permission Control",
+      "kind": "button",
+      "refersTo": "composer-control",
+      "description": "Displays and opens the approval mode stored in real settings.",
+      "html": "<button class=\"ds-permission-control\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3z\"/></svg><span>高风险时询问</span><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m6 9 6 6 6-6\"/></svg></button>",
+      "css": ".ds-permission-control{display:inline-flex;height:29px;align-items:center;justify-content:center;gap:5px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:#d9a45b;font:400 11px/1.4 Inter,-apple-system,sans-serif;transition:background 140ms ease,color 140ms ease}.ds-permission-control svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.ds-permission-control svg:last-child{width:11px;height:11px}.ds-permission-control:hover{background:#2d3035;color:rgb(255 255 255 / 90%)}.ds-permission-control:focus-visible{outline:2px solid #4d8dff;outline-offset:2px}"
+    },
+    {
+      "name": "Send Action",
+      "kind": "button",
+      "refersTo": "submit-action",
+      "description": "The sole primary action when a prompt is ready to send.",
+      "html": "<button class=\"ds-submit\" aria-label=\"发送消息\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 12 7-7 7 7M12 19V5\"/></svg></button>",
+      "css": ".ds-submit{display:grid;width:30px;height:30px;place-items:center;border:0;border-radius:8px;background:#e3e4e6;color:#1a1b1e;transition:background 140ms ease,transform 140ms ease}.ds-submit svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.ds-submit:hover{background:#fff;transform:translateY(-1px)}.ds-submit:active{transform:none}.ds-submit:focus-visible{outline:2px solid #4d8dff;outline-offset:2px}.ds-submit:disabled{background:#34373c;color:#6e7279}"
+    },
+    {
+      "name": "Abort Action",
+      "kind": "button",
+      "refersTo": "submit-action",
+      "description": "Replaces Send in the same location while Pi is streaming.",
+      "html": "<button class=\"ds-abort\" aria-label=\"中断当前对话\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><rect width=\"6\" height=\"6\" x=\"9\" y=\"9\" rx=\"1\"/></svg></button>",
+      "css": ".ds-abort{display:grid;width:30px;height:30px;place-items:center;border:0;border-radius:8px;background:#e3e4e6;color:#202125;transition:background 140ms ease,transform 140ms ease}.ds-abort svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.ds-abort:hover{background:#fff;transform:translateY(-1px)}.ds-abort:focus-visible{outline:2px solid #4d8dff;outline-offset:2px}.ds-abort:disabled{background:#34373c;color:#6e7279}"
+    },
+    {
+      "name": "Composer Menu",
+      "kind": "custom",
+      "description": "A factual, keyboard-aware popover for runtime-backed composer controls.",
+      "html": "<div class=\"ds-composer-menu\" role=\"dialog\" aria-label=\"选择模型\"><div class=\"ds-menu-heading\">本项目可用模型</div><p>未从 Pi ModelRuntime 获取到模型。</p></div>",
+      "css": ".ds-composer-menu{width:310px;padding:6px;border:1px solid rgb(255 255 255 / 14%);border-radius:12px;background:#292b2f;color:rgb(255 255 255 / 67%);box-shadow:0 18px 50px rgb(0 0 0 / 42%);font-family:Inter,-apple-system,sans-serif}.ds-menu-heading{padding:7px 9px 6px;color:rgb(255 255 255 / 56%);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}.ds-composer-menu p{margin:0;padding:10px 9px;color:rgb(255 255 255 / 56%);font-size:11px;line-height:1.5}"
+    },
+    {
+      "name": "Quick Prompt",
+      "kind": "button",
+      "refersTo": "quick-prompt",
+      "description": "An honest starter task that fills the composer without sending automatically.",
+      "html": "<button class=\"ds-quick-prompt\">审查当前未提交的代码变更</button>",
+      "css": ".ds-quick-prompt{height:31px;padding:0 11px;border:1px solid rgb(255 255 255 / 11%);border-radius:8px;background:transparent;color:rgb(255 255 255 / 56%);font:400 11px/1.4 Inter,-apple-system,sans-serif;transition:background 140ms ease,border-color 140ms ease,color 140ms ease}.ds-quick-prompt:hover{border-color:rgb(255 255 255 / 20%);background:#202226;color:rgb(255 255 255 / 90%)}.ds-quick-prompt:focus-visible{outline:2px solid #4d8dff;outline-offset:2px}"
+    },
+    {
+      "name": "Tool Status Row",
+      "kind": "card",
+      "description": "A compact, non-dominant row for a real tool execution event.",
+      "html": "<article class=\"ds-tool-row\"><span class=\"ds-tool-icon\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m20 6-11 11-5-5\"/></svg></span><b>read_file</b><span class=\"ds-tool-status\">已完成</span></article>",
+      "css": ".ds-tool-row{display:flex;min-height:34px;align-items:center;gap:9px;padding:0 10px;border:1px solid rgb(255 255 255 / 10%);border-radius:7px;background:transparent;color:rgb(255 255 255 / 67%);font:400 12px/1.4 Inter,-apple-system,sans-serif}.ds-tool-row b{color:rgb(255 255 255 / 90%);font:500 12px/1.4 \"SF Mono\",Menlo,monospace}.ds-tool-icon{display:grid;width:19px;height:19px;place-items:center;border-radius:5px;background:#24262b;color:#72b58b}.ds-tool-icon svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}.ds-tool-status{margin-left:auto;color:#72b58b;font-size:11px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "安静的操作台 / The Quiet Operations Desk",
+    "overview": "pi-wood 的 renderer 首页采用 Operate 模式：它首先是一个可信、克制的桌面 Agent 工作台，而不是展示页。视觉表达通过中性深色层级、紧凑控件、清楚的运行状态和稳定的主轴完成；对话是主内容，工具与配置只在需要时展开。\n\n首页的视觉承诺是“事实先于装饰”。项目、权限、上下文、模型、思考级别和生成状态必须来自当前项目与 Pi runtime；界面不预演不存在的模型、额度、分支或权限能力。空态帮助用户开始，会话态帮助用户持续操作，两者共享同一条居中的对话轴。",
+    "keyCharacteristics": [
+      "深色中性、低彩度、以层级和细边界组织信息。",
+      "高密度但不拥挤；标签、图标和状态只保留操作所需信息。",
+      "空态标题与宽 Composer 居中；进入会话后消息区占据主空间，Composer 固定在底部。",
+      "所有首页可见能力都对应真实 Pi IPC 或当前 renderer 状态。"
+    ],
+    "rules": [
+      { "name": "The Factual Color Rule", "body": "状态色只能表示 renderer 或 Pi runtime 已经知道的事实，不能暗示尚未连接、尚未统计或不存在的能力。", "section": "colors" },
+      { "name": "The Quiet Accent Rule", "body": "蓝色与状态色只占少量界面；常态结构由中性层级承担。", "section": "colors" },
+      { "name": "The Working Scale Rule", "body": "首页只保留一个展示级标题，其余内容停留在桌面操作尺度；不要用超大字制造虚假的主次。", "section": "typography" },
+      { "name": "The One Conversation Axis Rule", "body": "空态、消息和 Composer 始终共享同一居中轴线，状态切换不能让输入器横向跳动。", "section": "layout" },
+      { "name": "The Bottom-While-Working Rule", "body": "有会话内容时，消息区占主空间且 Composer 沉底；无内容时才将启动组合居中。", "section": "layout" },
+      { "name": "The Flat-by-Default Rule", "body": "常驻表面使用色调与发丝边界分层；只有临时浮层和主要输入器可以使用阴影。", "section": "elevation" },
+      { "name": "The Nested Radius Rule", "body": "子控件半径必须小于其所在容器，避免所有元素都像独立卡片。", "section": "shapes" },
+      { "name": "The Hairline Boundary Rule", "body": "面板分隔、Composer、chips 和菜单使用 1px 边界；不得用粗描边制造层级。", "section": "shapes" }
+    ],
+    "dos": [
+      "Do 保持空态居中、会话态 Composer 沉底，并让二者共享同一对话轴。",
+      "Do 将项目上下文、附件、权限、上下文用量、模型、思考级别与生成状态绑定到真实 renderer 状态和 Pi IPC。",
+      "Do 使用 1px 边界、7–8px 控件半径、12px 菜单半径和 14px Composer 主容器半径。",
+      "Do 使用 Lucide 1.5 stroke，并为纯图标按钮提供可访问名称和可见焦点。",
+      "Do 在数据不可用时禁用控件或显示诚实空态，例如“发送第一条消息后显示真实上下文用量”。"
+    ],
+    "donts": [
+      "Don't 虚构模型、额度、分支、上下文用量、权限结果或尚未接入的工具能力。",
+      "Don't 把 Composer 控件重排成对称装饰；左侧输入来源与权限、右侧 runtime 与提交的语义分组必须保留。",
+      "Don't 用渐变、玻璃卡片、强霓虹或大面积状态色破坏中性工作台。",
+      "Don't 为每条消息增加卡片、头像和阴影；消息内容是主角，工具卡按需出现。",
+      "Don't 在首页混入 emoji、填充图标或非 Lucide 图标体系。"
+    ]
+  }
+}

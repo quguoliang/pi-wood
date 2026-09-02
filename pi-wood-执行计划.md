@@ -358,12 +358,120 @@
 
 ---
 
+## 7.5 T6.2 子代理接线——goofansu in-process 路线（待办清单）
+
+> **2026-09-02 评审结论**：弃用 nicobailon/pi-subagents（spawn 式 A 方案，原 §8 记录），改走 **goofansu/pi-subagent in-process 路线**（即原 §8 的"长期更优路线 C"）。
+> **依据（源码级核实）**：goofansu 的 Pi harness 用与桌面**同款 SDK API**（`createAgentSession`/`ModelRuntime`/`SessionManager.inMemory`，devDeps 锁定 `pi-coding-agent@0.84.4` 与桌面一致）；child 走**内存会话**（不落盘→左栏会话树无噪声）、**无 spawn**（无 `process.execPath`/孤儿进程/密钥物化问题）、自过滤+深度防递归+父信任继承。**三个必须处理点**：① child 自建 `ModelRuntime(auth.json)`——桌面钥匙串经 `reinjectProviderEnv()` 注入 process.env（T3.2），**同进程应可见，需探针确认**；② child 的 bash 是原生 `createBashToolDefinition`，**不经桌面审批门**（必须注入，否则子代理=审批旁路，与 spawn 版同洞、只是更好补）；③ 包未发 npm、无 `exports`/`main`，且 `createPiHarness({sessionOptionsFactory,...})` 注入点默认扩展入口**未暴露** → 需一次小 fork。
+
+### S1 停用旧 spawn 版（先解除报错）
+- [ ] `~/.pi/agent/settings.json` 的 `packages` 移除 `pi-subagents`（或 `pi remove pi-subagents`，npm 安装临时 `NODE_TLS_REJECT_UNAUTHORIZED=0`）→ 消除 `Could not resolve the Pi CLI on Windows`（`pi-spawn.ts:190`）
+
+### S2 装 goofansu 原版 + 三探针（验证路线成立，不 fork）
+- [ ] `pi install https://github.com/goofansu/pi-subagent`（写回 settings.packages，装到 `~/.pi/agent/npm/node_modules`）
+- [ ] 探针1（headless，PI_OFFLINE=1，引导嵌入式 SDK）：`bindExtensions({mode:'rpc'})` 后 `getActiveToolNames()` 含 `agent_start/agent_resume/agent_wait/agent_result/agent_cancel/agent_steer` 且 `DIAGNOSTICS:[]`；确认 child 的 `createAgentSession` 在 Electron 主进程内可正常创建（同进程、无 spawn）
+- [ ] 探针2（真密钥 DeepSeek env）：主 agent 触发一次 `agent_start(explore)`→`agent_wait`→`agent_result`，子代理用父模型跑通并回传结果
+- [ ] 探针3：确认 child `bindExtensions({mode:"print"})` 下 `ctx.ui` 为取消/no-op 而非挂起；确认 `SessionManager.inMemory` 不写会话文件；确认 child `ModelRuntime` 能看到 env 注入的钥匙串密钥
+- [ ] 记录结论：若凭据不可见或审批不可控 → 直接进 S3/S4
+
+### S3 fork goofansu/pi-subagent（小改动，吃满注入点）
+- [ ] 镜像仓库至项目内（如 `extensions/pi-subagent/`），保留 MIT 与 ADR
+- [ ] `package.json` 补 `"exports"`/`"main"` → `./extensions/subagent/index.ts`（否则引擎无法直接 import）
+- [ ] `index.ts` 导出 `createPiHarness`，或 `composition.ts` 的 `createDefaultHarnessRegistry` 支持外部 harness 覆写
+- [ ] `harnesses/pi/harness.ts` 的 `createPiHarness({sessionOptionsFactory, sessionFactory, agentDir})` 无需改动（注入点已存在）
+
+### S4 pi-wood 引擎侧注入（核心接线）
+- [ ] 新增 `apps/desktop/electron/main/subagent/pi-wood-session-options.ts`：实现 `sessionOptionsFactory`，要点：
+  - 凭据：沿用默认 `ModelRuntime.create({authPath:agentDir/auth.json, modelsPath})`（env 已注入钥匙串）；若探针3 显示不可见，则改为直接复用桌面 modelRuntime
+  - 审批：把 `permissionGateExtension(getPolicy, confirmViaRenderer)` 叠加进 child 的 `resourceLoader`（仿 `filterPiChildExtensions` 的 `extensionsOverride` 组合方式），child 工具调用必须过桌面审批策略（超时默认拒绝）
+  - 保留 goofansu 默认：bash 深度注入 `PI_SUBAGENT_DEPTH`、`excludeTools` 编排工具禁闭、`SessionManager.inMemory`、print-mode bind
+- [ ] `engine-manager.ts`：把 `getPolicy`/`confirmViaRenderer` 抽为可复用模块（如 `security/approval-io.ts` 导出）供 child 门复用；在 `ensureEngineUnlocked` 的 `inlineExtensions` 追加子代理运行时注册扩展（`runtime.attach(pi)`，复用 `createSubagentRuntime`）
+- [ ] 验证：子代理触发 `bash`，highRisk/untrusted 下必须弹 ApprovalCard（或按 policy deny），不得静默执行
+
+### S5 生命周期与 UX
+- [ ] 关窗/切项目/`adapter.stop()`：遍历子代理会话 `abort()`+`dispose()`（goofansu 已提供 `close()`/bounded cleanup，接到引擎停止路径）
+- [ ] 子代理进度/完成通知上屏：复用 `sessionPush`/delivery → 转发渲染层（右栏或对话流）
+- [ ] 并行 fan-out 与深度防递归确认（README：无 cap；与桌面审批并发策略一致）
+
+### S6 门禁与验收
+- [ ] S2 三探针 + 真密钥多代理 e2e（并行 2-3 子代理 + 命名会话续跑 + steer + cancel）全过
+- [ ] 旧 spawn 版卸载后无残留；`pnpm typecheck` + desktop test + build 全绿
+- [ ] 结果回写 §8（日期/任务号/决策/遗留）
+
+### 已核实事实速查（评审时确认，勿重查）
+- `getPiSpawnCommand`（nicobailon `src/runs/shared/pi-spawn.ts`）：win32 + `.js` → `{command: process.execPath, args:[cli,...]}`——桌面下 `process.execPath`=electron.exe，需 `ELECTRON_RUN_AS_NODE=1`（该 spawn 方案已弃）
+- goofansu `harnesses/pi/agent.ts`：`createPiSessionOptions` 自建 `ModelRuntime`/`SettingsManager`/`SessionManager.inMemory`；`bindExtensions({mode:"print"})`；`createPiManagedAdapter` 持惰性会话 + 有界清理
+- goofansu `index.ts`：导出 `createSubagentRuntime`（含 `harnesses?` 依赖注入）、`registerSubagentFeatureTools`；默认导出在 `isPiChildExtensionLoad()||depth>0` 时 inert（防递归）
+- 桌面现状：`engine-manager.ts:61` 单 adapter；`ensureEngineUnlocked` 注入 `inlineExtensions:[permissionGateExtension(getPolicy, confirmViaRenderer)]` + `customTools:browserCustomTools()`；`reinjectProviderEnv()` 钥匙串→process.env（T3.2）
+
+## 7.6 渲染层降噪三件套（T5.4 工具紧凑显示 / T5.5 思考折叠预览 / T5.6 连续工具分组）
+
+> **2026-09-02 决策**：评估三个社区插件（`pi-tool-display`、`@99percentpeople/pi-thinking-fold`、`@fahmiirsyadk/pi-minimal-toolcall`）——**均为 TUI 插件**（peer/关键词带 `pi-tui`，渲染挂在 pi-tui 的 `registerMessageRenderer`/widget 管线），pi-wood 无 pi-tui、用自有 React 渲染层，**不能 `pi install` 直接用**（装了 no-op 或报错）。但其中两个的核心模式 ui-kit 已实现 70~80%，第三个是真缺口。**决策：不装插件，把 UX 模式移植到现有组件**。
+> **现状核实**（源码级）：`packages/ui-kit/src/tool-card.tsx` 已有 `ToolCard`（默认折叠一行：图标+动词+目标+diff 增删数，点击展开，状态图标，bash 折叠行显示 `oneLine(command)`，edit 展开用 `DiffView`）和 `ThinkingCard`（一行「思考 · 持续了 N 秒」，点击展开，流式自动展开）；`apps/desktop/src/renderer/src/components/center/MessageList.tsx` 用 `ConversationItem` 判别联合（user/assistant/thinking/tool/system）+ `@tanstack/react-virtual` 虚拟化，`ToolRow`/`ThinkingRow` 单条渲染，已有 `ui.toolCardsDefaultOpen`/`ui.thinkingDefaultOpen` 设置；shiki 已装（`code-block.tsx`）。
+
+### [ ] T5.4 工具紧凑显示（pi-tool-display 模式移植）
+- 来源：社区 `pi-tool-display@0.5.0`（MasuRii）——紧凑工具调用渲染 + diff 可视化 + 输出截断
+- 前置：无
+- 步骤（改 `packages/ui-kit/src/tool-card.tsx`）：
+  1. **折叠行命令 shiki 高亮**：`ToolCard`（line 98）折叠行中 bash/powershell 的 `target`（当前是 `oneLine(str(args.command))` 纯文本 mono span）改为内联语法高亮——复用现有 `CodeBlock`（shiki）的轻量 `InlineCode` 变体（若 `CodeBlock` 不支持 inline，新建 `components/inline-code.tsx`，language=shell，memoize tokenize 结果）；read/edit/write 的路径保持纯 mono（路径不需要高亮）
+  2. **状态文字 Badge**：`headerIcon`（line 44）旁加文字标签——running→「运行中」（`animate-pulse` + primary 色）、ok→「已完成」（success 色，仅 hover/展开时显或常显淡色）、error→「失败」（destructive 色）；对齐 pi.dev「已运行 + 命令行」样式；图标保留
+  3. **展开命令块高亮**：`ToolBody`（line 64）中 bash/powershell 的 `$` 命令块（line 75-80，当前纯 font-mono span）改用 `CodeBlock`（shiki，language=shell，compact 变体，去掉行号/复制按钮，保留 `$` 前缀）
+  4. **输出截断优化**：`outputBlock`（line 61）当前 `max-h-72` 固定——保持，但超长输出（>200 行）在折叠行目标后加 `…(+N 行输出)` 提示，引导用户展开
+- 验收：
+  - [ ] bash/read/edit/write/grep/find/ls 七种内置工具 + browser_* 扩展工具，折叠行命令有 shiki 语法高亮（bash 类）
+  - [ ] 状态有文字 Badge（运行中/已完成/失败），与图标并存不冲突
+  - [ ] 展开时 bash 命令块有 shiki 高亮
+  - [ ] `pnpm typecheck` + build 全绿；dev HMR 生效
+- 验证方式：真实对话触发 bash/read/edit 各一次，截图对比折叠/展开两态
+
+### [ ] T5.5 思考折叠预览（pi-thinking-fold 模式移植）
+- 来源：社区 `@99percentpeople/pi-thinking-fold@0.1.9`——把流式思考折叠为 live tail 预览，快捷键展开
+- 前置：无
+- 步骤：
+  1. **`ThinkingCard` 加 preview prop**（`packages/ui-kit/src/tool-card.tsx` line 141）：新增 `preview?: string`（思考内容尾部截断，定长 60 字符）；折叠行在「思考 · 耗时 Ns」后追加 `· {preview}`（流式时实时更新，非流式时显示完整思考的尾部摘要）；`preview` 为空时回退当前「思考中…/持续了 N 秒」
+  2. **耗时格式紧凑化**：`fmtDuration`（line 133）从「持续了 N 秒」改为「耗时 12.3s」（保留中文可读，<1s 显示「耗时 <1s」，≥60s 显示「耗时 1m2s」）；对齐用户举例
+  3. **`ThinkingRow` 传 preview**（`MessageList.tsx` line 78）：从 `item.text` 取尾部 60 字符作为 preview（`item.text.slice(-60)`，去换行）；`session-store` 的 `ConversationItem` thinking kind 已有 `text`/`durationMs`，无需改数据模型
+  4. **live 流式思考也加预览**（`MessageList.tsx` line 206）：`liveThinking` 渲染的 `ThinkingCard` 传 `streaming` + `preview={liveThinking.slice(-60)}`，让流式时折叠行也能看到推理尾部（当前只显示「思考中…」）
+- 验收：
+  - [ ] 折叠行显示思考内容尾部预览（非流式），不只是耗时
+  - [ ] 流式时预览实时更新（每 token 尾部变化）
+  - [ ] 耗时格式为「耗时 12.3s」
+  - [ ] 点击展开看完整思考内容（现有行为不变）
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：开 high thinking 模型跑一次长思考任务，观察折叠行预览实时变化
+
+### [ ] T5.6 连续工具分组（pi-minimal-toolcall 模式移植）
+- 来源：社区 `@fahmiirsyadk/pi-minimal-toolcall@0.2.1`（月下载 70，很新）——连续工具调用分组折叠 + 快捷键切换
+- 前置：无（三项中降噪价值最高、改动量最大）
+- 步骤（改 `MessageList.tsx` + 新增 `ToolGroup` 组件）：
+  1. **items 预分组**：`MessageList`（line 126）渲染前，把 `items` 中连续的 `kind: "tool"` 归为一组（中间没有 assistant/user/thinking/system 即连续），生成 `displayRows: Array<ConversationItem | ToolGroup>`；`ToolGroup = { id: string, kind: "tool_group", tools: ConversationItem[], status: "running"|"all_ok"|"has_error", totalDurationMs, startTs }`
+  2. **虚拟器适配**：`useVirtualizer`（line 137）的 `count` 从 `items.length` 改为 `displayRows.length`，`getItemKey` 用 `displayRows[i].id`；`ConversationRow`（line 114）增加 `case "tool_group"` 分支渲染 `ToolGroup`
+  3. **`ToolGroup` 组件**（新建 `components/center/ToolGroup.tsx` 或放 ui-kit）：组头一行——「N 个工具调用 · 全部成功/部分失败 · 总耗时 Xs」+ 折叠/展开按钮（ChevronDown）+ 组内工具状态摘要（成功数/失败数/运行中数）；折叠时只显组头，展开时组内依次渲染 `ToolCard`（复用现有 `ToolRow` 逻辑）；组头背景 `bg-muted/30` 圆角，与单条工具卡视觉区分
+  4. **设置项**：`settings-service.ts` 加 `ui.toolGroupsEnabled`（默认 true）、`ui.toolGroupsDefaultOpen`（默认 false）；SettingsModal「界面」页加开关（复用现有 `ui.toolCardsDefaultOpen` 模式）；关闭时退化为单条渲染（`displayRows = items`）
+  5. **全局快捷键**：`Ctrl+Shift+E`（Expand/collapse all tools）切换所有工具组展开/收起（需确认不与现有快捷键冲突：现有 Ctrl+Shift+P 命令面板、Ctrl+1/2/3 栏焦点、Ctrl+. 循环；Ctrl+Shift+E 无冲突）；在 `App.tsx` 全局 keydown handler 注册（复用现有命令面板快捷键注册模式）；切换状态存内存（不持久化，刷新恢复 defaultOpen）
+  6. **流式兼容**：运行中的工具（status=running）所在组自动展开（或组头显示「运行中…」脉冲），完成后可按 defaultOpen 收起；live 尾块（line 204）不参与分组
+- 验收：
+  - [ ] 连续多个工具调用自动归为一组，组头显示数量/状态/总耗时
+  - [ ] 单个工具调用（前后有文本）不被误分组
+  - [ ] 点击组头折叠/展开；组内 ToolCard 可独立展开
+  - [ ] `Ctrl+Shift+E` 切换全部组展开/收起
+  - [ ] 设置关闭分组后退化为单条渲染
+  - [ ] 虚拟化列表滚动/测量正常（分组行高度动态，`measureElement` 自适应）
+  - [ ] `pnpm typecheck` + desktop test + build 全绿；1 万条压测不卡死（复用现有虚拟化）
+- 验证方式：真实对话触发连续 5+ 工具调用（如 read×3 + edit×2），观察分组/折叠/快捷键；再触发单工具+文本混合，确认不误分组
+
+### 落地顺序（按降噪价值/成本比）
+1. **T5.6 连续工具分组**（中改，价值最高）——多步执行任务降噪最明显
+2. **T5.4 工具紧凑显示**（小改）——shiki 高亮 + 状态 Badge，对齐 pi.dev 视觉
+3. **T5.5 思考折叠预览**（小改）——思考尾部预览，降低长思考噪音
+
 ## 8. 变更与决策日志（持续追加，倒序）
 
 > 格式：`日期 | 任务号 | 类别(偏差/决策/风险) | 内容 | 影响`
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-02 | T5.4/T5.5/T5.6 渲染层降噪三件套 | 决策 | **评估三个社区渲染插件 → 均不装，移植 UX 模式到现有组件**。核实：`pi-tool-display@0.5.0`（MasuRii）、`@99percentpeople/pi-thinking-fold@0.1.9`、`@fahmiirsyadk/pi-minimal-toolcall@0.2.1`（月下载 70）**全是 TUI 插件**（peer/关键词带 `pi-tui`，渲染挂 pi-tui `registerMessageRenderer`/widget 管线），pi-wood 无 pi-tui、用自有 React 渲染层 → `pi install` 后 no-op 或报错，不能直接用。**现状核实**：ui-kit `ToolCard` 已实现默认折叠一行（图标+动词+目标+diff 数）、`ThinkingCard` 已实现一行折叠+耗时，即 pi-tool-display/pi-thinking-fold 的核心模式已做 70~80%；pi-minimal-toolcall 的连续工具分组+快捷键是真缺口。**决策**：T5.4 给 ToolCard 折叠行命令加 shiki 内联高亮+状态文字 Badge（对齐 pi.dev「已运行+命令行」）；T5.5 给 ThinkingCard 折叠行加 thinking_delta 尾部预览+耗时格式改「耗时 12.3s」；T5.6 MessageList 预分组连续 tool 项为 ToolGroup+Ctrl+Shift+E 全局切换+ui.toolGroupsEnabled 设置。详细清单见 **§7.6**。落地顺序：T5.6（价值最高）> T5.4 > T5.5 | 三项待办（见 §7.6 勾选清单） |
+| 2026-09-02 | T6.2 子代理 | 决策 | **T6.2 路线切换：弃 nicobailon/pi-subagents（spawn A 方案）→ goofansu/pi-subagent（in-process，原"路线 C"）**。评审结论（源码级核实）：goofansu 的 Pi harness 与桌面同款 SDK API（0.84.4）、内存会话、无 spawn（无 execPath/孤儿/密钥物化问题）、自过滤+深度防递归+父信任继承；但默认扩展有 2 个不解决点（child 审批门必须注入、凭据需探针确认）+ 1 个分发问题（未发 npm、无 exports、注入点未暴露）→ 需一次小 fork。关键差异：spawn 版 child 是独立 pi 进程、不经桌面审批门=审批旁路；in-process 版可在注入点给 child 套 `permissionGateExtension`。**详细清单见 §7.5** | T6.2 待办（原 §8 记录作废，以 §7.5 勾选清单为准） |
 | 2026-09-01 | T5.1 三栏焦点循环 | 完成 | **补齐 T5.1 键盘优先最后一块：三栏焦点循环**（纯渲染层，无主进程改动）。抽 `hooks/use-column-focus.ts`（逻辑层）：`focusColumn(name)`/`cycleColumnFocus(dir)` 纯 DOM 定位 `[data-col-region]` 容器（兼容懒加载 RightPane），`cycleColumnFocus` 用 `offsetParent!==null` 跳过未挂载/收起的栏。App 三栏外层各包 `<div data-col-region tabIndex={-1}>`，`:focus` 时 `focus:ring-2 ring-inset ring-ring/60` 内嵌高亮（仅容器自身聚焦时显，输入框内聚焦不显→无噪声）。**快捷键踩坑**：初版 `Ctrl+Tab`/`Alt+1·2·3` 在 Windows/Electron 被系统吞（实测焦点不动），改用可靠的 `Ctrl+1/2/3`（直达左/中/右，VS Code 惯例）+ `Ctrl+.`/`Ctrl+Shift+.`（前进/后退循环）；**不劫持裸 Tab**（栏内原生遍历保留）。**验证**：desktop `tsc --noEmit` 全绿；dev HMR 生效；实机确认——点击空处→焦点环随 focus 在栏间移动（右↔中，证明 region 可聚焦 + ring 正确跟随），`Ctrl+K` 打开面板证明全局 keydown handler 触发；唯合成按键 `ctrl+<数字>` 在本自动化注入下 modifier 未可靠送达 DOM（工具限制，非代码缺陷），真人键盘可验。| T5.1 键盘优先 ✅（三栏焦点循环完成） |
 | 2026-09-01 | T5.1 命令面板聚合 | 决策+完成 | **插件优先复查 → 无现成插件做桌面命令面板**（palette 本属 app 侧 cmdk，插件只给 pi 提供 tools/commands/skills）。但**聚合数据源 SDK 已全部公共暴露**，故**不手搓扫描器**：`engine:listCommands` 薄桥直接读 live session 的 `extensionRunner.getRegisteredCommands()`（扩展命令）+ `promptTemplates`（模板）+ `resourceLoader.getSkills().skills`（Skill，名加 `skill:` 前缀匹配引擎 `/skill:name` 派发），未启动降级空数组（§8 只读降级不变量）。**契约**：`ipc-schema` 加 `EngineCommand`（zod）+ 通道 `engine:listCommands`；`pi-types.AgentSessionLike` 加三个可选成员；`EngineAdapter.listCommands()`；`sdk-adapter` 实现；`engine-manager` 注册 handler；preload `engineCommands()` + `global.d.ts`。**渲染层**：`CommandPalette` 重写为多分组（命令/扩展命令/Skill/模板/模型/项目/文件），**执行不重造**——命令项把 `/{name} ` 注入输入框（replace）、文件项把 `@{path}` 追加，均经新增 `piwood:composer-insert` 事件（`use-composer-controller` 单一持有：setInput + focus + caret 末尾，仿 `piwood:select-project`）。**@文件** 复用既有 `fs:search`（含 .gitignore 过滤），query≥2 防抖 200ms 取 top12。门禁：ipc-schema/engine/desktop 三包 `tsc --noEmit` 全绿；**headless 探针**（PI_OFFLINE、引导嵌入式 SDK）验证真实返回 `EXT ["todos","websearch","curator","google-account","search","mcp","pi-mcp","mcp-auth","plan"]`（含刚采纳的 `/plan`！）、`SKILLS ["mcp-scripting"]`、`HAS_PLAN_CMD true`。⚠ **主进程/preload 改动需重启 dev 实例才生效**（当前跑的实例 HMR 只覆盖渲染层；`window.pi.engineCommands` 在其旧 preload 里不存在，但渲染层用 `?.`+`.catch` 降级为空组、不崩）。**遗留**：T5.1 验收「90% 高频操作键盘化」需按方案 §11 清单逐条终审（本轮已把命令/模型/项目/文件/Skill/模板聚合，覆盖面大增）| T5.1 命令面板聚合 ✅（数据源全复用 SDK） |
 | 2026-09-01 | T4.3 计划模式 + T3.4 真实包验收 | 决策+完成 | **插件优先，先查后写（用户指令："新功能开启前先看是否有现成插件，别手搓"）**。npm pi 生态检索结论：**T4.3 计划模式、T6.2 子代理、浏览器**均已有现成扩展（`@narumitw/pi-plan-mode`/`@janvitos/pi-plan-build`、`pi-subagents`/`@arhen/pi-core-subagent`、`pi-agent-browser-native`），MCP/审批/Todo 已装（`pi-mcp-adapter`/`rpiv-ask-user-question`/`rpiv-todo`）→ **均不自研 inline 扩展，改走 marketplace 底层 `pi install` 路径采纳**。用户拍板采纳 **`@narumitw/pi-plan-mode@0.56.0`**（Codex 式只读 /plan：`plan_mode_question`/`plan_mode_complete` 两工具 + 工具访问限制至计划批准后恢复）。**端到端实测（= T3.4 验收"真实包安装→扩展生效→卸载干净"）**：① `pi install npm:@narumitw/pi-plan-mode`→exit0、写回 `settings.packages`（+dep `pi-tui-kit`，装到 `~/.pi/agent/npm/node_modules`，jiti 载 dist/index.ts）；② **headless 探针**（PI_OFFLINE=1，纯 node 引导嵌入式 SDK，无密钥/无网络：`createAgentSessionServices→FromServices→Runtime`→`session.bindExtensions({mode:'rpc'})`→读 `getActiveToolNames`）确认 `plan_mode_question`/`plan_mode_complete` 注册、`DIAGNOSTICS:[]`；③ `pi remove`→settings 与 node_modules 清干净（仅残留空 `@narumitw/` scope 目录，属 npm 正常行为）、工具消失且无 diagnostics；④ 复装确认持久。⚠ **`pi install` 临时设 `NODE_TLS_REJECT_UNAUTHORIZED=0`**（关证书校验，供应链风险，已在门禁向用户披露并由其确认采纳）。探针脚本 `apps/desktop/plan-probe.mjs` 用后即经回收站删除、未入 git。**结论：T4.3 以现成插件达成、无需新代码；T3.4 真实包全流程验收通过**。遗留：dev 实例需 `engine:reload` 或重选项目才让新装的 plan-mode 在运行中的 UI 生效（探针为独立进程验证，不依赖 dev 实例）| T4.3 ✅（插件采纳）、T3.4 ✅（真实包端到端） |
