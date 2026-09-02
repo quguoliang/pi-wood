@@ -36,6 +36,10 @@ export type ConversationItem =
       diffStat?: DiffStat;
       truncated?: boolean;
       fullOutputPath?: string;
+      /** T5.6：工具开始时刻（epoch ms），用于分组总耗时聚合。 */
+      startedAt?: number;
+      /** T5.6：工具耗时（ms），tool_execution_end 时由 startedAt 推算。 */
+      durationMs?: number;
     }
   | {
       id: string;
@@ -221,6 +225,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
             name: String(e.toolName ?? "tool"),
             args: asArgs(e.args),
             status: "running",
+            startedAt: Date.now(),
           });
           return;
         }
@@ -239,6 +244,11 @@ export const useSessionStore = create<SessionState>((set, get) => {
           const patchUpdate: Partial<Extract<ConversationItem, { kind: "tool" }>> = {
             status: e.isError ? "error" : "ok",
           };
+          const running = get().items.find(
+            (m): m is Extract<ConversationItem, { kind: "tool" }> => m.kind === "tool" && m.toolCallId === callId,
+          );
+          const started = running?.startedAt;
+          if (started != null) patchUpdate.durationMs = Date.now() - started;
           const out = extractText(result);
           if (out !== undefined) patchUpdate.output = out;
           if (patch) {

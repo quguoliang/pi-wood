@@ -5,7 +5,7 @@ export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
   theme: { fallback: "light" | "dark" | "system" };
   editor: { fontSize: number; tabSize: number };
-  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean };
+  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean };
   recentProjects: string[];
   /** T7.2：按会话 id 记录「自动接受审批」开关（与主进程 settings 同源）。 */
   autoAcceptSessions: Record<string, boolean>;
@@ -15,7 +15,7 @@ const defaults: PiWoodSettings = {
   window: { layout: [17, 55, 28], leftCollapsed: false, rightCollapsed: false },
   theme: { fallback: "dark" },
   editor: { fontSize: 14, tabSize: 2 },
-  ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false },
+  ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false },
   recentProjects: [],
   autoAcceptSessions: {},
 };

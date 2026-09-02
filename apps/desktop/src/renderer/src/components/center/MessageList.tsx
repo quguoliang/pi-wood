@@ -1,10 +1,12 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, Check, Copy, OctagonX, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Markdown, ThinkingCard, ToolCard } from "@pi-wood/ui-kit";
 import { useSessionStore, type ConversationItem } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { groupToolRows, isToolGroup, type DisplayRow } from "../../lib/tool-groups";
+import { ToolGroup } from "./ToolGroup";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------ 单条渲染 ------------------------------ */
@@ -77,7 +79,7 @@ const ToolRow = memo(function ToolRow({ item }: { item: Extract<ConversationItem
 
 const ThinkingRow = memo(function ThinkingRow({ item }: { item: Extract<ConversationItem, { kind: "thinking" }> }) {
   const defaultOpen = useSettingsStore((s) => s.settings.ui.thinkingDefaultOpen);
-  return <ThinkingCard text={item.text} durationMs={item.durationMs} defaultOpen={defaultOpen} />;
+  return <ThinkingCard text={item.text} durationMs={item.durationMs} preview={item.text.slice(-60)} defaultOpen={defaultOpen} />;
 });
 
 const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extract<ConversationItem, { kind: "assistant" }>; isLast: boolean }) {
@@ -111,7 +113,8 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
   );
 });
 
-function ConversationRow({ item, isLast }: { item: ConversationItem; isLast: boolean }): React.JSX.Element {
+function ConversationRow({ item, isLast }: { item: DisplayRow; isLast: boolean }): React.JSX.Element {
+  if (isToolGroup(item)) return <ToolGroup group={item} />;
   switch (item.kind) {
     case "user": return <UserBubble text={item.text} />;
     case "assistant": return <AssistantRow item={item} isLast={isLast} />;
@@ -131,15 +134,17 @@ export function MessageList(): React.JSX.Element | null {
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
-  const lastId = items.length > 0 ? items[items.length - 1].id : undefined;
+  const toolGroupsEnabled = useSettingsStore((s) => s.settings.ui.toolGroupsEnabled);
+  const displayRows = useMemo(() => groupToolRows(items, toolGroupsEnabled), [items, toolGroupsEnabled]);
+  const lastRowId = displayRows.length > 0 ? displayRows[displayRows.length - 1].id : undefined;
   const firstId = items[0]?.id;
 
   const virtualizer = useVirtualizer({
-    count: items.length,
+    count: displayRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 96,
     overscan: 8,
-    getItemKey: (i) => items[i].id,
+    getItemKey: (i) => displayRows[i].id,
   });
 
   const onScroll = useCallback(() => {
@@ -185,7 +190,10 @@ export function MessageList(): React.JSX.Element | null {
       {
         <div className="mx-auto w-full max-w-[var(--pk-chat-width,48rem)]">
           <div style={{ height: virtualizer.getTotalSize() }} className="relative w-full">
-            {rows.map((row) => (
+            {rows.map((row) => {
+              const r = displayRows[row.index];
+              const tight = r.kind === "tool" || r.kind === "thinking" || r.kind === "tool_group";
+              return (
               <div
                 key={row.key}
                 data-index={row.index}
@@ -193,17 +201,18 @@ export function MessageList(): React.JSX.Element | null {
                 className="absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${row.start}px)` }}
               >
-                <div className={items[row.index].kind === "tool" || items[row.index].kind === "thinking" ? "mb-0.5" : "mb-3"}>
-                  <ConversationRow item={items[row.index]} isLast={items[row.index].id === lastId} />
+                <div className={tight ? "mb-0.5" : "mb-3"}>
+                  <ConversationRow item={r} isLast={r.id === lastRowId} />
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* live 尾块：流式思考 / 流式正文（不进虚拟列表，避免每 token 重排） */}
           {(liveThinking || liveText || streaming) && (
             <div className="animate-in fade-in-0 duration-200 flex w-full flex-col gap-3 pb-2">
-              {liveThinking && <ThinkingCard text={liveThinking} streaming />}
+              {liveThinking && <ThinkingCard text={liveThinking} streaming preview={liveThinking.slice(-60)} />}
               {liveText && <AssistantProse text={liveText} streaming />}
               {streaming && !liveText && !liveThinking && (
                 <div className="flex items-center gap-1 pl-1">

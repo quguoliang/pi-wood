@@ -16,6 +16,7 @@ export {
 } from "./message";
 export { Tool, type ToolPart, type ToolProps } from "./tool";
 export { ToolCard, type ToolCardProps, ThinkingCard } from "./tool-card";
+export { HighlightedCommand, type HighlightedCommandProps } from "./shiki-command";
 export { DiffView, type DiffViewProps } from "./diff";
 export { Loader } from "./loader";
 export { PromptSuggestion } from "./prompt-suggestion";

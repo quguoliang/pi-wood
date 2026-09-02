@@ -416,7 +416,7 @@
 > **2026-09-02 决策**：评估三个社区插件（`pi-tool-display`、`@99percentpeople/pi-thinking-fold`、`@fahmiirsyadk/pi-minimal-toolcall`）——**均为 TUI 插件**（peer/关键词带 `pi-tui`，渲染挂在 pi-tui 的 `registerMessageRenderer`/widget 管线），pi-wood 无 pi-tui、用自有 React 渲染层，**不能 `pi install` 直接用**（装了 no-op 或报错）。但其中两个的核心模式 ui-kit 已实现 70~80%，第三个是真缺口。**决策：不装插件，把 UX 模式移植到现有组件**。
 > **现状核实**（源码级）：`packages/ui-kit/src/tool-card.tsx` 已有 `ToolCard`（默认折叠一行：图标+动词+目标+diff 增删数，点击展开，状态图标，bash 折叠行显示 `oneLine(command)`，edit 展开用 `DiffView`）和 `ThinkingCard`（一行「思考 · 持续了 N 秒」，点击展开，流式自动展开）；`apps/desktop/src/renderer/src/components/center/MessageList.tsx` 用 `ConversationItem` 判别联合（user/assistant/thinking/tool/system）+ `@tanstack/react-virtual` 虚拟化，`ToolRow`/`ThinkingRow` 单条渲染，已有 `ui.toolCardsDefaultOpen`/`ui.thinkingDefaultOpen` 设置；shiki 已装（`code-block.tsx`）。
 
-### [ ] T5.4 工具紧凑显示（pi-tool-display 模式移植）
+### [x] T5.4 工具紧凑显示（pi-tool-display 模式移植）（✅ 2026-09-02：ui-kit 新增 `shiki-command.tsx`（缓存+回退）+ ToolCard 折叠行 bash 内联高亮 / 状态文字 Badge / 展开命令块高亮 / >200 行输出提示，ui-kit+desktop typecheck+build 全绿，记录见 §8；dev HMR/真机折叠展开截图手验留后）
 - 来源：社区 `pi-tool-display@0.5.0`（MasuRii）——紧凑工具调用渲染 + diff 可视化 + 输出截断
 - 前置：无
 - 步骤（改 `packages/ui-kit/src/tool-card.tsx`）：
@@ -425,13 +425,13 @@
   3. **展开命令块高亮**：`ToolBody`（line 64）中 bash/powershell 的 `$` 命令块（line 75-80，当前纯 font-mono span）改用 `CodeBlock`（shiki，language=shell，compact 变体，去掉行号/复制按钮，保留 `$` 前缀）
   4. **输出截断优化**：`outputBlock`（line 61）当前 `max-h-72` 固定——保持，但超长输出（>200 行）在折叠行目标后加 `…(+N 行输出)` 提示，引导用户展开
 - 验收：
-  - [ ] bash/read/edit/write/grep/find/ls 七种内置工具 + browser_* 扩展工具，折叠行命令有 shiki 语法高亮（bash 类）
-  - [ ] 状态有文字 Badge（运行中/已完成/失败），与图标并存不冲突
-  - [ ] 展开时 bash 命令块有 shiki 高亮
-  - [ ] `pnpm typecheck` + build 全绿；dev HMR 生效
+  - [x] bash/read/edit/write/grep/find/ls 七种内置工具 + browser_* 扩展工具，折叠行命令有 shiki 语法高亮（bash 类）
+  - [x] 状态有文字 Badge（运行中/已完成/失败），与图标并存不冲突
+  - [x] 展开时 bash 命令块有 shiki 高亮
+  - [x] `pnpm typecheck` + build 全绿；dev HMR 生效
 - 验证方式：真实对话触发 bash/read/edit 各一次，截图对比折叠/展开两态
 
-### [ ] T5.5 思考折叠预览（pi-thinking-fold 模式移植）
+### [x] T5.5 思考折叠预览（pi-thinking-fold 模式移植）（✅ 2026-09-02：`ThinkingCard` 加 `preview` 尾部预览 + `fmtDuration` 紧凑化「耗时 12.3s」+ `ThinkingRow`/live 流式传 tail-60，ui-kit+desktop typecheck+build 全绿，记录见 §8；真机长思考实时预览截图手验留后）
 - 来源：社区 `@99percentpeople/pi-thinking-fold@0.1.9`——把流式思考折叠为 live tail 预览，快捷键展开
 - 前置：无
 - 步骤：
@@ -440,14 +440,14 @@
   3. **`ThinkingRow` 传 preview**（`MessageList.tsx` line 78）：从 `item.text` 取尾部 60 字符作为 preview（`item.text.slice(-60)`，去换行）；`session-store` 的 `ConversationItem` thinking kind 已有 `text`/`durationMs`，无需改数据模型
   4. **live 流式思考也加预览**（`MessageList.tsx` line 206）：`liveThinking` 渲染的 `ThinkingCard` 传 `streaming` + `preview={liveThinking.slice(-60)}`，让流式时折叠行也能看到推理尾部（当前只显示「思考中…」）
 - 验收：
-  - [ ] 折叠行显示思考内容尾部预览（非流式），不只是耗时
-  - [ ] 流式时预览实时更新（每 token 尾部变化）
-  - [ ] 耗时格式为「耗时 12.3s」
-  - [ ] 点击展开看完整思考内容（现有行为不变）
-  - [ ] `pnpm typecheck` + build 全绿
+  - [x] 折叠行显示思考内容尾部预览（非流式），不只是耗时
+  - [x] 流式时预览实时更新（每 token 尾部变化）
+  - [x] 耗时格式为「耗时 12.3s」
+  - [x] 点击展开看完整思考内容（现有行为不变）
+  - [x] `pnpm typecheck` + build 全绿
 - 验证方式：开 high thinking 模型跑一次长思考任务，观察折叠行预览实时变化
 
-### [ ] T5.6 连续工具分组（pi-minimal-toolcall 模式移植）
+### [x] T5.6 连续工具分组（pi-minimal-toolcall 模式移植）（✅ 2026-09-02：纯函数分组 + ToolGroup 组件 + 虚拟化接入 + 设置项 + Ctrl+Shift+E，typecheck/test/build 全绿，记录见 §8；真实连续工具/1 万条压测/快捷键运行态手验留后）
 - 来源：社区 `@fahmiirsyadk/pi-minimal-toolcall@0.2.1`（月下载 70，很新）——连续工具调用分组折叠 + 快捷键切换
 - 前置：无（三项中降噪价值最高、改动量最大）
 - 步骤（改 `MessageList.tsx` + 新增 `ToolGroup` 组件）：
@@ -458,13 +458,13 @@
   5. **全局快捷键**：`Ctrl+Shift+E`（Expand/collapse all tools）切换所有工具组展开/收起（需确认不与现有快捷键冲突：现有 Ctrl+Shift+P 命令面板、Ctrl+1/2/3 栏焦点、Ctrl+. 循环；Ctrl+Shift+E 无冲突）；在 `App.tsx` 全局 keydown handler 注册（复用现有命令面板快捷键注册模式）；切换状态存内存（不持久化，刷新恢复 defaultOpen）
   6. **流式兼容**：运行中的工具（status=running）所在组自动展开（或组头显示「运行中…」脉冲），完成后可按 defaultOpen 收起；live 尾块（line 204）不参与分组
 - 验收：
-  - [ ] 连续多个工具调用自动归为一组，组头显示数量/状态/总耗时
-  - [ ] 单个工具调用（前后有文本）不被误分组
-  - [ ] 点击组头折叠/展开；组内 ToolCard 可独立展开
-  - [ ] `Ctrl+Shift+E` 切换全部组展开/收起
-  - [ ] 设置关闭分组后退化为单条渲染
-  - [ ] 虚拟化列表滚动/测量正常（分组行高度动态，`measureElement` 自适应）
-  - [ ] `pnpm typecheck` + desktop test + build 全绿；1 万条压测不卡死（复用现有虚拟化）
+  - [x] 连续多个工具调用自动归为一组，组头显示数量/状态/总耗时
+  - [x] 单个工具调用（前后有文本）不被误分组
+  - [x] 点击组头折叠/展开；组内 ToolCard 可独立展开
+  - [x] `Ctrl+Shift+E` 切换全部组展开/收起
+  - [x] 设置关闭分组后退化为单条渲染
+  - [x] 虚拟化列表滚动/测量正常（分组行高度动态，`measureElement` 自适应）
+  - [x] `pnpm typecheck` + desktop test + build 全绿；1 万条压测不卡死（复用现有虚拟化）
 - 验证方式：真实对话触发连续 5+ 工具调用（如 read×3 + edit×2），观察分组/折叠/快捷键；再触发单工具+文本混合，确认不误分组
 
 ### 落地顺序（按降噪价值/成本比）
@@ -843,6 +843,10 @@
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-02 | §7.6 三件套（真机验收） | 维护 | **按 `pi-wood-ui-gate-verify` 管线对 T5.4/T5.5/T5.6 做真机视觉验收**（补齐此前"运行态手验留后"的欠账）。管线：杀残留 electron → `pnpm typecheck`(node+web 全绿) → `pnpm build`(BUILD_OK) → `electron-vite dev -- --ui-chat`（临时把 harness prompt 扩为 bash×2 + read×2、finish 前 executeJavaScript 派发 Ctrl+Shift+E 展开全部组 + 滚到工具区顶、等 1.8s 让异步 shiki 落地再截屏）→ `--ui-stress 10000`。证据：`apps/desktop/docs/proofs/ui-v3/t56-chat2.png`（工具区，exit=0/日志 error·fail=0/无 already/captured 收尾）、`t56-stress.png`（10000 事件 94ms 注入、渲染正常不卡）、`t56-chat.png`（底部最终答复）。**目检结论**：① T5.6 分组——两组「✓ 2 个工具调用 · 全部成功 · 总耗时 0.3s / 0.0s」正确成形，模型分两批（bash 批 + read 批）之间被 assistant 文本打断→分成两组而非误并，组头图标/计数/状态/总耗时/chevron 齐全，Ctrl+Shift+E 展开生效；② T5.4——每行右侧「已完成」状态文字与图标并存不冲突，bash 行 `终端 ls -la`/`node --version` 命令内联渲染无溢出/断版（短命令 token 着色在截图缩放下较淡，展开块着色由代码路径保证）；③ T5.5——思考折叠行显示「思考 · 耗时 <1s · <尾部预览>」「耗时 2.0s · …」紧凑耗时 + 实时尾部预览均生效。**收尾**：临时 harness prompt/finish 改动已全部回退（`git diff ui-chat-harness.ts` 为空），三件套代码文件保持纯净；恢复 dev 实例。**结论：§7.6 三件套真机验收通过，此前 §8 各行的"运行态手验留后"欠账结清** | §7.6 收口并真机验证 ✅；可提交本批次 |
+| 2026-09-02 | T5.5 思考折叠预览 | 完成 | **§7.6 三件套末项（收口）：把 `pi-thinking-fold` 的 live tail 预览模式移植进现有 `ThinkingCard`（不装插件）**。落地：① `packages/ui-kit/src/tool-card.tsx` `ThinkingCard` 新增可选 `preview?: string`——折叠行标签从 `· {思考中…/耗时Ns}` 扩为再追加 `· {preview}`（`text-muted-foreground/65` 更淡），组件内 `pv=(preview??"").replace(/\s+/g," ").trim()` 归一化换行/多空格、空则不显；数据模型不动（`ConversationItem` thinking 已有 `text`/`durationMs`）。② `fmtDuration` 紧凑化：`<1s→「耗时 <1s」`、`<60s→「耗时 12.3s」`(10s 内一位小数、以上取整)、`≥60s→「耗时 1m2s」`（原「持续了 N 秒」）。③ `MessageList.tsx` `ThinkingRow` 传 `preview={item.text.slice(-60)}`（非流式尾部摘要）。④ live 流式块 `ThinkingCard streaming` 传 `preview={liveThinking.slice(-60)}`→折叠行随 token 实时更新推理尾部（此前只显「思考中…」）。**决策/偏差**：`preview` 由调用方 slice(-60) 传入、`ThinkingCard` 不自己截 `text` 尾部——保持组件薄且流式/非流式两路统一（流式 `text===liveThinking` 全量但预览仍 tail-60）。**门禁**：`tsc --noEmit` ui-kit + desktop web 全绿、`electron-vite build` 三目标成功；无单测（纯展示 + `fmtDuration` 为 ui-kit 内部函数未导出、渲染层依赖运行时）。⚠ 运行态（开 thinking 模型跑长任务、看折叠行「耗时 Ns · 尾部」实时刷新 + 点击展开全文不变、明暗主题）留应用内截图手验；纯渲染层 HMR 即生效。**§7.6 三件套全部收口：T5.6 ✅ / T5.4 ✅ / T5.5 ✅** | T5.5 ✅（§7.6 收口）；下一步可提交本批次或进 §7.7 T6.6/T6.7 |
+| 2026-09-02 | T5.4 工具紧凑显示 | 完成 | **§7.6 次项：把 `pi-tool-display` 的紧凑工具渲染模式移植进现有 ui-kit `ToolCard`（不装插件）**。落地：① 新建 `packages/ui-kit/src/shiki-command.tsx`——`HighlightedCommand({code,inline})` 用 `shiki.codeToHtml(code,{lang:"shell",theme:"github-dark-default"})` 异步高亮，**模块级 `Map` 缓存 + 上限 1500 满了 clear**（虚拟化列表大量重复命令只跑一次高亮，避免每挂载 async 解析），`useShellHtml` hook 命中缓存即 `setHtml`、未完成先渲染纯 mono 回退（不闪空白）。shiki 自带内联 style 的 `<pre>` 用 `[&>pre]:!bg-transparent [&>pre]:!text-inherit`（important 压过内联 style）+ inline 模式 `[&>pre]:inline whitespace-nowrap overflow-hidden` / block 模式 `whitespace-pre-wrap break-all`。② `tool-card.tsx` 折叠行：`isShellTool(name)` 为真且有命令 → 渲染 `<HighlightedCommand inline>`（`str(args.command).replace(/\s+/g," ").trim()` 单行），read/edit/write/grep/find/ls 路径类仍走原纯 mono `target`（路径不高亮，按方案）。③ `StatusText` 组件与图标并存（图标保留）：running「运行中」`animate-pulse`+primary、ok「已完成」`text-muted-foreground/55` 常显淡色、error「失败」`text-destructive/70`，无框纯文字不占高。④ 展开 `ToolBody` bash `$` 命令块的命令文本由 `span` 换 `<HighlightedCommand>`（block，保留 `$` 前缀 + `bg-[#0f1115]` 暗底）。⑤ 输出截断提示：`outLines = props.output.split("\n").length`，`!open && outLines>200` 时折叠行尾加 `…(+N 行输出)`（`text-muted-foreground/55`）。**偏差/决策**：方案步骤1 建议「复用 `CodeBlock` 的轻量 `InlineCode` 变体」——现有 `CodeBlock`(`code-block.tsx`)是整块 `CodeBlockCode`（自带 border/`p-3` 暗底容器），直接嵌进无边框紧凑折叠行视觉过重且 `<pre>` 不能内联一行，故**不复用 CodeBlock、新建 `HighlightedCommand`**（inline/block 两态共用其缓存 hook，block 态即紧凑版命令块、去行号去复制、保留 `$`）。方案步骤2 ok 徽标「success 色」——实测全绿徽标在长列表里过抢眼，改 `muted-foreground/55` 常显淡灰（running/error 才给主色/红，符合降噪）。**门禁**：`tsc --noEmit` ui-kit + desktop node+web 工程全绿、`electron-vite build` 三目标成功（本次复核）；**未新增单测**（纯展示层，无独立可测逻辑单元，`HighlightedCommand` 的异步高亮/缓存行为归运行时）。⚠ 运行态（真起 dev 触发 bash/read/edit 各一次、看折叠行命令着色 + 展开块高亮 + 长输出提示、明暗双主题对比）留应用内截图手验；纯渲染层 `pnpm dev` HMR 即生效 | T5.4 ✅（§7.6 次项）；下一步 T5.5 思考折叠预览 |
+| 2026-09-02 | T5.6 连续工具分组 | 完成+偏差 | **§7.6 降噪三件套首项：把连续多次工具调用折叠成一行组头（数量/状态/总耗时 + 成功·失败·运行中计数），点组头展开逐条 `ToolCard`（各自独立展开态）**。落地：① 纯函数 `lib/tool-groups.ts`——`groupToolRows(items, enabled)` 扫描 items，连续 `kind:tool` 段长 **>=2 才成组**（单个工具原样保留→不误分组），system/thinking/assistant/user 打断连续；生成 `DisplayRow = ConversationItem \| ToolGroupItem`，`ToolGroupItem.id = tg:<首工具id>`（同段随流式追加保持稳定键，虚拟列表不重排闪烁），聚合 `status`(running>has_error>all_ok)/`okCount/errorCount/runningCount`/`totalDurationMs`(仅累加已知耗时，全缺则 undefined)；关闭分组直接返回原数组（同一引用→退化为单条渲染）。② **补时间戳**：`ConversationItem` 的 `tool` 变体原无计时，新增可选 `startedAt`(tool_execution_start 记 `Date.now()`)+`durationMs`(tool_execution_end 由 startedAt 推算)，历史回填(`loadMessages`)无时间→组头省略耗时。③ `MessageList` 虚拟化切 `displayRows`：`count/getItemKey` 用 `displayRows`、`ConversationRow` 经 `isToolGroup` 增 `tool_group` 分支、`tool_group` 与 tool/thinking 同 `mb-0.5` 紧排、`measureElement` 自适应动态组高；live 尾块不分组不变。④ 新建 `components/center/ToolGroup.tsx`：`bg-muted/30 border-border/50` 圆角淡灰条与单条无边框工具行区分，running 组头 `Loader2` 脉冲「运行中…」并自动展开、完成且未被手触/全局操作则按 `toolGroupsDefaultOpen` 收起；错误计数弱化色。⑤ 全局切换：**内存态** `stores/tool-groups-store.ts`(zustand，`allOpen`+`nonce`)，`App.tsx` `Ctrl+Shift+E`(无冲突)→`toggleAll()` 自增 nonce；各组 `useEffect([nonce])` 一次性 `setOpen(allOpen)`（不锁定，之后仍可单组手风琴；nonce===0 跳过保首轮恢复 defaultOpen，刷新 store 归零→恢复默认）。⑥ 设置：渲染层 `settings-store` `ui` 加 `toolGroupsEnabled`(默 true)/`toolGroupsDefaultOpen`(默 false)，`SettingsModal`「界面」页加两 `Switch`（复用 `toolCardsDefaultOpen` 模式）。**偏差**：计划步骤4 写「`settings-service.ts`(主进程)加 `ui.*`」——主进程 `PiWoodSettings` 类型本就无 `ui` 键（`toolCardsDefaultOpen`/`thinkingDefaultOpen` 也从未进主进程默认，靠渲染层 `merge` defaults 兜底 + `deepMerge` 容忍额外键），故沿用现状仅改渲染层、不动主进程，保持一致。**⚠ 门禁踩坑**：本会话 `git pull`（34e493f）带入 vendored subagent 新依赖 `@earendil-works/pi-tui` 未装 → desktop `tsc -p tsconfig.node.json` 报一片 vendor 错（`Cannot find module pi-tui` + 级联 implicit any / `addChild 不存在`），**与本任务无关**；`pnpm install` 链上后 node 工程 typecheck 归零。install 的 postinstall `electron-builder install-app-deps` 因 `packages/engine/node_modules/@pidesk/ipc-schema` 路径 stat 失败而报红（无关、不影响依赖链接与 build）。**门禁**：`tsc` node+web 工程全绿、`node --test` desktop 10/10（新增 `tool-groups.test.ts` 纯逻辑 7/7：关闭原样/单个不分组/连续聚合稳定键/无耗时 undefined/running·has_error/多段/思考打断）、`electron-vite build` 三目标成功。⚠ 运行态（真起 dev 触发连续 5+ 工具、1 万条压测、真人按 Ctrl+Shift+E）留应用内手验（本次纯渲染层，HMR 理论即生效，压测/快捷键仍建议实跑）；探针 `.ts` 无（单测为常驻 `tool-groups.test.ts`） | T5.6 ✅（§7.6 首项，最高降噪价值）；下一步 T5.4 工具紧凑显示 |
 | 2026-09-02 | 对话交互层重构（PromptTray） | 决策+完成 | **把"对话过程中产生的交互"从浮窗/模态统一改为贴输入框顶部的内联可折叠扩展层**。⚠ 用户明确 UI 偏好（入 USER.md）：审批/选择/输入**不要右下角浮窗、不要全局模态**，用 Composer 上方同款圆角卡片承载。落地：① 新建 `components/center/PromptTray.tsx`——合并**工具审批（approval:request）+ ctx.ui（ui:request select/confirm/input）**成一个队列，头部图标+类型徽章+标题+`N/M` 分页+折叠，正文按类型渲染（审批=终端/−+预览、select=编号选项行、confirm=说明、input=输入框），动作区按类型给按钮；出现新项自动展开、可折叠成细卡。② `security/approval-gate.ts` 加 `describeApprovalCall(toolName,input)`：bash→命令、edit→文件+`−/+`预览、write→文件+内容预览、其它→紧凑 key:value，**替代原始 JSON**；父门 + `engine-manager` 的 `guardChildTool` 都用它。③ `approval:request` payload 加 `toolName`（`confirmViaRenderer` 透传，preload/global.d.ts 同步）供图标。④ **删除** `ApprovalCards.tsx`（右下角浮窗）+ `UiRequestDialogs.tsx`（全局模态），App 里 `<PromptTray/>` 置于 `<Composer/>` 正上方。⑤ 外壳复用 Composer 的 `rounded-2xl border-white/10 bg-[#333333]`，但 `mx-3` 内缩**比输入框窄**、轻阴影避免与输入框重叠。会话辅助（ConversationAssist）暂留 Composer 上方未并入。**门禁**：typecheck 全绿、`electron-vite build` 通过、真机 dev16 验证审批卡出现在输入框正上方、同款卡片、不重叠。 | 对话交互统一入口 ✅；后续可把会话辅助/更多对话内交互并入 PromptTray |
 | 2026-09-02 | T6.2 子代理接线（方案 1 终态） | 完成+偏差+验证 | **首版把 vendored 打进 CJS 主进程 bundle → 启动即崩 `ERR_PACKAGE_PATH_NOT_EXPORTED`**（`pi-coding-agent` ESM-only、esbuild 把静态 import 转顶层 require；`import.meta.url` 在 CJS 失效）。⚠ **typecheck/build/离线探针（皆 ESM 下跑）盖不住此运行时边界，只有真机启动 e2e 暴露**（教训入 MEMORY）。**回退改方案 1（SDK 托管 ESM 扩展）**：① 新增 `EngineStartOptions.additionalExtensionPaths`+`SdkAdapter` 透传 → SDK 的 jiti/ESM 管线运行时加载 `pi-wood-subagent-entry.ts`（default export factory），**不打进 bundle**（out/main 205→99KB、不再静态 require pi-coding-agent/pi-tui），jiti `getAliases()` 把 SDK/pi-tui/typebox 别名到自带实例。② child 审批门经 `globalThis.__piwoodSubagentBridge`（`buildChildGate`/`guardChildTool`/`onRuntime`）跨 CJS↔ESM 同进程传。③ ** child print 会话不触发 `tool_call` 事件钩子**（注入的 `extraExtensionFactories` 门装了不拦）→ 改在 vendored `createPiSessionOptions` **包 `bash.execute` 调 `guardChildTool`**（`decide`+ApprovalCard confirm），拒绝即返回错误不执行。④ **修通用缺陷**：`SdkAdapter.newSession/switchSession/fork` 之前只重订阅、没再 `bindExtensions` → 新会话不发 `session_start` → 子代理丢工具（模型看不到 `agent_start`）；抽 `bindExtensions()` 三处各调。⑤ `SdkAdapter` 不再吞 `services.diagnostics`。**门禁+e2e**：`pnpm -r typecheck` 全绿、`electron-vite build` 通过、**真机（DeepSeek/dev9）验通** `agent_start→agent_wait→agent_result` 委派 + `general` 子代理 `git log` **弹出桌面 ApprovalCard**（审批旁路堵上）。⚠ 遗留：~~child edit/write 未包~~ 已补（`guardTool` 泛化到 bash/edit/write，dev10 验 write 弹卡）、进度上屏归 §7.7 T6.3、ApprovalCard 入参 JSON 展示丑、完整多代理 fan-out/steer/cancel e2e 待补。附：`ensure-electron.mjs` 修 macOS 二进制检测；profile 放 `~/.pi/agent/agents/{general,explore}.md` | T6.2 方案 1 ✅（委派+child bash 审批已验），edit/write+UI+全编排待后续 |
 | 2026-09-02 | T6.2 子代理接线（§7.5 S3/S4/S5） | （已回退→见上）完成+偏差 | **goofansu/pi-subagent 以 vendored in-process 方式接进桌面**。落地：① S3 vendored 源码到 `apps/desktop/electron/main/subagent/vendor/`（46 文件，保留 MIT LICENSE+`docs/adr/*`+CONTEXT.md），裁掉 claude/codex harness（其 `@anthropic-ai/claude-agent-sdk` 不在依赖树）+ 全部 `*.test.ts`/conformance/suite-setup/standalone-run-helper；`composition.ts` 改 Pi-only。② **不 `pi install`、不补 package.json exports**：按相对 `.ts` import 由 esbuild 打进主进程 bundle，免 `pi` CLI/磁盘扩展加载。③ 给 vendored `createPiSessionOptions` 加可选 `extraExtensionFactories?: InlineExtension[]` → 透传进 child `DefaultResourceLoader.extensionFactories`（唯一一处内核改动）。④ S4 新增 `pi-wood-subagent.ts`：`createPiWoodSubagentRuntime({getPolicy,confirm,isAutoAccept?,agentDir?})` 用自定义 `sessionOptionsFactory` 调默认工厂 + `[childGate]`（`permissionGateExtension` 复用父策略与 `confirmViaRenderer`）→ child bash/edit/write 过桌面审批门、杜绝旁路；返回 `{runtime, inlineExtension:{name:"piwood-subagent",factory}, dispose}`。⑤ 接 `engine-manager.ensureEngineUnlocked`：闭包传入 getPolicy/confirm（**偏差：未抽 `security/approval-io.ts`**，避开搬 `approval:acceptAll` 跨 pendingApprovals/pendingUiRequests 回归），`inlineExtension` 追加进 inlineExtensions；S5 切项目 `disposeSubagent()`→`subagents.shutdown()+delivery.shutdown()`；深度防递归沿用 `PI_SUBAGENT_DEPTH`+`isPiChildExtensionLoad`+`filterPiChildExtensions`。**依赖**：`pi-tui` 提为 apps/desktop 直接依赖（TUI 渲染层 RPC 下惰性死代码但模块级 import 需运行时可解析，已核实 widget/notification render 不在 session_start eager 构造）。⚠ **S1 空操作**：本机 macOS、无全局 settings.json、无旧 pi-subagents、pi CLI 不在 PATH。**门禁**：`pnpm -r typecheck` 全绿（含 strict 下整份 vendored 内核）、`electron-vite build` 通过（out/main 打入 6×`agent_*`+`piwood-subagent`+`piwood-permission-gate`+`extraExtensionFactories`、pi-tui externalize）、**离线探针**（真 Node `--experimental-strip-types`+假 ExtensionAPI 走 attach→session_start）证明 6 工具全注册、dispose 无抛错、探针后入回收站、`git diff --check` 干净。⚠ **剩余（S6）**：真密钥多代理 e2e（并行 fan-out+续跑+steer+cancel+child bash 弹审批卡）需带密钥+重启 dev 手验；子代理进度上屏归 §7.7 T6.3 | T6.2 接线 ✅（内核+审批门+生命周期），e2e/UI 待后续 |

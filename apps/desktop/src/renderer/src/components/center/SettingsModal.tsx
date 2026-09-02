@@ -257,6 +257,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
                   </span>
                   <Switch checked={ui.thinkingDefaultOpen} onCheckedChange={(v) => void patchUi({ ui: { ...ui, thinkingDefaultOpen: v } })} />
                 </label>
+                <label className="flex items-center justify-between rounded-md px-3 py-2.5 text-sm hover:bg-accent">
+                  <span className="min-w-0">
+                    <span className="block font-medium">连续工具分组</span>
+                    <span className="block text-xs text-muted-foreground">把连续多次工具调用折叠成一组（可用 Ctrl+Shift+E 展开/收起全部）；关闭则逐条显示</span>
+                  </span>
+                  <Switch checked={ui.toolGroupsEnabled} onCheckedChange={(v) => void patchUi({ ui: { ...ui, toolGroupsEnabled: v } })} />
+                </label>
+                <label className="flex items-center justify-between rounded-md px-3 py-2.5 text-sm hover:bg-accent">
+                  <span className="min-w-0">
+                    <span className="block font-medium">工具组默认展开</span>
+                    <span className="block text-xs text-muted-foreground">新出现的工具组默认展开还是收起（运行中的组始终先展开）</span>
+                  </span>
+                  <Switch checked={ui.toolGroupsDefaultOpen} onCheckedChange={(v) => void patchUi({ ui: { ...ui, toolGroupsDefaultOpen: v } })} />
+                </label>
               </div>
             )}
 

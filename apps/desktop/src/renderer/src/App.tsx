@@ -17,6 +17,7 @@ import { useRuntimeStore } from "./stores/runtime-store";
 import { useBtwStore } from "./stores/btw-store";
 import { useSubagentStore } from "./stores/subagent-store";
 import { useAssistStore } from "./stores/assist-store";
+import { useToolGroupsStore } from "./stores/tool-groups-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
 import { cycleColumnFocus, focusColumn } from "./hooks/use-column-focus";
 
@@ -59,6 +60,10 @@ export default function App() {
       } else if (mod && e.shiftKey && key === "g") {
         e.preventDefault();
         openWorkbench("diff");
+      } else if (mod && e.shiftKey && key === "e") {
+        // T5.6：展开/收起所有连续工具组（内存态，刷新恢复各自 defaultOpen）
+        e.preventDefault();
+        useToolGroupsStore.getState().toggleAll();
       } else if (mod && !e.shiftKey && e.key === "`") {
         e.preventDefault();
         openWorkbench("term");

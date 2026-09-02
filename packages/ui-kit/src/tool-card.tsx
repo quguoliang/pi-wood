@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { cn } from "./cn";
 import { DiffView } from "./diff";
+import { HighlightedCommand } from "./shiki-command";
 
 export interface ToolCardProps {
   name: string;
@@ -68,6 +69,19 @@ function headerIcon(name: string, status: ToolCardProps["status"]): React.ReactN
     default:
       return name.startsWith("browser_") ? <Globe className="size-4 shrink-0" /> : <CircleSlash className="size-4 shrink-0" />;
   }
+}
+
+const isShellTool = (name: string): boolean => name === "bash" || name === "powershell";
+
+/** 折叠行状态文字（无框、弱化色），与图标并存；对齐 pi.dev「运行中/已完成/失败」文案。 */
+function StatusText({ status }: { status: ToolCardProps["status"] }): React.JSX.Element {
+  if (status === "running") {
+    return <span className="shrink-0 text-[11.5px] text-primary/90 [animation-duration:1.6s] animate-pulse">运行中</span>;
+  }
+  if (status === "error") {
+    return <span className="shrink-0 text-[11.5px] text-destructive/70">失败</span>;
+  }
+  return <span className="shrink-0 text-[11.5px] text-muted-foreground/55">已完成</span>;
 }
 
 const outputBlock =
@@ -147,7 +161,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
       {(name === "bash" || name === "powershell") && str(args.command) && (
         <div className="flex items-start gap-2 rounded-md border border-border bg-[#0f1115] px-2.5 py-1.5 font-mono text-[12px] dark:bg-[#0b0d10]">
           <span className="select-none text-success">$</span>
-          <span className="whitespace-pre-wrap break-all text-foreground/90">{str(args.command)}</span>
+          <HighlightedCommand code={str(args.command)} className="min-w-0 flex-1 text-foreground/90" />
         </div>
       )}
       {name === "read" && (args.offset != null || args.limit != null) && (
@@ -172,6 +186,10 @@ export function ToolCard(props: ToolCardProps): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const { verb, target, mono } = describe(name, args);
   const hasStat = Boolean(diffStat && (diffStat.added > 0 || diffStat.deleted > 0));
+  const shell = isShellTool(name);
+  const cmdInline = shell ? str(args.command).replace(/\s+/g, " ").trim() : "";
+  const outLines = props.output ? props.output.split("\n").length : 0;
+  const outputHint = !open && outLines > 200 ? `…(+${outLines} 行输出)` : "";
   return (
     <div className={cn("group/tool", className)}>
       <button
@@ -182,8 +200,15 @@ export function ToolCard(props: ToolCardProps): React.JSX.Element {
       >
         <span className="shrink-0 text-muted-foreground">{headerIcon(name, status)}</span>
         <span className="shrink-0 font-medium text-foreground/90">{verb}</span>
-        {target && <span className={cn("min-w-0 flex-1 truncate text-muted-foreground", mono && "font-mono text-[12.5px]")}>{target}</span>}
-        {!target && <span className="min-w-0 flex-1" />}
+        {shell && cmdInline ? (
+          <HighlightedCommand inline code={cmdInline} className="min-w-0 flex-1 truncate text-muted-foreground" />
+        ) : target ? (
+          <span className={cn("min-w-0 flex-1 truncate text-muted-foreground", mono && "font-mono text-[12.5px]")}>{target}</span>
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
+        {outputHint && <span className="shrink-0 text-[11px] text-muted-foreground/55">{outputHint}</span>}
+        <StatusText status={status} />
         {hasStat && (
           <span className="shrink-0 font-mono text-[11px]">
             <span className="text-success">+{diffStat!.added}</span> <span className="text-destructive">-{diffStat!.deleted}</span>
@@ -203,26 +228,29 @@ export function ToolCard(props: ToolCardProps): React.JSX.Element {
 }
 
 function fmtDuration(ms?: number): string {
-  if (!ms || ms < 1000) return "持续了几秒";
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `持续了 ${s} 秒`;
-  return `持续了 ${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+  if (!ms || ms < 1000) return "耗时 <1s";
+  const s = ms / 1000;
+  if (s < 60) return `耗时 ${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
+  return `耗时 ${Math.floor(s / 60)}m${Math.round(s % 60)}s`;
 }
 
-/** 思考过程：一行正文「思考 · 持续了 N 秒」，点击展开。流式时实时展开。 */
+/** 思考过程：一行正文「思考 · 耗时 Ns · 尾部预览」，点击展开。流式时实时展开、预览随 token 更新。 */
 export function ThinkingCard({
   text,
   streaming,
   durationMs,
+  preview,
   defaultOpen = false,
 }: {
   text: string;
   streaming?: boolean;
   durationMs?: number;
+  preview?: string;
   defaultOpen?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const isOpen = streaming ? true : open;
+  const pv = (preview ?? "").replace(/\s+/g, " ").trim();
   return (
     <div className="group/tool">
       <button
@@ -233,7 +261,10 @@ export function ThinkingCard({
       >
         <Sparkles className={cn("size-4 shrink-0", streaming && "animate-pulse text-primary")} />
         <span className="shrink-0 font-medium">思考</span>
-        <span className="min-w-0 flex-1 truncate">· {streaming ? "思考中…" : fmtDuration(durationMs)}</span>
+        <span className="min-w-0 flex-1 truncate">
+          · {streaming ? "思考中…" : fmtDuration(durationMs)}
+          {pv && <span className="text-muted-foreground/65"> · {pv}</span>}
+        </span>
         <ChevronDown className={cn("shrink-0 transition", isOpen ? "opacity-100 rotate-180" : "opacity-0 group-hover/tool:opacity-100")} size={14} />
       </button>
       {isOpen && (
