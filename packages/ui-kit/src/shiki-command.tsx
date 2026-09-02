@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { codeToHtml } from "shiki";
 import { cn } from "./cn";
+import { getShikiThemeName } from "./theme-registry";
 
 /**
  * T5.4 工具紧凑显示：命令文本的 shiki 语法高亮（shell 语法），供 ToolCard 折叠行（inline）
@@ -11,7 +12,6 @@ import { cn } from "./cn";
  *   底色/基色（内联 style 优先级高于类，故需 important），让 token span 的颜色自然落到外层容器。
  */
 
-const SHELL_THEME = "github-dark-default";
 const MAX_CACHE = 1500;
 
 const cache = new Map<string, string>();
@@ -24,7 +24,8 @@ function putCache(key: string, html: string): void {
 }
 
 function useShellHtml(code: string, lang: string): string | null {
-  const key = `${lang}\0${code}`;
+  const theme = getShikiThemeName();
+  const key = `${theme}\0${lang}\0${code}`;
   const [html, setHtml] = useState<string | null>(() => cached(key) ?? null);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ function useShellHtml(code: string, lang: string): string | null {
       return;
     }
     let cancelled = false;
-    codeToHtml(code, { lang, theme: SHELL_THEME })
+    codeToHtml(code, { lang, theme })
       .then((h) => {
         putCache(key, h);
         if (!cancelled) setHtml(h);
@@ -49,7 +50,7 @@ function useShellHtml(code: string, lang: string): string | null {
     return () => {
       cancelled = true;
     };
-  }, [key, code, lang]);
+  }, [key, code, lang, theme]);
 
   return html;
 }

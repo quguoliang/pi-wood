@@ -11,7 +11,7 @@ const APP_DATA_DIR = join(process.env["USERPROFILE"] ?? process.env["HOME"] ?? "
  */
 export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
-  theme: { fallback: "light" | "dark" | "system" };
+  theme: { fallback: "light" | "dark" | "system"; pi?: string };
   editor: { fontSize: number; tabSize: number };
   recentProjects: string[];
   model: { provider: string; id: string };

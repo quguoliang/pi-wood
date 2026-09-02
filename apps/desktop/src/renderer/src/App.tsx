@@ -18,6 +18,7 @@ import { useBtwStore } from "./stores/btw-store";
 import { useSubagentStore } from "./stores/subagent-store";
 import { useAssistStore } from "./stores/assist-store";
 import { useToolGroupsStore } from "./stores/tool-groups-store";
+import { useThemeStore } from "./stores/theme-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
 import { cycleColumnFocus, focusColumn } from "./hooks/use-column-focus";
 
@@ -33,10 +34,12 @@ export default function App() {
   const addDiff = useWorkbenchStore((s) => s.addDiff);
 
   useEffect(() => {
-    // 主题（T3.3）：settings.theme.fallback → <html data-theme>
+    // 主题（T3.3）：先应用 settings.theme.fallback（内置 light/dark/system），
+    // 再拉取当前 Pi 社区主题覆盖（settings.theme.pi → ~/.pi/agent/themes/<name>.json）。
     void window.pi.settingsGet().then((s) => {
       const t = (s as { theme?: { fallback?: string } }).theme?.fallback;
       if (t) document.documentElement.dataset.theme = t;
+      void window.pi.piTheme().then((pi) => useThemeStore.getState().apply(pi));
     });
 
     const onKey = (e: KeyboardEvent): void => {

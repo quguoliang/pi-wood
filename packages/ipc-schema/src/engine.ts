@@ -231,6 +231,13 @@ export type SubagentRunInfo = z.infer<typeof SubagentRunInfoSchema>;
 
 // ---------- 通道名常量（main/preload/render 共用） ----------
 
+/** T3.3：engine:getPiTheme 返回的 Pi 主题描述（无配置主题时返回 null）。mode 由渲染层 theme-adapter 推导。 */
+export interface EnginePiTheme {
+  name: string;
+  vars: Record<string, string | number>;
+  colors: Record<string, string | number>;
+}
+
 export const ENGINE_CHANNELS = {
   event: "engine:event",
   diff: "engine:diff",
@@ -258,4 +265,6 @@ export const ENGINE_CHANNELS = {
   subagentList: "engine:subagentList",
   // T6.5：单条 child 会话事件（{runId, event}）推送，供只读子会话视图实时渲染
   subagentEvent: "engine:subagentEvent",
+  // T3.3：读取当前 Pi 主题 JSON（renderer→main 拉取，用于全应用换肤）
+  getPiTheme: "engine:getPiTheme",
 } as const;

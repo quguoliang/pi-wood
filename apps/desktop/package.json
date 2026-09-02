@@ -11,7 +11,7 @@
     "package:dir": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron-builder --dir",
     "postinstall": "electron-builder install-app-deps",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "node --test electron/main/workbench/snapshot-service.test.ts src/renderer/src/lib/tool-groups.test.ts"
+    "test": "node --test electron/main/workbench/snapshot-service.test.ts src/renderer/src/lib/tool-groups.test.ts src/renderer/src/lib/theme-adapter.test.ts"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

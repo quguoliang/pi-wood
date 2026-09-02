@@ -78,6 +78,8 @@ const api = {
   engineCommands: (): Promise<Array<{ name: string; description?: string; source: "extension" | "prompt" | "skill" | "builtin" }>> =>
     ipcRenderer.invoke("engine:listCommands"),
   engineState: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("engine:getState"),
+  piTheme: (): Promise<{ name: string; vars: Record<string, string | number>; colors: Record<string, string | number> } | null> =>
+    ipcRenderer.invoke("engine:getPiTheme"),
   runtimeInfo: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("engine:getRuntimeInfo"),
   engineThinkingLevels: (): Promise<string[]> => ipcRenderer.invoke("engine:getThinkingLevels"),
   engineSetThinking: (level: string): Promise<void> => ipcRenderer.invoke("engine:setThinking", { level }),

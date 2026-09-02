@@ -2,10 +2,10 @@ import { ipcMain, BrowserWindow, dialog } from "electron";
 import { execFile } from "node:child_process";
 import { writeFileSync, mkdirSync, readFileSync, statSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type GitInfo, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
+import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type EnginePiTheme, type GitInfo, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import { normalizeEngineEvent, type DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
@@ -591,6 +591,25 @@ export function initEngineIpc(): void {
   ipcMain.handle(ENGINE_CHANNELS.listCommands, () => {
     // T5.1 只读聚合：引擎未启动时降级为空（渲染层另以 resources:list 兜底 skill/prompt）
     return adapter ? adapter.listCommands() : [];
+  });
+
+  ipcMain.handle(ENGINE_CHANNELS.getPiTheme, (): EnginePiTheme | null => {
+    // T3.3：读取 ~/.pi/agent/themes/<name>.json（社区/用户主题即此 JSON 格式）；
+    // 未配置 settings.theme.pi 或文件缺失 → null，渲染层保留内置 light/dark 兜底。
+    try {
+      const themeName = (loadSettings().theme as { pi?: string } | undefined)?.pi;
+      if (!themeName) return null;
+      const file = join(homedir(), ".pi", "agent", "themes", `${themeName}.json`);
+      if (!existsSync(file)) return null;
+      const parsed = JSON.parse(readFileSync(file, "utf-8")) as {
+        name?: string;
+        vars?: Record<string, string | number>;
+        colors?: Record<string, string | number>;
+      };
+      return { name: parsed.name ?? themeName, vars: parsed.vars ?? {}, colors: parsed.colors ?? {} };
+    } catch {
+      return null;
+    }
   });
 
   ipcMain.handle("engine:getState", async () => {

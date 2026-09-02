@@ -3,7 +3,7 @@ import { create } from "zustand";
 /** 应用设置 store（T1.2）：加载 ~/.pi-wood/settings.json，布局变更防抖写回 */
 export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
-  theme: { fallback: "light" | "dark" | "system" };
+  theme: { fallback: "light" | "dark" | "system"; pi?: string };
   editor: { fontSize: number; tabSize: number };
   ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean };
   recentProjects: string[];

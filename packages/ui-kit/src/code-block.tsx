@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { codeToHtml } from "shiki";
 import { cn } from "./cn";
+import { getShikiThemeName } from "./theme-registry";
 
 export type CodeBlockProps = React.HTMLAttributes<HTMLDivElement> & { children?: React.ReactNode };
 
@@ -24,8 +25,9 @@ export type CodeBlockCodeProps = React.HTMLAttributes<HTMLDivElement> & {
   theme?: string;
 };
 
-function CodeBlockCode({ code, language = "plaintext", theme = "github-dark-default", className, ...props }: CodeBlockCodeProps) {
+function CodeBlockCode({ code, language = "plaintext", theme, className, ...props }: CodeBlockCodeProps) {
   const [html, setHtml] = useState<string | null>(null);
+  const activeTheme = theme ?? getShikiThemeName();
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +37,7 @@ function CodeBlockCode({ code, language = "plaintext", theme = "github-dark-defa
         return;
       }
       try {
-        const highlighted = await codeToHtml(code, { lang: language, theme });
+        const highlighted = await codeToHtml(code, { lang: language, theme: activeTheme });
         if (!cancelled) setHtml(highlighted);
       } catch {
         if (!cancelled) setHtml(null);
@@ -45,7 +47,7 @@ function CodeBlockCode({ code, language = "plaintext", theme = "github-dark-defa
     return () => {
       cancelled = true;
     };
-  }, [code, language, theme]);
+  }, [code, language, activeTheme]);
 
   const bodyClass = cn("w-full overflow-x-auto text-[12px] [&>pre]:m-0 [&>pre]:bg-transparent [&>pre]:p-3 [&>pre]:font-mono [&>pre]:leading-[1.65] [&>pre>code]:p-0", className);
   if (html) {

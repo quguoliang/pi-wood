@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { useSessionStore } from "../../stores/session-store";
+import { useThemeStore } from "../../stores/theme-store";
 
 /** T2.3 终端面板：xterm + 主进程 pty（@lydell/node-pty） */
 export function TerminalPanel(): React.JSX.Element {
@@ -17,7 +18,7 @@ export function TerminalPanel(): React.JSX.Element {
     const term = new Terminal({
       fontSize: 12,
       fontFamily: "Consolas, monospace",
-      theme: {
+      theme: useThemeStore.getState().terminalTheme ?? {
         background: "#16171f",
         foreground: "#c0caf5",
         cursor: "#7aa2f7",
