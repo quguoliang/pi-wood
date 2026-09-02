@@ -143,6 +143,10 @@ export async function createPiSessionOptions(
   // (e.g. the desktop approval gate) into the child session's resource loader so
   // child tool calls still pass through host policy. Upstream has no such seam.
   extraExtensionFactories?: InlineExtension[],
+  // pi-wood fork deviation: the child session's tool_call event hook does not fire,
+  // so the host supplies a direct guard that the wrapped bash execute calls before
+  // running. Returns a block-reason string to deny, or undefined to allow.
+  childToolGuard?: (toolName: string, input: unknown) => Promise<string | undefined>,
 ): Promise<CreateAgentSessionOptions> {
   const settingsManager = SettingsManager.create(context.cwd, agentDir, {
     projectTrusted: context.projectTrusted,
@@ -204,6 +208,38 @@ export async function createPiSessionOptions(
     }),
   });
 
+  // pi-wood fork deviation: the child session does not surface tool_call to inline
+  // extension hooks, so gate the child's bash at execute() directly via the host guard.
+  const guardedBash = childToolGuard
+    ? ({
+        ...bash,
+        execute: async (
+          toolCallId: string,
+          params: unknown,
+          signal: unknown,
+          onUpdate: unknown,
+          ctx: unknown,
+        ) => {
+          const reason = await childToolGuard("bash", params);
+          if (reason) {
+            return {
+              content: [{ type: "text", text: `已由桌面审批策略拦截：${reason}` }],
+              details: undefined,
+              isError: true,
+            } as unknown as Awaited<ReturnType<typeof bash.execute>>;
+          }
+          const result = await (bash.execute as (...args: unknown[]) => Promise<unknown>)(
+            toolCallId,
+            params,
+            signal,
+            onUpdate,
+            ctx,
+          );
+          return result as Awaited<ReturnType<typeof bash.execute>>;
+        },
+      } as typeof bash)
+    : bash;
+
   return {
     cwd: context.cwd,
     agentDir,
@@ -218,7 +254,7 @@ export async function createPiSessionOptions(
     excludeTools: [...PI_ORCHESTRATION_TOOLS],
     // Replace the normal Bash definition with the same local implementation
     // plus a per-spawn depth environment. process.env is never mutated.
-    customTools: [bash] as unknown as NonNullable<
+    customTools: [guardedBash] as unknown as NonNullable<
       CreateAgentSessionOptions["customTools"]
     >,
   };

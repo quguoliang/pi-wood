@@ -11,7 +11,7 @@ import type { DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
-import { permissionGateExtension, type ApprovalPolicy } from "../security/approval-gate";
+import { permissionGateExtension, decide, type ApprovalPolicy } from "../security/approval-gate";
 import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
@@ -198,6 +198,14 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
         () => getPolicy(),
         (title, message) => confirmViaRenderer(title, message),
       ),
+    guardChildTool: async (toolName, input) => {
+      const decision = decide(getPolicy(), toolName, input);
+      if (decision === "allow") return undefined;
+      if (decision === "deny") return "已由安全策略拦截（path-guard / denyAll）";
+      const summary = JSON.stringify(input ?? {}).slice(0, 300);
+      const ok = await confirmViaRenderer(`允许执行 ${toolName}？`, summary || "(无参数)");
+      return ok ? undefined : "用户拒绝该操作";
+    },
     onRuntime: (rt) => {
       subagentRuntime = rt;
     },

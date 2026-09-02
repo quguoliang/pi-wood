@@ -64,6 +64,10 @@ export class SdkAdapter implements EngineAdapter {
         sessionManager: factoryOpts.sessionManager,
         customTools: opts.customTools as never,
       });
+      const diags = (services as { diagnostics?: unknown[] }).diagnostics;
+      if (Array.isArray(diags) && diags.length > 0) {
+        console.warn("[engine] session/extension diagnostics:", JSON.stringify(diags));
+      }
       return { session: result.session, services };
     };
 
@@ -78,6 +82,16 @@ export class SdkAdapter implements EngineAdapter {
       for (const fn of this.listeners) fn(event);
     });
 
+    await this.bindExtensions();
+  }
+
+  /**
+   * 绑定扩展运行时（uiContext + rpc 模式）。每个会话（含 newSession/switchSession/fork
+   * 经 runtimeFactory 重建的新会话）都必须 bind 一次，否则该会话的扩展不会收到
+   * session_start，依赖 session_start 注册工具的扩展（如子代理）就不会挂上工具。
+   */
+  private async bindExtensions(): Promise<void> {
+    if (!this.runtime) return;
     await this.runtime.session.bindExtensions({
       uiContext: this.createUiContext(),
       mode: "rpc",
@@ -225,6 +239,7 @@ export class SdkAdapter implements EngineAdapter {
   async newSession(_opts?: { parentSession?: string }): Promise<void> {
     await this.runtimeSession().newSession();
     this.rebindSession();
+    await this.bindExtensions();
   }
 
   /** 重载扩展资源（对应 Pi /reload） */
@@ -235,11 +250,13 @@ export class SdkAdapter implements EngineAdapter {
   async switchSession(file: string): Promise<void> {
     await this.runtimeSession().switchSession(file);
     this.rebindSession();
+    await this.bindExtensions();
   }
 
   async fork(entryId: string, pos: "before" | "at"): Promise<void> {
     await this.runtimeSession().fork(entryId, pos);
     this.rebindSession();
+    await this.bindExtensions();
   }
 
   getSessionId(): string | undefined {

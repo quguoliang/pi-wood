@@ -38,6 +38,7 @@ export default function piWoodSubagentExtension(pi: ExtensionAPI): void {
           dir ?? agentDir,
           signal,
           [childGate],
+          bridge.guardChildTool,
         ),
     });
     runtime = createSubagentRuntime({

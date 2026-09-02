@@ -8,6 +8,11 @@
 export interface PiWoodSubagentBridge {
   /** 产出一个 child 内联审批门（结构等价 SDK InlineExtension 的 {name, factory} 形态）。 */
   buildChildGate: () => { name: string; factory: (pi: unknown) => void };
+  /**
+   * child 工具执行前的桌面审批守卫：返回拦截原因字符串=拒绝，返回 undefined=放行。
+   * 因 child 会话的 tool_call 事件钩子不触发，故由被包装的 child 工具 execute 直接调用。
+   */
+  guardChildTool: (toolName: string, input: unknown) => Promise<string | undefined>;
   /** 扩展建好运行时后回传，供主进程在切项目/停用时回收。 */
   onRuntime: (runtime: PiWoodSubagentRuntimeRef) => void;
 }
