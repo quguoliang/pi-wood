@@ -7,6 +7,8 @@
  * Pi 主题只驱动「前景/强调/边框/状态/工具/语法/终端」等语义色，避免覆盖用户手调的柔和深灰底。
  */
 
+import type { ShikiThemeObject } from "@pi-wood/ui-kit";
+
 export interface PiThemeJson {
   name?: string;
   vars?: Record<string, string | number>;
@@ -71,6 +73,9 @@ export function piThemeToCssVars(c: PiThemeColors): Record<string, string> {
   set("--destructive", c.error);
   set("--warning", c.warning);
   set("--accent", c.selectedBg);
+  // 空态 Composer 两层表面随主题（卡片=选中面，芯片条=工具待处理面，缺则退到选中面）
+  set("--composer-bg", c.selectedBg);
+  set("--composer-chip-bg", c.toolPendingBg ?? c.selectedBg);
   // 工具卡分类色（左侧色条 / 状态底）
   set("--pi-tool-read", c.mdCode);
   set("--pi-tool-edit", c.accent);
@@ -105,17 +110,10 @@ export function piThemeToTerminalTheme(
 }
 
 /**
- * 供 shiki 的自定义主题（ThemeRegistration 结构）：把 Pi 语法 token 映射到
+ * 供 shiki 的自定义主题（对齐 ui-kit ShikiThemeObject）：把 Pi 语法 token 映射到
  * 常见 TextMate scope。缺 token 时返回 undefined，调用方回退内置主题。
  */
-export interface ShikiThemeLike {
-  name: string;
-  type: "dark" | "light";
-  colors: Record<string, string>;
-  tokenColors: Array<{ scope: string[]; settings: { foreground?: string; fontStyle?: string } }>;
-}
-
-export function piThemeToShikiTheme(c: PiThemeColors, mode: "dark" | "light"): ShikiThemeLike | undefined {
+export function piThemeToShikiTheme(c: PiThemeColors, mode: "dark" | "light"): ShikiThemeObject | undefined {
   const hasSyntax =
     c.syntaxComment || c.syntaxKeyword || c.syntaxString || c.syntaxFunction || c.syntaxNumber;
   if (!hasSyntax) return undefined; // 无语法 token → 不覆盖，用内置
@@ -133,7 +131,7 @@ export function piThemeToShikiTheme(c: PiThemeColors, mode: "dark" | "light"): S
     tok("syntaxVariable", ["variable", "meta.variable"]),
     tok("syntaxOperator", ["keyword.operator"]),
     tok("syntaxPunctuation", ["punctuation"]),
-  ].filter(Boolean) as ShikiThemeLike["tokenColors"];
+  ].filter(Boolean) as ShikiThemeObject["tokenColors"];
   return {
     name: "pi-wood",
     type: mode,

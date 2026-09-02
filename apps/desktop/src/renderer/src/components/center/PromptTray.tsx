@@ -142,7 +142,7 @@ export function PromptTray(): React.JSX.Element | null {
           <button
             type="button"
             onClick={() => setCollapsed(false)}
-            className="mx-3 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-2xl border border-white/10 bg-[#333333] px-3.5 py-2.5 text-left text-xs text-muted-foreground shadow-[0_8px_22px_-16px_rgba(0,0,0,0.6)] transition-colors hover:text-foreground"
+            className="mx-3 flex w-[calc(100%-1.5rem)] items-center gap-2 rounded-2xl border border-white/10 bg-[var(--composer-bg)] px-3.5 py-2.5 text-left text-xs text-muted-foreground shadow-[0_8px_22px_-16px_rgba(0,0,0,0.6)] transition-colors hover:text-foreground"
           >
             <span className="grid size-5 shrink-0 place-items-center rounded bg-primary/10 text-primary">
               <Icon className="size-3" />
@@ -159,7 +159,7 @@ export function PromptTray(): React.JSX.Element | null {
   return (
     <section className="shrink-0 px-4 pt-2" aria-label="交互扩展层">
       <div className="mx-auto w-full max-w-[var(--pk-chat-width,48rem)]">
-        <div className="mx-3 rounded-2xl border border-white/10 bg-[#333333] p-1.5 shadow-[0_8px_22px_-16px_rgba(0,0,0,0.6)]">
+        <div className="mx-3 rounded-2xl border border-white/10 bg-[var(--composer-bg)] p-1.5 shadow-[0_8px_22px_-16px_rgba(0,0,0,0.6)]">
           <div className="px-2.5 pb-2.5 pt-1.5">
         {/* 头部：类型 + 标题 + 分页 + 折叠 */}
         <div className="flex items-center gap-2">

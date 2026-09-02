@@ -57,7 +57,7 @@ function InputCard({ c, raised }: { c: ComposerController; raised: boolean }): R
   return (
     <div
       className={
-        "relative z-10 rounded-2xl border border-white/10 bg-[#333333] p-1.5 shadow-[0_22px_50px_-22px_rgba(0,0,0,0.85)]" +
+        "relative z-10 rounded-2xl border border-white/10 bg-[var(--composer-bg)] p-1.5 shadow-[0_22px_50px_-22px_rgba(0,0,0,0.85)]" +
         (raised ? " -mt-7" : "")
       }
     >
@@ -93,7 +93,7 @@ function ComposerBody({ c, header }: { c: ComposerController; header?: React.Rea
   if (!header) return <InputCard c={c} raised={false} />;
   return (
     <div className="relative">
-      <div className="z-0 mx-4 flex items-center gap-1 rounded-t-2xl bg-[#242424] px-2.5 pb-8 pt-2">
+      <div className="z-0 mx-4 flex items-center gap-1 rounded-t-2xl bg-[var(--composer-chip-bg)] px-2.5 pb-8 pt-2">
         {header}
       </div>
       <InputCard c={c} raised />

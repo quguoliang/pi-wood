@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { codeToHtml } from "shiki";
 import { cn } from "./cn";
-import { getShikiThemeName } from "./theme-registry";
+import { useShikiTheme } from "./theme-registry";
 
 export type CodeBlockProps = React.HTMLAttributes<HTMLDivElement> & { children?: React.ReactNode };
 
@@ -27,7 +27,8 @@ export type CodeBlockCodeProps = React.HTMLAttributes<HTMLDivElement> & {
 
 function CodeBlockCode({ code, language = "plaintext", theme, className, ...props }: CodeBlockCodeProps) {
   const [html, setHtml] = useState<string | null>(null);
-  const activeTheme = theme ?? getShikiThemeName();
+  const registryTheme = useShikiTheme();
+  const activeTheme = theme ?? registryTheme;
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +38,11 @@ function CodeBlockCode({ code, language = "plaintext", theme, className, ...prop
         return;
       }
       try {
-        const highlighted = await codeToHtml(code, { lang: language, theme: activeTheme });
+        const highlighted = await codeToHtml(code, {
+          lang: language,
+          // shiki 同时接受主题名(string)与主题对象；options 为可辨识联合，故经 unknown 转型
+          theme: activeTheme as unknown as string,
+        });
         if (!cancelled) setHtml(highlighted);
       } catch {
         if (!cancelled) setHtml(null);

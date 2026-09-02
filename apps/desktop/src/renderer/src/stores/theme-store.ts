@@ -1,10 +1,11 @@
 import { create } from "zustand";
-import { setShikiThemeName } from "@pi-wood/ui-kit";
+import { setShikiTheme } from "@pi-wood/ui-kit";
 import {
   resolvePiTheme,
   themeModeFromFg,
   piThemeToCssVars,
   piThemeToTerminalTheme,
+  piThemeToShikiTheme,
   type PiThemeColors,
 } from "../lib/theme-adapter";
 
@@ -62,7 +63,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   apply(theme) {
     if (!theme) {
       clearVars();
-      setShikiThemeName("github-dark-default");
+      setShikiTheme("github-dark-default");
       set({ active: false, name: null, colors: {}, terminalTheme: null });
       return;
     }
@@ -70,7 +71,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     const mode = themeModeFromFg(colors.text);
     document.documentElement.dataset.theme = mode;
     writeVars(piThemeToCssVars(colors));
-    setShikiThemeName(mode === "light" ? "github-light-default" : "github-dark-default");
+    setShikiTheme(piThemeToShikiTheme(colors, mode) ?? (mode === "light" ? "github-light-default" : "github-dark-default"));
     set({
       active: true,
       name: theme.name,
