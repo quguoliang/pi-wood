@@ -464,12 +464,361 @@
 2. **T5.4 工具紧凑显示**（小改）——shiki 高亮 + 状态 Badge，对齐 pi.dev 视觉
 3. **T5.5 思考折叠预览**（小改）——思考尾部预览，降低长思考噪音
 
+## 7.7 子代理 UX 层——OpenChamber 模式借鉴（T6.3~T6.7）
+
+> **2026-09-02 决策**：分析 OpenChamber（`openchamber/openchamber`，底层 opencode）的子代理实现——其**子代理机制本身是 opencode 原生 task 工具**（server 端 child session + parentID + SSE 推送），OpenChamber 真正有价值的是套在上面的**可视化 + 生命周期管理层**：parentID 追踪、子代理状态面板、审批请求上浮、task 元数据解析→「打开子代理」按钮、只读子会话视图、成本汇总（含嵌套）、per-agent 权限配置。
+> **架构差异**：opencode 是 HTTP server + SSE（客户端调 API 列 session、过滤 parentID）；pi-wood 是 in-process SDK + Electron IPC（session 是内存对象、无 HTTP API）。**传输层不搬（不起 HTTP server），模式全搬**——parentID 追踪改为内存 Map、状态推送改为 IPC event、审批上浮复用现有 `approval_request` 通道。
+> **依赖**：全部依赖 §7.5（goofansu in-process 引擎接线）完成后开工；§7.5 S5「子代理进度/完成通知上屏」由本节 T6.3~T6.7 具体化。
+> **现状核实**（源码级）：`session-store.ts` 单会话 zustand（无 parentID/多会话追踪）；`RightPane.tsx` Chrome 式单标签，`WorkbenchTab = "diff"|"term"|"browser"|"files"`（定义在 `workbench-store.ts`），`panelMeta`/`panelNode` switch 扩展点清晰；`runtime-store.ts` 跟踪 RuntimeInfo/tasks/todos，无成本汇总；`ipc-schema/engine.ts` `EngineEventSchema` 已有 `approval_request`/`permission_granted` 自定义事件，`ENGINE_CHANNELS` 可加 subagent 通道；`tool-card.tsx` `ToolCard` 有 footer 扩展点。
+
+### [ ] T6.3 子代理运行时追踪 + 状态面板（基础，最高优先级）
+- 来源：OpenChamber `WorkStatusSubagentsSection.tsx`（parentID 过滤 + 状态/审批/成本 + 出现即展开）
+- 前置：§7.5 S4（引擎侧注入，child session 可创建）
+- 步骤：
+  1. **主进程子代理注册表**（新建 `apps/desktop/electron/main/subagent/subagent-registry.ts`）：`class SubagentRegistry`——`Map<parentSessionId, Map<subagentId, ChildRuntime>>`；`register(parentId, child)` / `unregister(subagentId)` / `getChildren(parentId)` / `getAggregatedCost(parentId)`；child session 的 `session.subscribe()` 事件全部打上 `_origin: {sessionId: subagentId, isSubagent: true}` 后经现有 `engine:event` 通道转发（复用 event-bridge，不新建通道）
+  2. **child 审批事件上浮**：child session 注入的 `permissionGateExtension`（§7.5 S4）触发 `approval_request` 时，事件载荷带 `_subagentId`；渲染层据此区分父/子审批——child 审批不在对话流弹 ApprovalCard，而在子代理面板显示徽章+卡片
+  3. **IPC 扩展**（`packages/ipc-schema/src/engine.ts`）：加 `SubagentInfoSchema`（id, parentId, agentName, status: `"running"|"done"|"needsApproval"|"error"`, startedAt, tokens?）；`ENGINE_CHANNELS.subagentList = "engine:subagentList"`（invoke→SubagentInfo[]）；`approval_request` 事件 schema 加可选 `_subagentId: z.string()`
+  4. **渲染层子代理 store**（新建 `apps/desktop/src/renderer/src/stores/subagent-store.ts`）：zustand——`children: SubagentInfo[]`、`approvals: Map<subagentId, ApprovalRequest[]>`、`selectedId: string|null`；订阅 `engine:event` 过滤 `_origin.isSubagent` 更新状态/审批；`refresh()` 调 `engine:subagentList`
+  5. **子代理面板**（新建 `apps/desktop/src/renderer/src/components/right/SubagentPanel.tsx`）：列表视图——每个子代理一行：agent 名、状态 Badge（运行中/已完成/待审批/失败）、耗时、tokens；待审批子代理高亮 + "N 待审批" 徽章，点击展开 ApprovalCard（复用现有审批卡组件）；点击子代理行→`setSelectedId`（T6.5 只读视图）；空态"暂无运行中的子代理"
+  6. **出现即展开**（仿 OpenChamber `hadChildren` ref）：`SubagentPanel` 内 `useRef(hadChildren=false)`，children 从 0→N 时自动打开子代理标签页一次（`useWorkbenchStore.openTab("subagent")` + setActive），之后尊重用户手动关闭
+  7. **RightPane 接入**：`workbench-store.ts` 的 `WorkbenchTab` 加 `"subagent"`；`RightPane.tsx` `panelMeta` 加 `subagent: {title:"子代理", icon:"aiAgent", kbd:"Ctrl+Shift+A"}`（确认无冲突：现有 Ctrl+Shift+P/G、Ctrl+`/T/P、Ctrl+1/2/3、Ctrl+.、Ctrl+Shift+E(T5.6 待实现)，Ctrl+Shift+A 空闲）；`LAUNCH_ORDER` 加 `"subagent"`；`panelNode` 加 `case "subagent"`
+- 验收：
+  - [ ] 主 agent 触发 `agent_start` 后，子代理面板自动出现并显示该子代理（运行中）
+  - [ ] 子代理触发 bash（highRisk）→ 子代理面板显示"待审批"徽章 + ApprovalCard，不在对话流弹窗
+  - [ ] 用户批准/拒绝→子代理继续/终止，状态更新
+  - [ ] 子代理完成→状态变"已完成"，耗时/tokens 显示
+  - [ ] 关闭子代理标签页后，新子代理启动时不再自动弹出（hadChildren 已 true）
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：真密钥跑 agent_start(explore) + 子代理内 bash，观察面板/审批/状态全链路
+
+### [ ] T6.4 对话流「打开子代理」按钮 + 元数据清洗
+- 来源：OpenChamber `taskToolModel.ts`（解析 `<task_metadata>`→sessionId→「Open subAgent session」按钮 + strip 元数据）
+- 前置：T6.3（子代理面板可打开）
+- 步骤（改 `packages/ui-kit/src/tool-card.tsx`）：
+  1. **子代理工具识别**：`ToolCard` 检测 `name === "agent_start"`（goofansu 工具名）或 `args.agent` 存在；从 `args` 取 agent 名、从 `result.details`（tool_execution_end 的 details）取 `subagentId`/`runId`
+  2. **「打开子代理会话」按钮**：ToolCard footer（output 之后）加 ghost 小按钮——Icon(`aiAgent`) + "打开子代理会话"；点击→`window.dispatchEvent(new CustomEvent("piwood:open-subagent", {detail:{subagentId}}))`；`SubagentPanel` 监听此事件→openTab + setSelectedId
+  3. **元数据清洗**：agent_start 的 `output` 常含 raw JSON（subagentId/runId/status）——检测 output 为 JSON 且含 subagentId 时，不显示 raw JSON，改为干净摘要行："子代理已启动：{agentName}（{subagentId 短码}）"；非 JSON output 正常显示
+  4. **agent_result/agent_cancel 同理**：agent_result 工具卡显示"子代理完成：{agentName}"+ 结果摘要；agent_cancel 显示"子代理已取消"
+- 验收：
+  - [ ] agent_start 工具卡显示「打开子代理会话」按钮，点击→子代理面板打开并选中该子代理
+  - [ ] agent_start 的 raw JSON 输出被清洗为摘要行，不显示乱码 JSON
+  - [ ] 非子代理工具（bash/read/edit）不受影响，正常渲染
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：触发 agent_start，检查工具卡按钮和输出清洗
+
+### [ ] T6.5 只读子会话视图
+- 来源：OpenChamber `openChildSession`（readOnly context panel tab——用户可观察不可干扰）
+- 前置：T6.3（子代理 store + 面板）、T6.4（打开按钮）
+- 步骤：
+  1. **SubagentPanel 双视图**：列表视图（T6.3）+ 详情视图（选中子代理后）；详情视图头部：子代理名 + 状态 Badge + "← 返回列表"按钮
+  2. **子代理消息流**：`subagent-store` 维护 `Map<subagentId, ConversationItem[]>`——处理打了 `_origin.sessionId` 标签的 engine 事件，复用 `session-store.ts` 的 `handleEvent` 逻辑（提取共享 `eventToItem` 纯函数，session-store 和 subagent-store 共用，避免重复）
+  3. **只读 MessageList**：详情视图渲染 `MessageList` 加 `readOnly={true}` prop——底部无 Composer、工具卡无交互（审批按钮不显示，审批在列表视图处理）、自动滚动到底部跟随流式输出
+  4. **流式实时更新**：子代理的 text_delta/thinking_delta/tool_execution_* 事件实时更新详情视图消息流（与主会话同机制，只是数据源是 subagent-store 的对应 map）
+- 验收：
+  - [ ] 点击子代理→详情视图显示该子代理的完整对话流（用户 prompt + 思考 + 工具 + 回复）
+  - [ ] 子代理运行中时，详情视图实时流式更新（自动滚动）
+  - [ ] 详情视图无 Composer、无法发送消息、工具卡无审批按钮（只读）
+  - [ ] "返回列表"回到子代理列表
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：触发 agent_start 跑一个多步任务，在详情视图观察实时流式输出
+
+### [ ] T6.6 子代理成本汇总（含嵌套）
+- 来源：OpenChamber `useSubagentCostRollup.ts`（子代理 token 成本汇总到父会话，含嵌套 subagent-of-subagent）
+- 前置：T6.3（子代理注册表）
+- 步骤：
+  1. **主进程聚合**：`subagent-registry.ts` 加 `getAggregatedUsage(parentId)`——递归遍历子代理树（child 可能 spawn 自己的 child，goofansu `PI_SUBAGENT_DEPTH` 标记深度），sum 所有 child session 的 `contextUsage.tokens` + `stats.cost`；返回 `{tokens: number, cost: number, count: number, perChild: Array<{id, agentName, tokens, cost}>}`
+  2. **RuntimeInfo 扩展**（`ipc-schema/engine.ts`）：`RuntimeInfoSchema` 加 `subagentUsage?: {tokens: z.number(), cost: z.number(), count: z.number(), perChild: z.array(z.object({id: z.string(), agentName: z.string(), tokens: z.number(), cost: z.number()})).optional()}`
+  3. **runtime-store**：`trackEvent` 在 `agent_end`/`agent_settled` refresh 时，从 RuntimeInfo 读 `subagentUsage`；EnvironmentPanel 数据源自动包含
+  4. **EnvironmentPanel 展示**（`apps/desktop/src/renderer/src/components/center/EnvironmentPanel.tsx`）：在 context usage 区域加一行"子代理消耗：N 个 · X tokens · ¥Y"，可展开 per-child 明细（agent 名 + tokens + 耗时）；无子代理时不显示该行
+- 验收：
+  - [ ] 跑一个含子代理的任务后，EnvironmentPanel 显示子代理消耗汇总
+  - [ ] 展开可看 per-child 明细
+  - [ ] 嵌套子代理（子代理内再 spawn 子代理）的成本被递归汇总
+  - [ ] 无子代理时不显示该行
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：触发 agent_start，子代理完成后检查 EnvironmentPanel 成本数字与子代理面板一致
+
+### [ ] T6.7 子代理 per-tool 权限配置
+- 来源：opencode agent 配置 `mode: "subagent"` + per-tool `permission: {bash: "allow", edit: "ask"}`（OpenChamber 继承 opencode 此机制）
+- 前置：§7.5 S4（child 审批门注入）
+- 步骤：
+  1. **agent frontmatter 扩展**：goofansu agent 配置（`~/.pi/agent/agents/*.md`）支持 `permissions` 字段：
+     ```yaml
+     ---
+     name: explore
+     mode: subagent
+     permissions:
+       bash: ask      # allow | ask | deny
+       edit: deny
+       write: deny
+       read: allow
+     ---
+     ```
+  2. **审批门 per-tool 覆写**（`apps/desktop/electron/main/security/approval-gate.ts`）：`decide(policy, toolName, input)` 支持传入 `perToolOverride?: Record<string, "allow"|"ask"|"deny">`；子代理的 `permissionGateExtension` 用其 agent frontmatter 的 permissions 作为 override（未配置的工具回退全局 policy）
+  3. **sessionOptionsFactory 读取**（§7.5 S4 的 `pi-wood-session-options.ts`）：创建 child session 时，从 agentDir 读对应 agent 的 frontmatter `permissions`→传给 child 的 `permissionGateExtension`
+  4. **设置 UI**：`SettingsModal` 加「子代理」标签页——列出已装 agent 配置，每个可编辑 per-tool 权限（bash/edit/write 三档 dropdown + read/grep/glob 常用工具）；保存写回 agent frontmatter（`~/.pi/agent/agents/*.md` 的 YAML frontmatter）
+  5. **默认兼容**：agent 无 `permissions` 字段时，child 继承父会话全局审批策略（与当前行为一致，不破坏已有子代理）
+- 验收：
+  - [ ] 配置 `explore` agent 的 `bash: deny` 后，子代理触发 bash 被直接拒绝（不弹审批卡，agent 收到 deny reason）
+  - [ ] 配置 `bash: ask` 后，子代理触发 bash→子代理面板待审批徽章
+  - [ ] 配置 `bash: allow` 后，子代理 bash 静默执行
+  - [ ] 无 permissions 字段的 agent 继承父全局策略
+  - [ ] Settings UI 可编辑并持久化 per-tool 权限
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：配置三种权限模式各触发一次 bash，验证行为差异
+
+### 落地顺序（依赖链）
+1. **T6.3 子代理追踪 + 状态面板**（基础，其他都依赖它）——含审批上浮，最关键
+2. **T6.4 打开子代理按钮**（小改，依赖 T6.3 面板可打开）
+3. **T6.5 只读子会话视图**（依赖 T6.3 store + T6.4 入口）
+4. **T6.6 成本汇总**（依赖 T6.3 注册表，独立于 T6.4/T6.5，可并行）
+5. **T6.7 per-tool 权限**（依赖 §7.5 S4，与 T6.3~T6.6 无强依赖，可最后做或并行）
+
+## 7.8 OpenChamber 全仓借鉴批次（T7.1~T7.12）
+
+> **2026-09-02 决策**：系统性扫描 OpenChamber（`openchamber/openchamber`，本地 clone `/Users/admin/Desktop/personal/openchamber`）全仓，子代理 UX 层（§7.7）之外，整理出 12 项可借鉴模式。**原则：模式全搬，传输层不搬**（opencode HTTP/SSE → pi-wood in-process SDK + IPC）。按价值分三档：第一档高价值（T7.1~T7.6）建议优先做；第二档中价值（T7.7~T7.12）后续排期。
+> **现状核实**（源码级）：Composer 已有附件管线（`PromptCommandSchema.attachments`）；审批门四档策略已落地（`approval-gate.ts`）；会话 `items` 为 `ConversationItem` 判别联合（`session-store.ts`）；右栏 Chrome 式单标签（`RightPane.tsx`，`WorkbenchTab` 可扩展）；浏览器面板 headless Playwright 已落地；SDK fork 能力已有（`engine:fork` 通道）；provider 管理 8 内置源 + safeStorage 已落地；EnvironmentPanel 显示 RuntimeInfo（含 contextUsage）。
+
+### 第一档：高价值，建议优先
+
+#### [ ] T7.1 大文本粘贴→虚拟文件附件
+- 来源：OpenChamber `packages/ui/src/components/chat/composer/largeTextPaste.ts`（55 行，双阈值 OR 判断）
+- 前置：无
+- 步骤：
+  1. **Composer paste handler 加大文本判断**（`apps/desktop/src/renderer/src/components/center/Composer.tsx` 或对应输入组件）：`text.length >= 2000 || lineCount >= 25` → 不插入输入框
+  2. **造内存 File 走附件管线**：`new File([text], 'pasted-text.txt', {type:'text/plain', lastModified: Date.now()})` → 追加到 `PromptCommand.attachments`（复用现有附件 state）
+  3. **toast 提示**：sonner toast「已作为文件附件添加（N 字符 / M 行）」，用户可在附件区看到/移除
+  4. **短文本正常插入**：低于阈值的粘贴走原逻辑，不变
+- 验收：
+  - [ ] 粘贴 3000 字符文本→自动变附件，输入框不被污染
+  - [ ] 粘贴 500 字符文本→正常插入输入框
+  - [ ] 附件区显示 pasted-text.txt，可移除
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：分别粘贴长/短文本各一次，观察行为差异
+
+#### [ ] T7.2 per-session 权限自动接受
+- 来源：OpenChamber `packages/web/server/lib/permission-auto-accept/runtime.js` + DOCUMENTATION.md（服务端唯一响应者、子代理继承、fail closed）
+- 前置：T4.1 审批门（已落地）
+- 步骤：
+  1. **settings 加字段**：`autoAcceptSessions: Record<string, boolean>`（key=sessionId，持久化到 settings-store）
+  2. **审批门检查**（`apps/desktop/electron/main/security/approval-gate.ts`）：`decide(policy, toolName, input)` 增加当前会话 autoAccept 检查——若 `autoAcceptSessions[currentSessionId] === true` 且工具非 denyAll 级，直接返回 allow（不弹 ApprovalCard）
+  3. **会话头加开关**：`ConversationHeader.tsx` 加「自动接受」toggle（图标+文字，开启时 success 色），切换写回 settings
+  4. **开启时立即接受已有 pending**：切换为 true 时，遍历当前 pending approval_request，自动回复 allow（复用 `permission_granted` 通道）
+  5. **子代理继承**（§7.7 T6.3 落地后补）：child session 无显式值时从最近祖先继承；child `false` 覆盖 parent `true`
+  6. **fail closed**：settings 加载失败 / 未知 session → 不自动接受（走原审批流程）
+- 验收：
+  - [ ] 开启自动接受后，bash/edit 工具调用不弹 ApprovalCard，直接执行
+  - [ ] 关闭后恢复弹审批卡
+  - [ ] 重启 app 后设置持久化
+  - [ ] denyAll 策略下即使开启 autoAccept 也拒绝（安全底线）
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：开启 autoAccept 后触发 bash 3 次，确认无弹窗；关闭后触发一次，确认弹窗
+
+#### [ ] T7.3 会话导出 Markdown（含嵌套子代理）
+- 来源：OpenChamber `packages/ui/src/lib/exportSession.ts`（193 行，递归子代理树、文件名安全化）
+- 前置：无（子代理导出等 §7.7 T6.3 落地后补递归）
+- 步骤：
+  1. **新建导出工具**（`apps/desktop/src/renderer/src/lib/export-session.ts`）：`formatSessionAsMarkdown(items, sessionTitle, childSessions?)`——`ConversationItem[]` 转 Markdown：user/assistant 用角色头+时间戳，tool 用 `**Tool: name**` + 输入/输出截断，thinking 用 `> 思考` 引用块，system 用 `---` 分隔
+  2. **文件名安全化**：`buildExportFilename(title)`——NFKC normalize + 小写 + 非字母数字替换为 `-` + 截断 60 字符 + 日期后缀，如 `my-session-2026-09-02.md`
+  3. **会话菜单加入口**：左栏会话项右键菜单 / 会话头 `...` 菜单加「导出为 Markdown」
+  4. **Electron 保存**：主进程加 `dialog.showSaveDialog({defaultPath, filters:[{name:'Markdown',extensions:['md']}]})` → fs.writeFile → 返回路径；渲染层 IPC 加 `session:export` 通道
+  5. **子代理递归**（T6.3 后补）：child sessions 用 `## Sub-agent: title` 分层，递归嵌套（深度 ≤6）
+- 验收：
+  - [ ] 导出的 .md 文件可在 Typora/VSCode 正常渲染
+  - [ ] 含 user/assistant/tool/thinking/system 所有消息类型
+  - [ ] 文件名含特殊字符时安全化不报错
+  - [ ] 长 tool 输出截断不爆文件
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：导出一个含 5+ 轮对话的会话，检查 .md 内容完整性
+
+#### [ ] T7.4 Dev Server 自动发现（浏览器面板预览入口）
+- 来源：OpenChamber `packages/web/server/lib/dev-servers/parse.js`（203 行，三平台纯函数解析器+测试）
+- 前置：浏览器面板（已落地）
+- 步骤：
+  1. **主进程新建检测器**（`apps/desktop/electron/main/dev-server-detector.ts`）：三平台解析——macOS `lsof -iTCP -sTCP:LISTEN -P -n -F pcn`、Windows `netstat -ano -p TCP`、Linux 读 `/proc/net/tcp`（+tcp6）；输出统一 `{port, pid, command}`
+  2. **过滤逻辑**：只认 loopback/wildcard 绑定（`127.0.0.1`/`localhost`/`[::1]`/`0.0.0.0`/`[::]`，LAN 专用绑定不算）；排除系统端口（22/53/445/631/5432/3306/6379/27017/9229）；排除自身端口（Electron/pi-wood 监听端口）
+  3. **IPv6 括号解析**：`[::1]:5173` 格式正确拆分 host/port
+  4. **IPC 通道**：`packages/ipc-schema/src/engine.ts` 加 `DevServerInfoSchema` + `ENGINE_CHANNELS.listDevServers = "engine:listDevServers"`（invoke→`DevServerInfo[]`）；主进程注册 handler，缓存 5s 防抖
+  5. **浏览器面板接入**（`BrowserPanel.tsx`）：地址栏下拉 / 空态加「发现的本地服务」列表，每项显示 `localhost:<port>` + 进程名（如有），点击→`browser.open(http://localhost:<port>)`
+- 验收：
+  - [ ] macOS 启动一个 vite dev server（端口 5173）→ 浏览器面板列出
+  - [ ] Windows 同样验证（netstat 路径）
+  - [ ] 系统端口（如 5432 postgres）不出现
+  - [ ] 点击列表项→浏览器面板打开对应 URL
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：macOS 实跑 `npx vite --port 5173`，检查面板发现并可预览
+
+#### [ ] T7.5 目标模式（Session Goal）—— 自主执行循环 + 小模型审计
+- 来源：OpenChamber `packages/web/server/lib/session-goal/`（runtime.js + DOCUMENTATION.md 212 行，服务端控制循环+小模型独立审计）
+- 前置：小模型配置（复用 provider 管理，需用户配置一个低成本模型）、审批门（T4.1）
+- 步骤：
+  1. **主进程新建 goal-runtime**（`apps/desktop/electron/main/goal/goal-runtime.ts`）：事件驱动——session busy→idle 后启动 15s 静默定时器，到点检查：有 active goal + 无 child busy + quiescence（消息尾部无未完成回复）→ 触发审计
+  2. **小模型审计**：审计只看目标文本 + 最后一轮 assistant 回复（不看完整历史，省 token），prompt 要求输出 JSON `{verdict: "continue"|"complete"|"blocked", note}`；用 session 自己的 provider/model 优先（`restrictToPreferredProvider`），降级到配置的 small model
+  3. **终止逻辑**：`complete` → settle goal + 通知；`blocked` 连续 3 次才终止（一次性故障不结束）；审计失败容忍 1 次，第 2 次连续失败终止（"progress audit unavailable"，可 resume）
+  4. **硬停止**：token 预算超限（`tokensUsed >= tokenBudget`）→ budgetLimited；自动轮次 ≥20（MAX_AUTO_TURNS）→ blocked；assistant turn error → blocked
+  5. **续跑**：audit verdict=continue → 先持久化 accounting + turnsUsed（防崩溃后双发），再 `engine:prompt` 发续跑 prompt（含目标文本+预算+完成审计指令+要求每轮末尾给 done/verified/remaining 事实报告）
+  6. **token 分段记账**：compaction（summary message）断快照链→分段：summary 轮关闭当前段计入 tokensCommitted，下段从零 baseline；`tokensUsed = tokensCommitted + currentSegment`，保持单调不减
+  7. **目标文本存储**：存 `<data-dir>/goals/<sessionId>.md`，session metadata 只存 `goal: {objectiveFile: true, ...}`（防 metadata 膨胀 + 防用户写 metadata 变文件读取向量）；目标文件可中途编辑，tick 时实时重读
+  8. **Composer 入口**：发送按钮旁加「作为目标发送」toggle（arm store 模式，仿 OpenChamber `useSessionGoalArmStore`）——开启后本次 prompt 成为目标，附加合成 system-reminder 告诉 agent 目标模式激活
+  9. **EnvironmentPanel 目标状态条**：显示目标摘要（前 80 字符）+ 进度（turnsUsed/20、tokensUsed/budget）+ 审计备注（note，≤280 字符）+ 暂停/恢复/清除按钮；用户 abort → 暂停 goal（不 block）
+  10. **通知**：goal settle（complete/blocked/budgetLimited）时发桌面通知（复用 Electron Notification），UI 关闭也能收到；goal active 期间抑制每轮"ready"通知（只保留 error/question/permission）
+- 验收：
+  - [ ] 设目标后 agent 自动续跑，不需要用户手动发消息
+  - [ ] 小模型判定 complete 后 goal 终止 + 通知
+  - [ ] token 预算超限后停止（budgetLimited）
+  - [ ] 20 轮自动续跑上限生效
+  - [ ] 用户点停止→goal 暂停，恢复后续跑
+  - [ ] 目标文本存文件，metadata 不含大文本
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：配置小模型，设一个简单目标（如"在 README 里加一行测试文字"），观察自动续跑→完成→通知全链路
+
+#### [ ] T7.6 `/btw` 侧边问答 —— 不切换主会话的临时分支问答
+- 来源：OpenChamber `packages/ui/src/lib/btw.ts`（fork 会话 + 合成 part 防任务串扰 + metadata 关联）
+- 前置：SDK fork 能力（已有 `engine:fork` 通道）
+- 步骤：
+  1. **Composer 识别 `/btw` 前缀**：输入框 text 以 `/btw `（或 `/btw\n`）开头时，提取后面的问题作为侧边问题，不发到主会话
+  2. **主进程 fork 会话**：调用 SDK fork（不切换当前 currentSessionId），fork 继承完整对话历史作为上下文
+  3. **注入合成 part**：fork 的首轮消息附加合成 system-reminder——"这是一个侧边问题（by-the-way），请只回答这个问题，不要继续父会话中正在进行的任何任务或计划"（必须有，否则 fork 会把父会话的计划当成自己的任务继续跑）
+  4. **右栏加「侧边问答」tab**：`workbench-store.ts` 的 `WorkbenchTab` 加 `"btw"`；`RightPane.tsx` `panelMeta` 加 `btw: {title:"侧边问答", icon:"messageSquare", kbd:"Ctrl+Shift+B"}`（确认无冲突）；新建 `BtwPanel.tsx` 显示 fork 的回复流（复用 MessageList 只读模式，类似 §7.7 T6.5）
+  5. **父会话 metadata 关联**：当前会话存 `btwSessionId`，切换会话后侧边面板跟随；刷新后仍在（从 metadata 恢复）
+  6. **promote 到主会话**（可选）：侧边问答回复旁加「采用到主会话」按钮，把回复内容追加到主会话输入框或作为新消息发送
+- 验收：
+  - [ ] `/btw 什么是闭包` → 右栏侧边问答 tab 显示答案，主会话不切换、不插入消息
+  - [ ] 父会话有进行中的计划时，/btw 的回答不继续那个计划（合成 part 生效）
+  - [ ] 切换到另一个会话再切回来，侧边问答还在
+  - [ ] 侧边问答 tab 可关闭
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：主会话跑一个长任务，中途 `/btw` 问一个不相关问题，确认侧边显示答案且主任务不受影响
+
+### 第二档：中价值，后续排期
+
+#### [ ] T7.7 代码审查流（Review Flow）
+- 来源：OpenChamber `packages/ui/src/lib/reviewFlow.ts`（fork 会话 + 独立审查 agent + 自动审查循环 + handoff）
+- 前置：Diff 面板（已落地）、子代理（§7.7，可选——不用子代理也能用 fork 实现）
+- 步骤：
+  1. **右栏「审查」tab 加「AI 审查变更」按钮**（`DiffPanel.tsx`）：点击后 fork 当前会话 → 审查 agent（可用独立 agent 配置或子代理 explore）跑 `git diff` + 分析变更
+  2. **结构化审查输出**：要求审查 agent 输出 JSON 数组 `[{file, line, severity: "error"|"warning"|"info", message, suggestion}]`，渲染为可点击列表（跳转对应文件/行，复用 FilesPanel + CodeMirror）
+  3. **自动审查循环**（可选）：最多 15 轮，agent 修复后自动重新审查，`FINAL_REVIEW_STATUS: no_remaining_findings` 终止；默认关闭，用户可开启
+  4. **handoff**：审查发现可「应用建议」→ 把 suggestion 作为 edit 工具输入发给主会话 agent 执行
+- 验收：
+  - [ ] 点击 AI 审查→输出结构化发现列表
+  - [ ] 点击发现→跳转到对应文件行
+  - [ ] 无变更时空态提示
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：造一个有明显 bug 的 diff，跑审查确认能发现
+
+#### [ ] T7.8 定时任务（Scheduled Tasks）
+- 来源：OpenChamber `packages/web/server/lib/scheduled-tasks/`（runtime.js + loops.js + DOCUMENTATION.md，Markdown loop 文件 + 跨实例文件锁）
+- 前置：无
+- 步骤：
+  1. **Markdown loop 文件格式**：`.pi-wood/loops/*.md`（项目 scope）+ `~/.pi-wood/loops/*.md`（用户 scope），frontmatter：`name` / `schedule`（cron 表达式）/ `enabled` / `model`（provider/model）/ `agent`（可选）/ `timezone`（可选 IANA），body = prompt
+  2. **主进程 scheduler**（`apps/desktop/electron/main/scheduler/`）：cron 表达式解析（用 `cron-parser` 或自实现 next-run 计算）+ 定时器 + 队列；到点→创建会话→发 prompt→记录运行状态（lastRunAt/nextRunAt/lastStatus/lastError/lastSessionId/lastDurationMs）
+  3. **跨实例防双开**：项目 config 写 `.json.lock` 文件锁（read-modify-write 序列化），occurrence claiming（写 `lastScheduledFor` + 推进 `nextRunAt`，第二个实例抢不到就跳过）；锁超时/fs 失败→释放 in-process slot + best-effort re-arm
+  4. **SettingsModal 加定时任务管理页**：列表（名称/下次运行/上次状态）+ 新建/编辑/删除 + 立即运行 + 启用/禁用 toggle；loop 文件来源的任务显示「文件管理」标签，编辑走 loop 文件端点
+  5. **loop 文件 reconcile**：启动/打开管理页时扫描 loop 文件，与持久化任务列表对账（文件新增→创建任务，文件删除→移除任务，文件改名→in-place 重命名）；解析失败的文件保留上次好定义 + 警告
+- 验收：
+  - [ ] cron `* * * * *` 任务每分钟执行一次（测试后改回）
+  - [ ] loop 文件创建后自动出现在管理页
+  - [ ] 运行状态正确记录（lastRunAt/lastStatus）
+  - [ ] 禁用的任务不执行
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：建一个每分钟的测试任务，观察 2 次执行后删除
+
+#### [ ] T7.9 小模型会话辅助（Session Assist）
+- 来源：OpenChamber `packages/web/server/lib/session-assist/`（busy→idle 后小模型生成 recap + 建议追问）
+- 前置：小模型配置（同 T7.5）
+- 步骤：
+  1. **主进程事件驱动**：session busy→idle 转换后，小模型生成简短 recap（最后一轮回复摘要，≤200 字符）+ 1-3 个建议追问，存 session metadata `assist: {recap, suggestions, forMessageID}`
+  2. **新消息自动作废**：`forMessageID` 不匹配最新消息→UI 不显示（无需额外写操作）
+  3. **Composer 上方显示**：recap 淡色文字 + 建议追问 chip（可点击插入输入框）；可关闭（dismiss 存本地）
+  4. **纯事件驱动**：只处理运行中发生 busy→idle 的会话，不回溯、不扫描历史会话
+- 验收：
+  - [ ] 一轮对话结束后显示 recap + 建议追问
+  - [ ] 发新消息后 recap 消失
+  - [ ] 点击建议追问→插入输入框
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：完成一轮对话，观察 recap 和建议
+
+#### [ ] T7.10 Agent Memory 跨会话记忆
+- 来源：OpenChamber `packages/web/server/lib/agent-memory/actions.js` + `agent-tool` 的 `openchamber_memory` 工具（global/project 双 scope + unreviewed 安全模式）
+- 前置：扩展系统（T5.2，或先用 inline extension 实现）
+- 步骤：
+  1. **新建 memory 扩展**（`apps/desktop/electron/main/extensions/memory-extension.ts`）：注册 `memory.save`/`memory.read`/`memory.list`/`memory.delete` 四个工具，描述对齐 OpenChamber（"Keep what you learn across sessions..."）
+  2. **存储**：`~/.pi-wood/memory/global.json` + `<project>/.pi-wood/memory/project.json`；条目 `{id, type: "fact"|"preference"|"reference", title, body, scope, createdAt, reviewed: boolean}`
+  3. **scope 推导**：从 session directory 推导 project scope（worktree 路径归到主项目），不让 agent 指定 project id（防跨项目污染）
+  4. **unreviewed 安全模式**：agent 保存的记忆 `reviewed: false`，UI 显示为「待确认」，用户确认后才 `reviewed: true`；agent 读取时 unreviewed 条目也可读（但描述里告诉 agent 这些是用户未确认的）
+  5. **SettingsModal 加记忆管理页**：列表（title/type/scope/reviewed 状态）+ 查看/编辑/删除 + 确认/取消确认；按 scope 过滤
+  6. **工具结果展示**：`memory.save` 工具卡在对话流显示「已保存记忆：{title}（待确认）」+ 「确认」按钮（快速确认不跳设置页）
+- 验收：
+  - [ ] agent 调用 memory.save→存储成功 + 对话流显示待确认
+  - [ ] 新会话中 agent 调用 memory.list→能看到之前保存的
+  - [ ] 用户确认后 reviewed=true
+  - [ ] project scope 记忆只在对应项目可见
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：会话 A 让 agent 保存一条偏好，会话 B 让 agent 列出记忆确认存在
+
+#### [ ] T7.11 会话草稿持久化
+- 来源：OpenChamber `packages/ui/src/lib/chatDraftPersistence.ts`（per-session 草稿 + @mentions + localStorage + 最多 50 条 + versioned envelope）
+- 前置：无
+- 步骤：
+  1. **新建草稿管理**（`apps/desktop/src/renderer/src/lib/chat-draft-persistence.ts`）：`ChatDraftIdentity = {sessionId}`，`ChatDraftSnapshot = {text, mentions: string[]}`；存 localStorage key `pi-wood.chatDrafts.v1`，envelope `{version: 1, drafts: Record<identityKey, {text, mentions, touchedAt}>}`，最多 50 条（LRU 淘汰最旧 touchedAt）
+  2. **Composer 接入**：切换会话时保存当前草稿（debounce 500ms + 切会话立即存）；加载会话时恢复草稿（从 localStorage 读，填入输入框 + 恢复 @mentions 附件）
+  3. **发送后清除**：消息成功发送后清除该会话草稿
+  4. **版本兼容**：envelope version 不匹配→降级为空草稿（不崩）
+- 验收：
+  - [ ] 输入一半切到另一个会话再切回来→草稿还在
+  - [ ] 发送消息后→该会话草稿清除
+  - [ ] 超过 50 条草稿→最旧的被淘汰
+  - [ ] 刷新页面后草稿仍在（localStorage 持久化）
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：输入文字切会话再切回，确认草稿恢复
+
+#### [ ] T7.12 用量/配额追踪（per-provider）
+- 来源：OpenChamber `packages/web/server/lib/quota/` + `packages/ui/src/components/sections/usage/`（per-provider 凭据用量 + 配额 + 用量卡片）
+- 前置：provider 管理（已落地）
+- 步骤：
+  1. **主进程用量累计**（`apps/desktop/electron/main/provider/usage-tracker.ts`）：监听 `tool_execution_end` / `agent_end` 事件，从 RuntimeInfo.contextUsage 提取 tokens（input/output/total）+ cost，按 providerId + modelId 累计；存 `~/.pi-wood/usage/<providerId>.json`（按月分文件，防单文件过大）
+  2. **配额限制**（可选）：settings 加 per-provider `monthlyTokenBudget` / `monthlyCostBudget`，超限后 warning toast + 可选自动切换 provider（默认只警告不阻断）
+  3. **IPC 通道**：`ENGINE_CHANNELS.getUsage = "engine:getUsage"`（invoke→`{providerId, modelId, tokens:{input,output,total}, cost, period}` 数组）
+  4. **SettingsModal 加用量页**：per-provider 用量卡片（provider 名 + 本月 tokens + 估算费用 + 进度条/配额）+ model 维度展开 + 历史月份切换；无用量的 provider 不显示
+  5. **EnvironmentPanel 快捷显示**：当前 provider 本月用量小字显示（tokens + 费用），点击跳设置页用量 tab
+- 验收：
+  - [ ] 跑一轮对话后用量页显示对应 provider 的 token 用量
+  - [ ] 按 model 维度展开正确
+  - [ ] 配额超限后显示 warning
+  - [ ] 跨月后用量重置（新月份文件）
+  - [ ] `pnpm typecheck` + build 全绿
+- 验证方式：跑 3 轮对话，检查用量页数字与 RuntimeInfo.contextUsage 一致
+
+### 落地顺序（按价值/成本比）
+**第一批（低改动高价值，建议立即做）**：
+1. **T7.1 大文本粘贴→虚拟文件**（极小改动，立竿见影）
+2. **T7.2 per-session 权限自动接受**（小改动，长任务体验质变）
+3. **T7.3 会话导出 Markdown**（小改动，实用功能）
+
+**第二批（中改动，差异化价值）**：
+4. **T7.4 Dev Server 自动发现**（中改动，前端开发场景高频）
+5. **T7.6 `/btw` 侧边问答**（中改动，体验独特）
+6. **T7.11 会话草稿持久化**（小改动，切会话不丢输入）
+
+**第三批（中大改动，长期差异化）**：
+7. **T7.5 目标模式**（中大改动，但差异化价值最高——自主执行+小模型审计是 Codex 级体验）
+8. **T7.10 Agent Memory**（中改动，跨会话记忆是长期粘性）
+9. **T7.9 小模型会话辅助**（小改动，依赖小模型配置）
+10. **T7.7 代码审查流**（中改动，审查场景）
+
+**第四批（大改动，按需）**：
+11. **T7.8 定时任务**（大改动，自动化场景）
+12. **T7.12 用量/配额追踪**（中改动，账单透明）
+
 ## 8. 变更与决策日志（持续追加，倒序）
 
 > 格式：`日期 | 任务号 | 类别(偏差/决策/风险) | 内容 | 影响`
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-02 | T7.1~T7.12 OpenChamber 全仓借鉴批次 | 决策 | **系统性扫描 OpenChamber 全仓（子代理之外）→ 整理 12 项可借鉴模式为待办**。核实（源码级，本地 clone `/Users/admin/Desktop/personal/openchamber`）：第一档高价值——T7.1 大文本粘贴→虚拟文件（`largeTextPaste.ts`，双阈值 2000 字符/25 行）、T7.2 per-session 权限自动接受（`permission-auto-accept/runtime.js`，服务端唯一响应者+子代理继承+fail closed）、T7.3 会话导出 Markdown（`exportSession.ts`，递归子代理树+文件名安全化）、T7.4 Dev Server 自动发现（`dev-servers/parse.js`，三平台 lsof/netstat/proc 纯函数解析+系统端口过滤+loopback 判定）、T7.5 目标模式（`session-goal/runtime.js`，服务端控制循环+小模型独立审计+token 预算+20 轮上限+文件存目标文本）、T7.6 `/btw` 侧边问答（`btw.ts`，fork 会话不切换主会话+合成 part 防任务串扰+metadata 关联）；第二档中价值——T7.7 代码审查流、T7.8 定时任务（Markdown loop 文件+跨实例文件锁）、T7.9 小模型会话辅助、T7.10 Agent Memory（global/project 双 scope+unreviewed 安全模式）、T7.11 会话草稿持久化、T7.12 用量/配额追踪。**原则：模式全搬，传输层不搬**（opencode HTTP/SSE → pi-wood in-process SDK + IPC）。落地分四批：第一批 T7.1/T7.2/T7.3（低改动高价值立即做）、第二批 T7.4/T7.6/T7.11、第三批 T7.5/T7.10/T7.9/T7.7、第四批 T7.8/T7.12。详细清单见 **§7.8** | 十二项待办（见 §7.8 勾选清单） |
+| 2026-09-02 | T6.3~T6.7 子代理 UX 层 | 决策 | **分析 OpenChamber 子代理实现 → 传输层不搬、模式全搬，整理为 5 项待办**。核实：OpenChamber（`openchamber/openchamber`，本地 clone `/Users/admin/Desktop/personal/openchamber`）底层是 opencode 原生 task 工具（HTTP server + SSE + parentID child session），OpenChamber 的价值在可视化层——`WorkStatusSubagentsSection.tsx`（parentID 过滤+状态/审批/成本+出现即展开）、`taskToolModel.ts`（解析 `<task_metadata>`→sessionId→「Open subAgent session」按钮+strip 元数据）、只读子会话 context panel tab、`useSubagentCostRollup.ts`（含嵌套成本汇总）、opencode per-agent `permission` 配置。**架构差异**：opencode HTTP/SSE vs pi-wood in-process SDK + Electron IPC——不起 HTTP server，parentID 改内存 Map（`subagent-registry.ts`）、状态推送改 IPC event（打 `_origin` 标签复用 `engine:event`）、审批上浮复用现有 `approval_request` 通道加 `_subagentId`。**决策**：T6.3 子代理追踪+状态面板（含审批上浮，最高优先）、T6.4 对话流打开子代理按钮+元数据清洗、T6.5 只读子会话视图、T6.6 成本汇总（含嵌套递归）、T6.7 per-tool 权限配置。全部依赖 §7.5 引擎接线完成后开工；§7.5 S5「进度/完成通知上屏」由本节具体化。详细清单见 **§7.7** | 五项待办（见 §7.7 勾选清单） |
 | 2026-09-02 | T5.4/T5.5/T5.6 渲染层降噪三件套 | 决策 | **评估三个社区渲染插件 → 均不装，移植 UX 模式到现有组件**。核实：`pi-tool-display@0.5.0`（MasuRii）、`@99percentpeople/pi-thinking-fold@0.1.9`、`@fahmiirsyadk/pi-minimal-toolcall@0.2.1`（月下载 70）**全是 TUI 插件**（peer/关键词带 `pi-tui`，渲染挂 pi-tui `registerMessageRenderer`/widget 管线），pi-wood 无 pi-tui、用自有 React 渲染层 → `pi install` 后 no-op 或报错，不能直接用。**现状核实**：ui-kit `ToolCard` 已实现默认折叠一行（图标+动词+目标+diff 数）、`ThinkingCard` 已实现一行折叠+耗时，即 pi-tool-display/pi-thinking-fold 的核心模式已做 70~80%；pi-minimal-toolcall 的连续工具分组+快捷键是真缺口。**决策**：T5.4 给 ToolCard 折叠行命令加 shiki 内联高亮+状态文字 Badge（对齐 pi.dev「已运行+命令行」）；T5.5 给 ThinkingCard 折叠行加 thinking_delta 尾部预览+耗时格式改「耗时 12.3s」；T5.6 MessageList 预分组连续 tool 项为 ToolGroup+Ctrl+Shift+E 全局切换+ui.toolGroupsEnabled 设置。详细清单见 **§7.6**。落地顺序：T5.6（价值最高）> T5.4 > T5.5 | 三项待办（见 §7.6 勾选清单） |
 | 2026-09-02 | T6.2 子代理 | 决策 | **T6.2 路线切换：弃 nicobailon/pi-subagents（spawn A 方案）→ goofansu/pi-subagent（in-process，原"路线 C"）**。评审结论（源码级核实）：goofansu 的 Pi harness 与桌面同款 SDK API（0.84.4）、内存会话、无 spawn（无 execPath/孤儿/密钥物化问题）、自过滤+深度防递归+父信任继承；但默认扩展有 2 个不解决点（child 审批门必须注入、凭据需探针确认）+ 1 个分发问题（未发 npm、无 exports、注入点未暴露）→ 需一次小 fork。关键差异：spawn 版 child 是独立 pi 进程、不经桌面审批门=审批旁路；in-process 版可在注入点给 child 套 `permissionGateExtension`。**详细清单见 §7.5** | T6.2 待办（原 §8 记录作废，以 §7.5 勾选清单为准） |
 | 2026-09-01 | T5.1 三栏焦点循环 | 完成 | **补齐 T5.1 键盘优先最后一块：三栏焦点循环**（纯渲染层，无主进程改动）。抽 `hooks/use-column-focus.ts`（逻辑层）：`focusColumn(name)`/`cycleColumnFocus(dir)` 纯 DOM 定位 `[data-col-region]` 容器（兼容懒加载 RightPane），`cycleColumnFocus` 用 `offsetParent!==null` 跳过未挂载/收起的栏。App 三栏外层各包 `<div data-col-region tabIndex={-1}>`，`:focus` 时 `focus:ring-2 ring-inset ring-ring/60` 内嵌高亮（仅容器自身聚焦时显，输入框内聚焦不显→无噪声）。**快捷键踩坑**：初版 `Ctrl+Tab`/`Alt+1·2·3` 在 Windows/Electron 被系统吞（实测焦点不动），改用可靠的 `Ctrl+1/2/3`（直达左/中/右，VS Code 惯例）+ `Ctrl+.`/`Ctrl+Shift+.`（前进/后退循环）；**不劫持裸 Tab**（栏内原生遍历保留）。**验证**：desktop `tsc --noEmit` 全绿；dev HMR 生效；实机确认——点击空处→焦点环随 focus 在栏间移动（右↔中，证明 region 可聚焦 + ring 正确跟随），`Ctrl+K` 打开面板证明全局 keydown handler 触发；唯合成按键 `ctrl+<数字>` 在本自动化注入下 modifier 未可靠送达 DOM（工具限制，非代码缺陷），真人键盘可验。| T5.1 键盘优先 ✅（三栏焦点循环完成） |
