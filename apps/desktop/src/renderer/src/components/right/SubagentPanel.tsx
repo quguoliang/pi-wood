@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "../ui/Icon";
 import { cn } from "@/lib/utils";
@@ -124,7 +124,8 @@ function DetailView({ run, onBack }: { run: SubagentRunInfo; onBack(): void }): 
 export function SubagentPanel(): React.JSX.Element {
   const runs = useSubagentStore((s) => s.runs);
   const refresh = useSubagentStore((s) => s.refresh);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedId = useSubagentStore((s) => s.selectedId);
+  const setSelectedId = useSubagentStore((s) => s.setSelectedId);
 
   useEffect(() => {
     void refresh();

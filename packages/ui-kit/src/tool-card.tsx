@@ -35,6 +35,18 @@ function describe(name: string, args: Record<string, unknown>): { verb: string; 
     case "grep": return { verb: "搜索", target: str(args.pattern) ? `"${str(args.pattern)}"` : "", mono: false };
     case "find": return { verb: "查找", target: str(args.pattern), mono: false };
     case "ls": return { verb: "列出", target: str(args.path) || ".", mono: true };
+    case "agent_start": return { verb: "启动子代理", target: str(args.agent), mono: false };
+    case "agent_resume": return { verb: "续跑子代理", target: str(args.id).slice(0, 8), mono: true };
+    case "agent_wait": {
+      const ids = Array.isArray(args.ids) ? (args.ids as unknown[]).length : 0;
+      return { verb: "等待子代理", target: ids > 0 ? `${ids} 个 run` : "", mono: false };
+    }
+    case "agent_result": return { verb: "子代理结果", target: str(args.id).slice(0, 8), mono: true };
+    case "agent_cancel": {
+      const ids = Array.isArray(args.ids) ? (args.ids as unknown[]).length : 0;
+      return { verb: "取消子代理", target: ids > 0 ? `${ids} 个 run` : "", mono: false };
+    }
+    case "agent_steer": return { verb: "引导子代理", target: str(args.id).slice(0, 8), mono: true };
     default:
       if (name.startsWith("browser_")) return { verb: "浏览器", target: name.replace("browser_", ""), mono: false };
       return { verb: name, target: oneLine(str(args.path ?? args.command ?? args.pattern ?? "")), mono: true };
@@ -61,12 +73,72 @@ function headerIcon(name: string, status: ToolCardProps["status"]): React.ReactN
 const outputBlock =
   "max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-[#0f1115] px-2.5 py-2 font-mono text-[12px] leading-[1.55] dark:bg-[#0b0d10]";
 
+/** 从 agent_start / agent_result 的输出文本里解析出 run id（用于关联子代理面板）。 */
+function parseSubagentRunId(output: string | undefined): string | undefined {
+  if (!output) return undefined;
+  const start = output.match(/run id\s+([\w-]+)/);
+  if (start) return start[1];
+  const result = output.match(/\brun\s+([\w-]+):/);
+  return result ? result[1] : undefined;
+}
+
+/** 「打开子代理会话」：派发全局事件，右栏 SubagentPanel 监听后打开对应 run 的只读详情。 */
+function SubagentOpenButton({ runId }: { runId: string | undefined }): React.JSX.Element | null {
+  if (!runId) return null;
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent("piwood:open-subagent", { detail: { runId } }))
+      }
+      className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-white/[0.03] px-2 py-1 text-[11.5px] text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+    >
+      <Sparkles className="size-3.5" />
+      打开子代理会话
+      <span className="font-mono text-[10px] opacity-60">{runId.slice(0, 8)}</span>
+    </button>
+  );
+}
+
 function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JSX.Element {
   const isEdit = (name === "edit" || name === "write") && diff;
   if (isEdit) {
     return (
       <div className="mb-1 ml-[7px] mt-1 border-l-2 border-border pl-3">
         <DiffView patch={diff!} />
+      </div>
+    );
+  }
+  if (name === "agent_start") {
+    const runId = parseSubagentRunId(output);
+    return (
+      <div className="mb-1 ml-[7px] mt-1 space-y-1 border-l-2 border-border pl-3">
+        <div className="text-[12.5px] text-muted-foreground">
+          {status === "running" ? (
+            "启动中…"
+          ) : status === "error" ? (
+            <span className="text-destructive">{oneLine(output ?? "启动失败")}</span>
+          ) : (
+            <>
+              子代理已启动：<span className="font-medium text-foreground/90">{str(args.agent) || "subagent"}</span>
+              {runId && <span className="font-mono text-[11px] opacity-70"> · run {runId.slice(0, 8)}</span>}
+            </>
+          )}
+        </div>
+        {runId && <SubagentOpenButton runId={runId} />}
+      </div>
+    );
+  }
+  if (name === "agent_result") {
+    const runId = parseSubagentRunId(output);
+    return (
+      <div className="mb-1 ml-[7px] mt-1 space-y-1.5 border-l-2 border-border pl-3">
+        {output ? (
+          <pre className={cn(outputBlock, status === "error" && "border-destructive/30 text-destructive")}>{output}</pre>
+        ) : (
+          <div className="text-[12px] text-muted-foreground">（无输出）</div>
+        )}
+        {runId && <SubagentOpenButton runId={runId} />}
       </div>
     );
   }

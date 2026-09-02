@@ -20,7 +20,10 @@ export interface SubagentItem {
 interface SubagentState {
   runs: SubagentRunInfo[];
   itemsByRun: Record<string, SubagentItem[]>;
+  /** 当前打开详情的 run id（null=列表视图）。由面板或全局 open-subagent 事件设置。 */
+  selectedId: string | null;
   setRuns: (runs: SubagentRunInfo[]) => void;
+  setSelectedId: (id: string | null) => void;
   refresh: () => Promise<void>;
   handleEvent: (runId: string, event: Record<string, unknown>) => void;
   clear: () => void;
@@ -85,7 +88,9 @@ function reduce(items: SubagentItem[], e: Record<string, unknown>): SubagentItem
 export const useSubagentStore = create<SubagentState>((set, get) => ({
   runs: [],
   itemsByRun: {},
+  selectedId: null,
   setRuns: (runs) => set({ runs }),
+  setSelectedId: (id) => set({ selectedId: id }),
   refresh: async () => {
     try {
       const runs = await window.pi.subagentList();
@@ -99,5 +104,5 @@ export const useSubagentStore = create<SubagentState>((set, get) => ({
     const next = reduce(prev, event);
     if (next !== prev) set((s) => ({ itemsByRun: { ...s.itemsByRun, [runId]: next } }));
   },
-  clear: () => set({ runs: [], itemsByRun: {} }),
+  clear: () => set({ runs: [], itemsByRun: {}, selectedId: null }),
 }));

@@ -83,9 +83,17 @@ export default function App() {
     const openPalette = (): void => setPaletteOpen(true);
     const openSettings = (): void => setSettingsOpen(true);
     const openMarket = (): void => setMarketOpen(true);
+    // T6.4：agent_start 工具卡「打开子代理会话」→ 选中该 run 并打开子代理面板。
+    const openSubagent = (e: Event): void => {
+      const runId = (e as CustomEvent<{ runId?: string }>).detail?.runId;
+      if (!runId) return;
+      useSubagentStore.getState().setSelectedId(runId);
+      openWorkbench("subagent");
+    };
     window.addEventListener("piwood:open-command-palette", openPalette);
     window.addEventListener("piwood:open-settings", openSettings);
     window.addEventListener("piwood:open-marketplace", openMarket);
+    window.addEventListener("piwood:open-subagent", openSubagent);
 
     const pushToast = (message: string, type: string): void => {
       if (type === "error") toast.error(message);
@@ -141,6 +149,7 @@ export default function App() {
       window.removeEventListener("piwood:open-command-palette", openPalette);
       window.removeEventListener("piwood:open-settings", openSettings);
       window.removeEventListener("piwood:open-marketplace", openMarket);
+      window.removeEventListener("piwood:open-subagent", openSubagent);
     };
   }, [addDiff, handleEvent, trackRuntimeEvent]);
 

@@ -500,7 +500,8 @@
   - [ ] `pnpm typecheck` + desktop test + build 全绿
 - 验证方式：真密钥跑 agent_start(explore) + 子代理内 bash，观察面板/审批/状态全链路
 
-### [ ] T6.4 对话流「打开子代理」按钮 + 元数据清洗
+### [x] T6.4 对话流「打开子代理」按钮 + 元数据清洗
+> **✅ 2026-09-02 落地（真机 dev13 验证：工具卡显示清洗摘要、点「打开子代理会话」直达该子代理详情）**。落点 `packages/ui-kit/src/tool-card.tsx`：① `describe()` 给 `agent_*` 六个工具加中文动词/目标；② `agent_start` 展开体**清洗**成「子代理已启动：{agent} · run {short}」（隐藏 `formatStartResult` 那一大段 "Use run id ... for agent_wait" prose）+ 「打开子代理会话」按钮；③ `agent_result` 保留结果正文 + 同款按钮。**偏差**：runId 从工具**输出文本**正则解析（`run id <id>` / `run <id>:`），因 vendored `result.details` 为 undefined、无结构化字段；按钮派发全局 `piwood:open-subagent` CustomEvent（不逐层传 prop）；`selectedId` 移入 `subagent-store`（面板未挂载也能被事件驱动）；`App` 监听→`setSelectedId`+`openWorkbench("subagent")`。与 T6.5 面板行点击并存，对话流按钮成为主入口。
 - 来源：OpenChamber `taskToolModel.ts`（解析 `<task_metadata>`→sessionId→「Open subAgent session」按钮 + strip 元数据）
 - 前置：T6.3（子代理面板可打开）
 - 步骤（改 `packages/ui-kit/src/tool-card.tsx`）：
