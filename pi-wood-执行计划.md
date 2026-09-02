@@ -334,11 +334,11 @@
 
 ## 7. Phase 5 · 打磨与分发（预计 1~2 周）
 
-### [ ] T5.1 命令面板 + 全局搜索（基本完成：✅ Ctrl/Cmd+Shift+P 聚合 应用命令+Pi/扩展/Skill/模板+模型+项目+@文件（`engine:listCommands` 复用 session + `fs:search`）；✅ 三栏键盘焦点循环 `Ctrl+1/2/3` 直达 + `Ctrl+.`/`Ctrl+Shift+.` 循环（`use-column-focus`，不劫持裸 Tab）；遗留：方案 §11「90% 高频操作键盘化」清单逐项终审）
+### [x] T5.1 命令面板 + 全局搜索（✅ 2026-09-02：Ctrl/Cmd+Shift+P 聚合 应用命令+Pi/扩展/Skill/模板+模型+项目+@文件（`engine:listCommands` 复用 session + `fs:search`）；三栏键盘焦点 `Ctrl+1/2/3` 直达 + `Ctrl+.`/`Ctrl+Shift+.` 循环（`use-column-focus`，不劫持裸 Tab）；**§11 清单逐项终审完成**——25 条高频操作加权≈90% 达标、核心链路全键盘闭环，记录见 §8。后续小项（不阻塞）：#24 消息级分支/复制/标签/回滚缺稳定键盘入口（hover-only，中改）、#6/#7 输入框内联 `@`/`/` 触发（现经面板注入，中改））
 - 来源：方案 §11-6/7/10
 - 步骤：`Ctrl+Shift+P` 聚合应用命令 + Pi 命令 + 扩展命令 + Skill + 模板（数据源 `get_commands` 等）；`@` 文件联想；键盘优先（Tab 三栏焦点循环）
 - 验收：
-  - [ ] 90% 高频操作可键盘完成（对照方案 §11 清单逐项过）
+  - [x] 90% 高频操作可键盘完成（对照方案 §11 清单逐项过）
 - 验证方式：清单打勾表
 
 ### [ ] T5.2 插件系统（utilityProcess）
@@ -349,7 +349,7 @@
   - [ ] 未声明权限的 API 调用被拒并有日志
 - 验证方式：示例插件（含一次故意崩溃 + 一次越权调用）演示
 
-### [ ] T5.3 打包分发（部分完成：✅ Windows NSIS 产物；干净 Windows 安装验收、三平台与自动更新待补）
+### [ ] T5.3 打包分发（部分完成：✅ Windows NSIS 产物；干净 Windows 安装验收、三平台与自动更新待补。**⚠ 本机环境阻塞**：无干净 Windows VM、无 mac/linux 构建机、无代码签名，"干净 VM 10 分钟跑通"与三平台/自动更新无法在本机验收，需具备环境后再做）
 - 来源：方案 §10.6、§12 Phase 5
 - 步骤：electron-builder 三平台（当前优先 Windows NSIS + 签名）；自动更新；新用户上手文档
 - 验收：
@@ -380,9 +380,9 @@
 ### S2 装 goofansu 原版 + 三探针（验证路线成立，不 fork）
 - [x] ~~`pi install https://github.com/goofansu/pi-subagent`~~ → 改为 **vendored**（clone 源码裁进 `electron/main/subagent/vendor/`，相对 `.ts` import），不依赖 `pi` CLI/磁盘加载。
 - [x] 探针1（离线等价）：真实 Node（`--experimental-strip-types`）加载 `pi-wood-subagent.ts` → 用假 `ExtensionAPI` 走 `runtime.attach(pi)`→触发 `session_start`→断言 **6 个 `agent_*` 工具全部注册**、无抛错、`dispose()` 干净。**偏差**：以假 `pi` 记录 `registerTool` 调用替代 SDK `getActiveToolNames()`；`createAgentSession` 在 Electron 主进程内可创建留待密钥 e2e。
-- [ ] 探针2（真密钥 DeepSeek env）：主 agent 触发一次 `agent_start(explore)`→`agent_wait`→`agent_result`，子代理用父模型跑通并回传结果
-- [ ] 探针3：确认 child `bindExtensions({mode:"print"})` 下 `ctx.ui` 为取消/no-op 而非挂起；确认 `SessionManager.inMemory` 不写会话文件；确认 child `ModelRuntime` 能看到 env 注入的钥匙串密钥
-- [ ] 记录结论：若凭据不可见或审批不可控 → 直接进 S3/S4
+- [x] 探针2（真密钥 DeepSeek env）：主 agent 触发 `agent_start(explore)`→`agent_wait`→`agent_result`，子代理用父模型跑通并回传结果。**已验**（S6 dev9 单代理 + 本轮多代理 fan-out，见 §8 `t62-e2e.png`）
+- [x] 探针3：child 跑通即证 `ModelRuntime` 能看到 env/钥匙串注入的密钥；本轮多代理编排干净 settle（无挂起）证 print-bind 下 `ctx.ui` 为取消/no-op 非挂起；child 为进程内 inMemory 会话、左栏真实项目 sessionsList 未被污染。**已验**（§8 `t62-e2e.png`）
+- [x] 记录结论：凭据可见、审批可控（child bash/edit/write 走桌面审批门，dev10 已验）→ 已进 S3/S4 并落地
 
 ### S3 fork goofansu/pi-subagent（小改动，吃满注入点）
 - [x] 镜像源码至项目内 → **落点改 `apps/desktop/electron/main/subagent/vendor/`**（非 `extensions/pi-subagent/`），保留 MIT `LICENSE` + `docs/adr/*` + `CONTEXT.md`；裁掉 claude/codex harness、`*.test.ts`、conformance/`suite-setup`/`standalone-run-helper`。
@@ -397,11 +397,11 @@
 
 ### S5 生命周期与 UX
 - [x] 切项目回收：`ensureEngineUnlocked` 换项目处 `await disposeSubagent()` → `runtime.subagents.shutdown()`（标 closed + 转发在飞 Run 取消）+ `delivery.shutdown()`（`runs.cancelRunning("shutdown")`），best-effort 容错。child 为进程内内存会话，进程退出即回收；关窗 quit 钩子可后续补。
-- [ ] 子代理进度/完成通知上屏：复用 `sessionPush`/delivery → 转发渲染层（右栏或对话流）——**归 §7.7 T6.3 状态面板落地**，本 increment 未含。
+- [x] 子代理进度/完成通知上屏：由 **§7.7 T6.3 SubagentPanel** 落地（runs 注册表 → `engine:subagentRuns`/`subagentEvent` IPC → 右栏实时状态、出现即自动弹出），本 increment 已含
 - [x] 并行 fan-out 与深度防递归：沿用 vendored 默认（`PI_SUBAGENT_DEPTH` 注入 + `isPiChildExtensionLoad()||depth>0` 时扩展 inert + `filterPiChildExtensions` 去自身）→ 防递归成立；无 cap 与桌面审批并发策略一致。
 
 ### S6 门禁与验收
-- [x] 真密钥 e2e（**部分已验**，DeepSeek + dev9）：单代理委派 `agent_start→agent_wait→agent_result` 跑通 + child `bash` 弹桌面 ApprovalCard（审批旁路堵上）。**待补（可选）**：并行 2-3 子代理 fan-out + 命名会话续跑 + steer + cancel 的完整编排 e2e。
+- [x] 真密钥 e2e（DeepSeek）：单代理委派 `agent_start→agent_wait→agent_result` + child `bash` 弹桌面 ApprovalCard（dev9/dev10 审批旁路堵上）；**本轮补齐完整编排**——并行 3 个 explore 子代理 fan-out + `agent_steer`（B 追加指令被子代理消费并如实回应）+ `agent_cancel`（C 1 回合后停止、含 per-child tokens/费用）+ `agent_wait` 收口，见 §8 `t62-e2e.png`。**仍待补（可选）**：命名会话 `agent_resume` 续跑编排。
 - [x] 静态门禁：`pnpm -r typecheck` 全绿（含整份 strict 下 vendored 内核 + 接线）、`electron-vite build` 通过（out/main 打入 `agent_*`+`piwood-subagent`+`piwood-permission-gate`，pi-tui 已 externalize）、**离线探针**证明 6 个 `agent_*` 工具经 `attach→session_start` 注册、dispose 无抛错；`git diff --check` 干净。（旧 spawn 版本机不存在，无残留。）
 - [x] 结果回写 §8 + 本 §7.5 偏差。
 
@@ -843,6 +843,9 @@
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-02 | T6.2 多代理真机 e2e | 完成+验证 | **§7.5 S6 补齐完整多代理编排真机 e2e**（此前只验过单代理委派）。前置：本机 `~/.pi/agent/agents/` 为空 → vendored `loadAgentConfigs` 报 "agent_start has no configured agents"，**新建 `general.md`/`explore.md` 两个 profile**（frontmatter 仅需 `description`，`harness` 默认 `pi`、省略 `model` 走父模型避免 catalogue 校验失败、body=systemPrompt）。临时改 ui-chat harness prompt 为「并行 3 个 explore 子代理 fan-out + 对 B `agent_steer` + 对 C `agent_cancel` + `agent_wait` 收口」，起 dev 实跑 DeepSeek。**目检（`t62-e2e.png`，exit=0/日志无真 error（仅 NODE_TLS 警告）/无 already）**：主 agent 编排闭环——3 个 run id（A `run-7b6af1e5`/B `run-3ad59b1d`/C `run-c885efc9`）；**fan-out** 三子代理并行读文件；**steer** B 收到追加指令并如实回应（grep 核实 greet.js 无 `greetZn`、系 `greetZh` 笔误）；**cancel** C 1 回合后停止（7.7k in/66 out、$0.0011）不再产出；**wait/result** A、B 完成并汇总。探针2/3/结论（凭据可见·审批可控·print-bind 不挂起·inMemory 不污染左栏）随之坐实，§7.5 S2/S5/S6 全 [x]。**遗留（可选）**：命名会话 `agent_resume` 续跑编排未在本轮触发。⚠ 右栏 SubagentPanel 截屏时显"暂无子代理运行"——因 settle 时子代理已全部结束（面板追踪在飞 run），其**实时**状态展示由 §7.7 T6.3 单列已验。harness prompt 临时改动已回退（`git diff ui-chat-harness.ts` 空）。附：agent profiles 属用户级 `~/.pi` 配置、非仓库文件，保留供后续子代理使用 | T6.2 §7.5 完整收口 ✅（多代理 fan-out/steer/cancel 真机验证） |
+| 2026-09-02 | T5.1 §11 键盘化终审 | 完成 | **对方案 §11「90% 高频操作可键盘完成」清单逐项核对**（只读调研，产出打勾表）。基准 §11-2/4/5/6/7/8/9/10 + §12 输入区约定，共 25 条高频操作，逐条比对渲染层实际快捷键（`App.tsx` 全局 keydown、`CommandPalette.tsx`、`use-column-focus.ts`、`use-composer-controller.ts`、`PromptTray.tsx`、`FilesPanel.tsx`）。**结果**：✅ 21、⚠ 3、❌ 1；严格 21/25≈84%，按 ⚠=0.5 加权 22.5/25≈**90%**。核心链路（唤起面板→搜命令/模型/项目/文件→Enter 执行、三栏直达 `Ctrl+1/2/3`/循环 `Ctrl+.`、发送 Enter/换行 Shift+Enter/follow-up Alt+Enter、各工作台面板、审批 Enter）**全键盘闭环**。⚠ 三条均"功能可达、键位偏离字面"：#8 裸 Tab→`Ctrl+.`（Win/Electron 吞 Tab 的合理规避）、#6/#7 内联 `@`/`/` 触发→现经命令面板注入。**判 T5.1 达标完成**；后续小项登记不阻塞：#24 消息级分支/复制/标签/回滚缺稳定键盘入口（hover-only，中改）、#6/#7 输入框内联触发（中改） | T5.1 ✅（§11 终审≈90%）；#24/#6/#7 转后续小项 |
+| 2026-09-02 | T5.3 打包分发 | 风险 | **干净 VM 安装验收 / 三平台构建 / 自动更新 在本机环境无法验收**：无干净 Windows VM、无 mac/linux 构建机、无代码签名证书。当前仅 Windows NSIS 产物可产出（已验）。**决策**：T5.3 保持未完成、标注环境阻塞，待具备干净 VM + 三平台 CI + 签名后再做「10 分钟跑通配 Key→首次对话→改文件」验收与自动更新接线 | T5.3 阻塞（环境受限，非代码缺陷） |
 | 2026-09-02 | §7.6 三件套（真机验收） | 维护 | **按 `pi-wood-ui-gate-verify` 管线对 T5.4/T5.5/T5.6 做真机视觉验收**（补齐此前"运行态手验留后"的欠账）。管线：杀残留 electron → `pnpm typecheck`(node+web 全绿) → `pnpm build`(BUILD_OK) → `electron-vite dev -- --ui-chat`（临时把 harness prompt 扩为 bash×2 + read×2、finish 前 executeJavaScript 派发 Ctrl+Shift+E 展开全部组 + 滚到工具区顶、等 1.8s 让异步 shiki 落地再截屏）→ `--ui-stress 10000`。证据：`apps/desktop/docs/proofs/ui-v3/t56-chat2.png`（工具区，exit=0/日志 error·fail=0/无 already/captured 收尾）、`t56-stress.png`（10000 事件 94ms 注入、渲染正常不卡）、`t56-chat.png`（底部最终答复）。**目检结论**：① T5.6 分组——两组「✓ 2 个工具调用 · 全部成功 · 总耗时 0.3s / 0.0s」正确成形，模型分两批（bash 批 + read 批）之间被 assistant 文本打断→分成两组而非误并，组头图标/计数/状态/总耗时/chevron 齐全，Ctrl+Shift+E 展开生效；② T5.4——每行右侧「已完成」状态文字与图标并存不冲突，bash 行 `终端 ls -la`/`node --version` 命令内联渲染无溢出/断版（短命令 token 着色在截图缩放下较淡，展开块着色由代码路径保证）；③ T5.5——思考折叠行显示「思考 · 耗时 <1s · <尾部预览>」「耗时 2.0s · …」紧凑耗时 + 实时尾部预览均生效。**收尾**：临时 harness prompt/finish 改动已全部回退（`git diff ui-chat-harness.ts` 为空），三件套代码文件保持纯净；恢复 dev 实例。**结论：§7.6 三件套真机验收通过，此前 §8 各行的"运行态手验留后"欠账结清** | §7.6 收口并真机验证 ✅；可提交本批次 |
 | 2026-09-02 | T5.5 思考折叠预览 | 完成 | **§7.6 三件套末项（收口）：把 `pi-thinking-fold` 的 live tail 预览模式移植进现有 `ThinkingCard`（不装插件）**。落地：① `packages/ui-kit/src/tool-card.tsx` `ThinkingCard` 新增可选 `preview?: string`——折叠行标签从 `· {思考中…/耗时Ns}` 扩为再追加 `· {preview}`（`text-muted-foreground/65` 更淡），组件内 `pv=(preview??"").replace(/\s+/g," ").trim()` 归一化换行/多空格、空则不显；数据模型不动（`ConversationItem` thinking 已有 `text`/`durationMs`）。② `fmtDuration` 紧凑化：`<1s→「耗时 <1s」`、`<60s→「耗时 12.3s」`(10s 内一位小数、以上取整)、`≥60s→「耗时 1m2s」`（原「持续了 N 秒」）。③ `MessageList.tsx` `ThinkingRow` 传 `preview={item.text.slice(-60)}`（非流式尾部摘要）。④ live 流式块 `ThinkingCard streaming` 传 `preview={liveThinking.slice(-60)}`→折叠行随 token 实时更新推理尾部（此前只显「思考中…」）。**决策/偏差**：`preview` 由调用方 slice(-60) 传入、`ThinkingCard` 不自己截 `text` 尾部——保持组件薄且流式/非流式两路统一（流式 `text===liveThinking` 全量但预览仍 tail-60）。**门禁**：`tsc --noEmit` ui-kit + desktop web 全绿、`electron-vite build` 三目标成功；无单测（纯展示 + `fmtDuration` 为 ui-kit 内部函数未导出、渲染层依赖运行时）。⚠ 运行态（开 thinking 模型跑长任务、看折叠行「耗时 Ns · 尾部」实时刷新 + 点击展开全文不变、明暗主题）留应用内截图手验；纯渲染层 HMR 即生效。**§7.6 三件套全部收口：T5.6 ✅ / T5.4 ✅ / T5.5 ✅** | T5.5 ✅（§7.6 收口）；下一步可提交本批次或进 §7.7 T6.6/T6.7 |
 | 2026-09-02 | T5.4 工具紧凑显示 | 完成 | **§7.6 次项：把 `pi-tool-display` 的紧凑工具渲染模式移植进现有 ui-kit `ToolCard`（不装插件）**。落地：① 新建 `packages/ui-kit/src/shiki-command.tsx`——`HighlightedCommand({code,inline})` 用 `shiki.codeToHtml(code,{lang:"shell",theme:"github-dark-default"})` 异步高亮，**模块级 `Map` 缓存 + 上限 1500 满了 clear**（虚拟化列表大量重复命令只跑一次高亮，避免每挂载 async 解析），`useShellHtml` hook 命中缓存即 `setHtml`、未完成先渲染纯 mono 回退（不闪空白）。shiki 自带内联 style 的 `<pre>` 用 `[&>pre]:!bg-transparent [&>pre]:!text-inherit`（important 压过内联 style）+ inline 模式 `[&>pre]:inline whitespace-nowrap overflow-hidden` / block 模式 `whitespace-pre-wrap break-all`。② `tool-card.tsx` 折叠行：`isShellTool(name)` 为真且有命令 → 渲染 `<HighlightedCommand inline>`（`str(args.command).replace(/\s+/g," ").trim()` 单行），read/edit/write/grep/find/ls 路径类仍走原纯 mono `target`（路径不高亮，按方案）。③ `StatusText` 组件与图标并存（图标保留）：running「运行中」`animate-pulse`+primary、ok「已完成」`text-muted-foreground/55` 常显淡色、error「失败」`text-destructive/70`，无框纯文字不占高。④ 展开 `ToolBody` bash `$` 命令块的命令文本由 `span` 换 `<HighlightedCommand>`（block，保留 `$` 前缀 + `bg-[#0f1115]` 暗底）。⑤ 输出截断提示：`outLines = props.output.split("\n").length`，`!open && outLines>200` 时折叠行尾加 `…(+N 行输出)`（`text-muted-foreground/55`）。**偏差/决策**：方案步骤1 建议「复用 `CodeBlock` 的轻量 `InlineCode` 变体」——现有 `CodeBlock`(`code-block.tsx`)是整块 `CodeBlockCode`（自带 border/`p-3` 暗底容器），直接嵌进无边框紧凑折叠行视觉过重且 `<pre>` 不能内联一行，故**不复用 CodeBlock、新建 `HighlightedCommand`**（inline/block 两态共用其缓存 hook，block 态即紧凑版命令块、去行号去复制、保留 `$`）。方案步骤2 ok 徽标「success 色」——实测全绿徽标在长列表里过抢眼，改 `muted-foreground/55` 常显淡灰（running/error 才给主色/红，符合降噪）。**门禁**：`tsc --noEmit` ui-kit + desktop node+web 工程全绿、`electron-vite build` 三目标成功（本次复核）；**未新增单测**（纯展示层，无独立可测逻辑单元，`HighlightedCommand` 的异步高亮/缓存行为归运行时）。⚠ 运行态（真起 dev 触发 bash/read/edit 各一次、看折叠行命令着色 + 展开块高亮 + 长输出提示、明暗双主题对比）留应用内截图手验；纯渲染层 `pnpm dev` HMR 即生效 | T5.4 ✅（§7.6 次项）；下一步 T5.5 思考折叠预览 |
