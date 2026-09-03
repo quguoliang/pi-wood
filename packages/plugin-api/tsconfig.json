@@ -8,10 +8,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "allowImportingTsExtensions": true,
-    "paths": {
-      "@pi-wood/plugin-api": ["../plugin-api/src/index.ts"]
-    }
+    "allowImportingTsExtensions": true
   },
   "include": ["src"]
 }

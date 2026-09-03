@@ -173,7 +173,11 @@ function requestUi(
   });
 }
 
-function uiBridge(): DesktopUiBridge {
+/**
+ * 桌面 ctx.ui 桥（notify/select/confirm/input）经 ui:notify + ui:request/ui:respond 走渲染层 PromptTray。
+ * T5.2 插件宿主复用同一桥实现插件的 notify / ui.*，不另立通道。
+ */
+export function uiBridge(): DesktopUiBridge {
   return {
     notify: (message, type) => send("ui:notify", { message, type: type ?? "info" }),
     select: (title, options) => requestUi("select", title, { options }) as Promise<string | undefined>,

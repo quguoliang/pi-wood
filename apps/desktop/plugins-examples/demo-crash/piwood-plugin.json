@@ -1,0 +1,13 @@
+{
+  "name": "demo-crash",
+  "version": "0.1.0",
+  "displayName": "示例·崩溃与自愈",
+  "description": "演示 utilityProcess 沙箱隔离：收到控制消息后自我硬崩，验证不杀主进程且自动重启并通知。",
+  "author": "pi-wood",
+  "pi": {
+    "desktop": {
+      "entry": "index.cjs",
+      "permissions": ["notify"]
+    }
+  }
+}

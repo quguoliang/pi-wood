@@ -11,6 +11,8 @@ import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service"
 import { initBrowserIpc } from "./workbench/browser-service";
 import { initDevServerIpc } from "./workbench/dev-server-detector";
 import { initProviderIpc } from "./provider/provider-manager";
+import { initPluginsIpc, stopAllPlugins } from "./plugins/plugins.ipc";
+import { isPluginProbeMode, runPluginProbe } from "./plugins/plugin-probe";
 import { initWindowIpc } from "./window-controls";
 import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
@@ -135,6 +137,11 @@ if (!gotLock) {
     loadPrivateEnv(app.getAppPath());
     // 渲染层 DOM 暴露给系统无障碍树（自动化测试/读屏支持）
     app.accessibilitySupportEnabled = true;
+    // T5.2 插件宿主 headless 探针：不起窗口、不加载引擎/Pi，仅跑 utilityProcess 沙箱断言，自检后 app.exit
+    if (isPluginProbeMode()) {
+      await runPluginProbe();
+      return;
+    }
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
@@ -151,6 +158,7 @@ if (!gotLock) {
     initTerminalIpc(sendToRenderer);
     initBrowserIpc();
     initDevServerIpc();
+    initPluginsIpc(sendToRenderer);
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -158,6 +166,7 @@ if (!gotLock) {
   });
 
   app.on("window-all-closed", () => {
+    stopAllPlugins();
     killAllTerminals();
     if (process.platform !== "darwin") {
       // Pi SDK 静态加载残留句柄可能挂起 quit（§8）；给 1.5s 后强制退出

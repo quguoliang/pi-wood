@@ -17,6 +17,7 @@ import { useRuntimeStore } from "./stores/runtime-store";
 import { useBtwStore } from "./stores/btw-store";
 import { useSubagentStore } from "./stores/subagent-store";
 import { useAssistStore } from "./stores/assist-store";
+import { usePluginStore } from "./stores/plugin-store";
 import { useToolGroupsStore } from "./stores/tool-groups-store";
 import { useThemeStore } from "./stores/theme-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
@@ -144,6 +145,13 @@ export default function App() {
       addDiff(data);
       openWorkbench("diff");
     });
+    // T5.2 插件系统：状态/面板/状态栏推送落 store；openFile 走工作台。
+    const offPluginStatus = window.pi.onPluginStatus((list) => usePluginStore.getState().setList(list));
+    const offPluginPanels = window.pi.onPluginPanels((panels) => usePluginStore.getState().setPanels(panels));
+    const offPluginStatusbar = window.pi.onPluginStatusbar((items) => usePluginStore.getState().setStatusbar(items));
+    const offPluginOpenFile = window.pi.onPluginOpenFile((d) => {
+      if (d?.path) openWorkbenchFile(d.path);
+    });
     return () => {
       offNotify();
       offEvt();
@@ -152,6 +160,10 @@ export default function App() {
       offSubagentEvent();
       offAssist();
       offDiff();
+      offPluginStatus();
+      offPluginPanels();
+      offPluginStatusbar();
+      offPluginOpenFile();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("piwood:open-command-palette", openPalette);
       window.removeEventListener("piwood:open-settings", openSettings);

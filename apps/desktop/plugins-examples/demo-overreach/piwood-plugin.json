@@ -1,0 +1,13 @@
+{
+  "name": "demo-overreach",
+  "version": "0.1.0",
+  "displayName": "示例·越权被拒",
+  "description": "manifest 仅声明 notify。激活后尝试调用未声明的 terminal:run / fs:write（diff.revert），演示权限门拒绝并记日志；随后合法 notify 作对照。",
+  "author": "pi-wood",
+  "pi": {
+    "desktop": {
+      "entry": "index.cjs",
+      "permissions": ["notify"]
+    }
+  }
+}

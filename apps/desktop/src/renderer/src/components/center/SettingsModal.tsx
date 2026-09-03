@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "../../stores/settings-store";
 import { cn } from "@/lib/utils";
 import { useSessionStore } from "../../stores/session-store";
+import { PluginsPanel } from "./PluginsPanel";
 
 /**
  * T3.2/T3.3 设置弹窗：Providers 密钥（safeStorage 钥匙串）/ 模型默认 / 审批策略 / 主题。
@@ -25,6 +26,7 @@ const sections = [
   { id: "theme", label: "主题" },
   { id: "ui", label: "界面" },
   { id: "ext", label: "扩展与包" },
+  { id: "plugins", label: "插件" },
 ] as const;
 
 const approvalOptions: Array<[string, string]> = [
@@ -53,7 +55,7 @@ function ListRow({ primary, secondary }: { primary: React.ReactNode; secondary?:
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ui" | "ext">("providers");
+  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ui" | "ext" | "plugins">("providers");
   const ui = useSettingsStore((s) => s.settings.ui);
   const patchUi = useSettingsStore((s) => s.patch);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -334,6 +336,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
                 </section>
               </div>
             )}
+
+            {tab === "plugins" && <PluginsPanel />}
           </div>
         </div>
       </DialogContent>

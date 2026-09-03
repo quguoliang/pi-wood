@@ -187,6 +187,34 @@ const api = {
     ipcRenderer.invoke("packages:search", { query }),
   engineSetModel: (provider: string, modelId: string): Promise<void> =>
     ipcRenderer.invoke("engine:setModel", { provider, modelId }),
+  // T5.2 桌面插件系统（PluginHost）
+  pluginsList: (): Promise<unknown[]> => ipcRenderer.invoke("plugins:list"),
+  pluginsSetEnabled: (id: string, enabled: boolean): Promise<unknown[]> =>
+    ipcRenderer.invoke("plugins:setEnabled", { id, enabled }),
+  pluginsRestart: (id: string): Promise<unknown[]> => ipcRenderer.invoke("plugins:restart", { id }),
+  pluginsReload: (): Promise<unknown[]> => ipcRenderer.invoke("plugins:reload"),
+  pluginsDemo: (kind: "crash" | "overreach"): Promise<{ triggered: boolean; kind: string }> =>
+    ipcRenderer.invoke("plugins:demo", { kind }),
+  onPluginStatus: (cb: (runs: unknown[]) => void): (() => void) => {
+    const h = (_e: unknown, runs: unknown[]): void => cb(runs);
+    ipcRenderer.on("plugins:status", h);
+    return () => ipcRenderer.removeListener("plugins:status", h);
+  },
+  onPluginOpenFile: (cb: (d: { path: string; focus?: boolean }) => void): (() => void) => {
+    const h = (_e: unknown, d: { path: string; focus?: boolean }): void => cb(d);
+    ipcRenderer.on("plugins:openFile", h);
+    return () => ipcRenderer.removeListener("plugins:openFile", h);
+  },
+  onPluginPanels: (cb: (panels: unknown[]) => void): (() => void) => {
+    const h = (_e: unknown, panels: unknown[]): void => cb(panels);
+    ipcRenderer.on("plugins:panels", h);
+    return () => ipcRenderer.removeListener("plugins:panels", h);
+  },
+  onPluginStatusbar: (cb: (items: unknown[]) => void): (() => void) => {
+    const h = (_e: unknown, items: unknown[]): void => cb(items);
+    ipcRenderer.on("plugins:statusbar", h);
+    return () => ipcRenderer.removeListener("plugins:statusbar", h);
+  },
 };
 
 export type PiPreloadApi = typeof api;

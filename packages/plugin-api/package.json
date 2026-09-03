@@ -1,0 +1,21 @@
+{
+  "name": "@pi-wood/plugin-api",
+  "private": true,
+  "version": "0.0.1",
+  "description": "pi-wood 桌面插件作者 API：manifest / DesktopApi 类型 + 权限白名单单一事实源 + 客户端桥（方案 §5.8/§6.1）",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/api.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}

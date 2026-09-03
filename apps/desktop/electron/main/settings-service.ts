@@ -22,6 +22,8 @@ export interface PiWoodSettings {
   /** T7.2：按会话 id 记录「自动接受审批」开关；缺省（无 key）视为未开启（fail closed）。 */
   autoAcceptSessions: Record<string, boolean>;
   workbench: { layout: unknown | null };
+  /** T5.2：插件启用状态（缺省视为启用；显式 false 才禁用） */
+  pluginsEnabled: Record<string, boolean>;
 }
 
 export function defaultSettings(): PiWoodSettings {
@@ -34,6 +36,7 @@ export function defaultSettings(): PiWoodSettings {
     approval: { mode: "highRisk", rules: [] },
     autoAcceptSessions: {},
     workbench: { layout: null },
+    pluginsEnabled: {},
   };
 }
 
@@ -68,13 +71,27 @@ function deepMerge<T>(base: T, patch: unknown): T {
   return out as T;
 }
 
+let cached: PiWoodSettings | null = null;
+function ensureLoaded(): PiWoodSettings {
+  cached ??= loadSettings();
+  return cached;
+}
+
+/** 读取当前内存态设置（渲染层 settings:get 与主进程子系统共用同一份，避免闭包漂移）。 */
+export function getSettings(): PiWoodSettings {
+  return ensureLoaded();
+}
+
+/** 深合并补丁并落盘，返回最新全量。主进程（如插件启用态）与渲染层 settings:set 都走这里。 */
+export function updateSettings(patch: unknown): PiWoodSettings {
+  cached = deepMerge(ensureLoaded(), patch);
+  saveSettings(cached);
+  return cached;
+}
+
 export function initSettingsIpc(): PiWoodSettings {
-  let current = loadSettings();
-  ipcMain.handle("settings:get", () => current);
-  ipcMain.handle("settings:set", (_e, patch: unknown) => {
-    current = deepMerge(current, patch);
-    saveSettings(current);
-    return current;
-  });
-  return current;
+  const initial = ensureLoaded();
+  ipcMain.handle("settings:get", () => ensureLoaded());
+  ipcMain.handle("settings:set", (_e, patch: unknown) => updateSettings(patch));
+  return initial;
 }

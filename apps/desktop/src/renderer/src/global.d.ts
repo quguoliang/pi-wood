@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo, SubagentRunInfo } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -99,6 +99,16 @@ declare global {
       onSubagentRuns(cb: (runs: SubagentRunInfo[]) => void): () => void;
       subagentList(): Promise<SubagentRunInfo[]>;
       onSubagentEvent(cb: (d: { runId: string; event: Record<string, unknown> }) => void): () => void;
+      // T5.2 桌面插件系统
+      pluginsList(): Promise<PluginStatus[]>;
+      pluginsSetEnabled(id: string, enabled: boolean): Promise<PluginStatus[]>;
+      pluginsRestart(id: string): Promise<PluginStatus[]>;
+      pluginsReload(): Promise<PluginStatus[]>;
+      pluginsDemo(kind: "crash" | "overreach"): Promise<{ triggered: boolean; kind: string }>;
+      onPluginStatus(cb: (list: PluginStatus[]) => void): () => void;
+      onPluginOpenFile(cb: (d: { path: string; focus?: boolean }) => void): () => void;
+      onPluginPanels(cb: (panels: PluginPanelEntry[]) => void): () => void;
+      onPluginStatusbar(cb: (items: PluginStatusItem[]) => void): () => void;
     };
   }
 }

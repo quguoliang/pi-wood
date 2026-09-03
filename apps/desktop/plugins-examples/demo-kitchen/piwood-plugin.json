@@ -1,0 +1,13 @@
+{
+  "name": "demo-kitchen",
+  "version": "0.1.0",
+  "displayName": "示例·全能力演示",
+  "description": "展示 §5.8 非敏感桌面 API：注册面板、状态栏项、窗口标题/进度、总线、打开文件、notify、getPermissions。",
+  "author": "pi-wood",
+  "pi": {
+    "desktop": {
+      "entry": "index.cjs",
+      "permissions": ["notify", "window:control", "panels", "statusbar", "bus:*", "editor:open", "fs:read"]
+    }
+  }
+}
