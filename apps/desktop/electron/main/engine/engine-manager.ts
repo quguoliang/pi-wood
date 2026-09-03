@@ -16,6 +16,7 @@ import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
 import { aggregateRunUsage } from "../subagent/usage.ts";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
+import { onGoalSettled } from "../goal/goal-runtime.ts";
 
 /**
  * 引擎管理器（T1.3）：主进程持有当前项目的 SdkAdapter 单例。
@@ -275,6 +276,19 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
           })
           .catch(() => undefined);
       }
+      // T7.5：目标模式 tick —— 每轮 settled 都走，runtime 内部判有无 active goal / aborted→暂停
+      void onGoalSettled(
+        {
+          sessionId: next.getSessionId() ?? "",
+          prompt: (t) => next.prompt({ text: t }),
+          stats: async () => {
+            const ri = await next.getRuntimeInfo();
+            return { totalTokens: ri.stats?.tokens?.total ?? 0, costUsd: ri.stats?.cost ?? 0 };
+          },
+        },
+        text,
+        { aborted: assistAborted },
+      ).catch(() => undefined);
     }
     // T2.2：edit/write 前后快照 → diff 推送右栏（含相对路径解析）
     // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测

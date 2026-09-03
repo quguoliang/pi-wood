@@ -6,26 +6,22 @@ import { reinjectProviderEnv } from "../provider/provider-manager";
 import { pickAuxModel } from "../provider/model-pick";
 import { loadSettings } from "../settings-service";
 import { permissionGateExtension } from "../security/approval-gate";
-import { type AssistResult, shouldAssist, buildAssistPrompt, parseAssist } from "./assist-parse";
-
-export type { AssistResult } from "./assist-parse";
+import { buildAuditPrompt, parseAudit, type AuditResult } from "./goal-prompt.ts";
 
 /**
- * T7.9 会话辅助（Session Assist）：每轮助手回复 settled 后，用**隔离的轻量运行时**生成
- * 简短回顾 + 1~3 条建议追问。为不污染左栏会话列表，辅助 SdkAdapter 的 projectDir 用系统临时目录
- * （会话按 cwd 归集，不会出现在真实项目的 sessionsList 中）；注入 denyAll 审批门 + 空工具，纯文本。
- * 复用当前已配置模型（尚无独立小模型设置），单次生成、带超时与单飞锁，任何失败降级为无辅助。
+ * T7.5 进度审计的小模型 one-shot（独立隔离运行时，不污染左栏会话列表：cwd 用系统临时目录、
+ * denyAll 审批门 + 空工具、纯文本）。与 T7.9 会话辅助同款——各自独立单例避免相互打断。
+ * 复用当前已配置模型（尚无独立小模型设置，见 §8 偏差）；失败/超时/不可解析一律返回 undefined。
  */
-const ASSIST_TTL_MS = 25_000;
+const AUDIT_TTL_MS = 25_000;
 
 let adapter: SdkAdapter | undefined;
 let starting: Promise<SdkAdapter> | undefined;
 let inFlight = false;
-
 let buf = "";
 let resolveCurrent: ((raw: string) => void) | null = null;
 
-function onAssistEvent(e: Record<string, unknown>): void {
+function onAuditEvent(e: Record<string, unknown>): void {
   if (e.type === "message_update") {
     const a = e.assistantMessageEvent as { type?: string; delta?: unknown } | undefined;
     if (a?.type === "text_delta" && typeof a.delta === "string") buf += a.delta;
@@ -42,8 +38,8 @@ function onAssistEvent(e: Record<string, unknown>): void {
   }
 }
 
-function assistCwd(): string {
-  const dir = join(tmpdir(), "pi-wood-assist");
+function auditCwd(): string {
+  const dir = join(tmpdir(), "pi-wood-goal-audit");
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -55,7 +51,7 @@ async function ensureAdapter(): Promise<SdkAdapter> {
   starting = (async () => {
     const next = new SdkAdapter();
     await next.start({
-      projectDir: assistCwd(),
+      projectDir: auditCwd(),
       uiBridge: { notify: () => {}, select: async () => undefined, confirm: async () => false, input: async () => undefined },
       customTools: [],
       inlineExtensions: [permissionGateExtension(() => ({ mode: "denyAll", rules: [] }), async () => false)],
@@ -63,13 +59,13 @@ async function ensureAdapter(): Promise<SdkAdapter> {
     try {
       const models = await next.getAvailableModels();
       const s = loadSettings();
-      // 会话辅助优先用小模型（smallModel），未配置则沿用默认模型
+      // 目标审计优先用小模型（smallModel），未配置则沿用默认模型（见 model-pick 优先级）
       const picked = pickAuxModel(models, s.smallModel, s.model);
       if (picked) await next.setModel(picked.provider, picked.id);
     } catch {
-      /* 交给 SDK 默认模型 */
+      /* SDK 默认模型 */
     }
-    next.subscribe((e) => onAssistEvent(e as unknown as Record<string, unknown>));
+    next.subscribe((e) => onAuditEvent(e as unknown as Record<string, unknown>));
     adapter = next;
     return next;
   })();
@@ -80,25 +76,25 @@ async function ensureAdapter(): Promise<SdkAdapter> {
   }
 }
 
-/** 生成一次辅助结果；并发/过短/失败均返回 null（引擎未就绪等异常安全吞掉）。 */
-export async function generateAssist(userText: string, assistantText: string): Promise<AssistResult | null> {
-  if (inFlight || !shouldAssist(assistantText)) return null;
+/** 跑一次审计；任何失败/超时/不可解析 → undefined（runtime 按「审计失败」计数处理）。 */
+export async function auditGoal(objective: string, lastAssistant: string): Promise<AuditResult | undefined> {
+  if (inFlight) return undefined;
   inFlight = true;
   try {
     const ad = await ensureAdapter();
-    await ad.newSession(); // 每轮独立上下文，避免历史累积
+    await ad.newSession();
     buf = "";
     const done = new Promise<string>((resolve) => {
       resolveCurrent = resolve;
     });
-    const timeout = new Promise<string>((resolve) => setTimeout(() => resolve(""), ASSIST_TTL_MS));
-    void ad.prompt({ text: buildAssistPrompt(userText, assistantText) }).catch(() => undefined);
+    const timeout = new Promise<string>((resolve) => setTimeout(() => resolve(""), AUDIT_TTL_MS));
+    void ad.prompt({ text: buildAuditPrompt(objective, lastAssistant) }).catch(() => undefined);
     const raw = await Promise.race([done, timeout]);
     resolveCurrent = null;
     buf = "";
-    return parseAssist(raw);
+    return parseAudit(raw);
   } catch {
-    return null;
+    return undefined;
   } finally {
     inFlight = false;
   }

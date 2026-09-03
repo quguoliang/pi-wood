@@ -64,6 +64,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
   const [keyDraft, setKeyDraft] = useState<Record<string, string>>({});
   const [models, setModels] = useState<Array<{ provider: string; id: string }>>([]);
   const [model, setModel] = useState<{ provider: string; id: string }>({ provider: "", id: "" });
+  const [smallModel, setSmallModel] = useState<{ provider: string; id: string }>({ provider: "", id: "" });
   const [approvalMode, setApprovalMode] = useState<string>("highRisk");
   const [theme, setTheme] = useState<string>("dark");
   const [saved, setSaved] = useState("");
@@ -87,8 +88,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
     void window.pi.resourcesList().then((r) => setResources(r as typeof resources));
     void window.pi.packagesList().then((r) => setPackages(r.packages));
     void window.pi.settingsGet().then((s) => {
-      const st = s as { model?: { provider: string; id: string }; approval?: { mode: string }; theme?: { fallback: string } };
+      const st = s as { model?: { provider: string; id: string }; smallModel?: { provider: string; id: string } | null; approval?: { mode: string }; theme?: { fallback: string } };
       if (st.model) setModel(st.model);
+      if (st.smallModel && st.smallModel.provider) setSmallModel(st.smallModel);
       if (st.approval?.mode) setApprovalMode(st.approval.mode);
       if (st.theme?.fallback) setTheme(st.theme.fallback);
     });
@@ -127,6 +129,13 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
 
   const saveDefaultModel = (): void => {
     void window.pi.settingsSet({ model }).then(() => flash("默认模型已保存"));
+  };
+
+  // T7.5/T7.9：辅助/审计小模型；传 null=沿用默认模型（存空哨兵 {provider:"",id:""}，选模型时视为无效跳过）
+  const saveSmallModel = (m: { provider: string; id: string } | null): void => {
+    const next = m ?? { provider: "", id: "" };
+    setSmallModel(next);
+    void window.pi.settingsSet({ smallModel: next }).then(() => flash(m ? "辅助/审计小模型已保存" : "已恢复：沿用默认模型"));
   };
 
   const saveApproval = (mode: string): void => {
@@ -210,6 +219,32 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
                 </Select>
                 <div>
                   <Button size="sm" onClick={saveDefaultModel} disabled={models.length === 0}>设为默认</Button>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    辅助 / 审计小模型（可选）：用于目标模式的进度审计与会话 recap/追问，让主对话用强模型、辅助任务用更省的模型。留「沿用默认」则不设独立小模型。
+                  </p>
+                  <Select
+                    value={smallModel.provider ? String(models.findIndex((m) => m.provider === smallModel.provider && m.id === smallModel.id)) : "-1"}
+                    onValueChange={(v) => {
+                      if (v === "-1") saveSmallModel(null);
+                      else { const m = models[Number(v)]; if (m) saveSmallModel(m); }
+                    }}
+                    disabled={models.length === 0}
+                  >
+                    <SelectTrigger className="w-full" size="sm">
+                      <SelectValue placeholder="选择辅助/审计小模型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="-1">（沿用默认模型）</SelectItem>
+                      {models.map((m, i) => (
+                        <SelectItem key={`small-${m.provider}/${m.id}`} value={String(i)}>
+                          {m.provider} / {m.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}

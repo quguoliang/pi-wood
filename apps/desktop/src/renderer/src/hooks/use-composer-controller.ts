@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { RuntimeInfo } from "@pi-wood/ipc-schema";
 import { useSessionStore } from "../stores/session-store";
 import { useBtwStore, buildContextBlock } from "../stores/btw-store";
+import { useGoalStore } from "../stores/goal-store";
 import { useWorkbenchStore } from "../stores/workbench-store";
 import { countLines } from "../lib/utils";
 import { readDraft, writeDraft, clearDraft } from "../lib/chat-draft-persistence";
@@ -172,6 +173,13 @@ export function useComposerController() {
       if (streaming && mode === "prompt") return;
       if (streaming && attachments.length > 0) {
         setError("生成过程中排队的消息暂不支持附件，请等待当前回复结束。");
+        return;
+      }
+      // T7.5：「作为目标发送」开启 → 本次输入成为目标并 kickoff（goal-runtime 后续据审计自动续跑）
+      if (mode === "prompt" && useGoalStore.getState().arm) {
+        setInput("");
+        setError("");
+        void useGoalStore.getState().set(currentSessionId ?? "", text);
         return;
       }
       setInput("");

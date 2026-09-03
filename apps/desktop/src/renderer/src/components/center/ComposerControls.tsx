@@ -30,6 +30,8 @@ interface ComposerControlsProps {
   onCompact(): void;
   onSend(): void;
   onAbort(): void;
+  goalArm: boolean;
+  onToggleGoal(): void;
 }
 
 const approvalOptions: Array<{ mode: ApprovalMode; label: string; detail: string }> = [
@@ -103,6 +105,19 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
             ))}
           </PopoverContent>
         </Popover>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!props.engineReady || props.streaming}
+          onClick={props.onToggleGoal}
+          aria-pressed={props.goalArm}
+          title="开启后，本次输入作为目标交给 agent 自主推进（小模型审计进度并自动续跑）"
+          className={cn(controlBtn, props.goalArm && "bg-primary/15 text-primary hover:text-primary")}
+        >
+          <Icon name="brain" />
+          <span>{props.goalArm ? "目标模式开" : "目标"}</span>
+        </Button>
       </div>
 
       <div className="flex items-center gap-1">

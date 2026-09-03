@@ -6,6 +6,7 @@ import { Icon } from "../ui/Icon";
 import { greeting } from "../../lib/time";
 import { isLargePaste } from "../../lib/utils";
 import { useComposerController, type ComposerController } from "../../hooks/use-composer-controller";
+import { useGoalStore } from "../../stores/goal-store";
 
 const quickPrompts = [
   "检查这个项目当前的状态和主要问题",
@@ -54,6 +55,8 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
 
 /** 亮灰输入卡（主层）：输入框 + 底部操作栏，二者同处一块、不拆分。 */
 function InputCard({ c, raised }: { c: ComposerController; raised: boolean }): React.JSX.Element {
+  const goalArm = useGoalStore((s) => s.arm);
+  const setArm = useGoalStore((s) => s.setArm);
   return (
     <div
       className={
@@ -79,6 +82,8 @@ function InputCard({ c, raised }: { c: ComposerController; raised: boolean }): R
         onCompact={c.compact}
         onSend={() => void c.send("prompt")}
         onAbort={() => void c.abort()}
+        goalArm={goalArm}
+        onToggleGoal={() => setArm(!goalArm)}
       />
     </div>
   );

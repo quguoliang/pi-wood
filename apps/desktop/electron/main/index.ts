@@ -14,6 +14,8 @@ import { initProviderIpc } from "./provider/provider-manager";
 import { initPluginsIpc, stopAllPlugins } from "./plugins/plugins.ipc";
 import { isPluginProbeMode, runPluginProbe } from "./plugins/plugin-probe";
 import { initSubagentPermissionsIpc } from "./subagent/permissions.ipc";
+import { initGoalIpc } from "./goal/goal.ipc";
+import { isGoalProbeMode, runGoalProbe } from "./goal/goal-probe";
 import { initWindowIpc } from "./window-controls";
 import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
@@ -143,6 +145,11 @@ if (!gotLock) {
       await runPluginProbe();
       return;
     }
+    // T7.5 目标模式 headless 探针：注入 fake adapter + 脚本审计驱动 goal-runtime 全链路，自检后 app.exit
+    if (isGoalProbeMode()) {
+      await runGoalProbe();
+      return;
+    }
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
@@ -162,6 +169,7 @@ if (!gotLock) {
     initBrowserIpc();
     initDevServerIpc();
     initPluginsIpc(sendToRenderer);
+    initGoalIpc(sendToRenderer); // T7.5 目标模式
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

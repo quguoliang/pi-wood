@@ -15,6 +15,11 @@ export interface PiWoodSettings {
   editor: { fontSize: number; tabSize: number };
   recentProjects: string[];
   model: { provider: string; id: string };
+  /**
+   * T7.5/T7.9：辅助类小任务（目标进度审计、会话 recap/追问）专用模型。缺省=沿用上面 model。
+   * 用于让主对话用强模型、审计/辅助用便宜模型。选模型见 provider/model-pick.ts。
+   */
+  smallModel?: { provider: string; id: string } | null;
   approval: {
     mode: "auto" | "highRisk" | "allAsk" | "denyAll";
     rules: Array<{ pattern: string; action: "allow" | "ask" | "deny" }>;

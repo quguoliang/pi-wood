@@ -224,6 +224,23 @@ const api = {
   ): Promise<unknown[]> => ipcRenderer.invoke("subagents:setPermission", { agent, tool, action }),
   subagentsClearPermissions: (agent: string): Promise<unknown[]> =>
     ipcRenderer.invoke("subagents:clearPermissions", { agent }),
+  // T7.5 目标模式
+  goalGet: (sessionId: string): Promise<unknown> => ipcRenderer.invoke("goal:get", { sessionId }),
+  goalSet: (
+    sessionId: string,
+    objective: string,
+    opts?: { tokenBudget?: number; maxTurns?: number },
+  ): Promise<unknown> => ipcRenderer.invoke("goal:set", { sessionId, objective, ...opts }),
+  goalPause: (sessionId: string): Promise<unknown> => ipcRenderer.invoke("goal:pause", { sessionId }),
+  goalResume: (sessionId: string): Promise<unknown> => ipcRenderer.invoke("goal:resume", { sessionId }),
+  goalClear: (sessionId: string): Promise<unknown> => ipcRenderer.invoke("goal:clear", { sessionId }),
+  goalUpdateObjective: (sessionId: string, objective: string): Promise<unknown> =>
+    ipcRenderer.invoke("goal:updateObjective", { sessionId, objective }),
+  onGoalStatus: (cb: (state: unknown) => void): (() => void) => {
+    const h = (_e: unknown, state: unknown): void => cb(state);
+    ipcRenderer.on("goal:status", h);
+    return () => ipcRenderer.removeListener("goal:status", h);
+  },
 };
 
 export type PiPreloadApi = typeof api;

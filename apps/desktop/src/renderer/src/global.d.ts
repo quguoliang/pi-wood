@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -113,6 +113,14 @@ declare global {
       subagentsListProfiles(): Promise<SubagentProfileInfo[]>;
       subagentsSetPermission(agent: string, tool: string, action: "allow" | "ask" | "deny" | "inherit"): Promise<SubagentProfileInfo[]>;
       subagentsClearPermissions(agent: string): Promise<SubagentProfileInfo[]>;
+      // T7.5 目标模式
+      goalGet(sessionId: string): Promise<GoalState | null>;
+      goalSet(sessionId: string, objective: string, opts?: { tokenBudget?: number; maxTurns?: number }): Promise<GoalState | null>;
+      goalPause(sessionId: string): Promise<GoalState | null>;
+      goalResume(sessionId: string): Promise<GoalState | null>;
+      goalClear(sessionId: string): Promise<null>;
+      goalUpdateObjective(sessionId: string, objective: string): Promise<GoalState | null>;
+      onGoalStatus(cb: (state: GoalState | null) => void): () => void;
     };
   }
 }

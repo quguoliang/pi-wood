@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "../../stores/session-store";
 import { useRuntimeStore, type TodoItem } from "../../stores/runtime-store";
+import { GoalStatusBar } from "./GoalStatusBar";
 import { Icon, type IconName } from "../ui/Icon";
 import { cn } from "@/lib/utils";
 
@@ -115,6 +116,7 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
           <div className="px-3 py-6 text-center text-[12.5px] text-muted-foreground">选择项目后展示运行时信息</div>
         ) : (
           <>
+            <GoalStatusBar />
             <Group title="会话">
               <Row icon="folder" title={activeProject}>{projectName}</Row>
               {info?.model && <Row icon="cpu">{info.model}</Row>}

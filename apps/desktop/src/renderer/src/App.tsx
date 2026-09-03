@@ -18,6 +18,7 @@ import { useBtwStore } from "./stores/btw-store";
 import { useSubagentStore } from "./stores/subagent-store";
 import { useAssistStore } from "./stores/assist-store";
 import { usePluginStore } from "./stores/plugin-store";
+import { useGoalStore } from "./stores/goal-store";
 import { useToolGroupsStore } from "./stores/tool-groups-store";
 import { useThemeStore } from "./stores/theme-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
@@ -152,6 +153,8 @@ export default function App() {
     const offPluginOpenFile = window.pi.onPluginOpenFile((d) => {
       if (d?.path) openWorkbenchFile(d.path);
     });
+    // T7.5 目标模式：状态推送落 store（settle/暂停/完成等即时刷新状态条）。
+    const offGoalStatus = window.pi.onGoalStatus((state) => useGoalStore.getState().applyStatus(state));
     return () => {
       offNotify();
       offEvt();
@@ -164,6 +167,7 @@ export default function App() {
       offPluginPanels();
       offPluginStatusbar();
       offPluginOpenFile();
+      offGoalStatus();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("piwood:open-command-palette", openPalette);
       window.removeEventListener("piwood:open-settings", openSettings);
