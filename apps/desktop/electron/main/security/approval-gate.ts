@@ -29,19 +29,34 @@ const SENSITIVE_PATH = /(^|[\\/])(\.env|\.git[\\/]|node_modules[\\/]|\.ssh[\\/])
 
 export type Decision = "allow" | "ask" | "deny";
 
-export function decide(policy: ApprovalPolicy, toolName: string, input: unknown): Decision {
+/** 工具级权限覆盖（T6.7）：工具名 → allow|ask|deny，来自某子代理 profile 的 per-tool 配置。 */
+export type ToolPermissionOverride = Record<string, Decision>;
+
+/**
+ * 审批裁决。可选 `perToolOverride`（来自子代理 profile 的 per-tool 配置）在**全局 mode 之前**生效，
+ * 但**不得越过两条底线**：① path-guard 敏感文件写（.env/.git/.ssh 等）恒为 deny；
+ * ② 全局 `rules` 命中优先（用户显式规则 > 单代理授权）。缺省（无覆盖 / 覆盖未命中该工具）→ 完全等同旧行为。
+ */
+export function decide(
+  policy: ApprovalPolicy,
+  toolName: string,
+  input: unknown,
+  perToolOverride?: ToolPermissionOverride,
+): Decision {
+  const override = perToolOverride?.[toolName];
   if (toolName === "read" || toolName === "ls" || toolName === "find" || toolName === "grep") {
-    // 只读工具默认放行（除非规则显式命中）
+    // 只读工具默认放行（除非规则显式命中，或该 profile 把此只读工具设为 ask/deny）
     const hit = matchRules(policy, toolName, input);
-    return hit ?? "allow";
+    return hit ?? override ?? "allow";
   }
-  // 敏感文件写保护（§9 path-guard）：.env / .git / node_modules / .ssh
+  // 敏感文件写保护（§9 path-guard）：.env / .git / node_modules / .ssh —— 硬底线，override 也不能放行
   const inputText = JSON.stringify(input ?? {});
   if ((toolName === "edit" || toolName === "write") && SENSITIVE_PATH.test(inputText)) {
     return "deny";
   }
   const hit = matchRules(policy, toolName, input);
   if (hit) return hit;
+  if (override) return override;
 
   switch (policy.mode) {
     case "auto":

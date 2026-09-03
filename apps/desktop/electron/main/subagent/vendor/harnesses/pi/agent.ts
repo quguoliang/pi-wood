@@ -148,7 +148,8 @@ export async function createPiSessionOptions(
   // pi-wood fork deviation: the child session's tool_call event hook does not fire,
   // so the host supplies a direct guard that the wrapped bash execute calls before
   // running. Returns a block-reason string to deny, or undefined to allow.
-  childToolGuard?: (toolName: string, input: unknown) => Promise<string | undefined>,
+  // `agentName` (T6.7) lets the host resolve this child's per-tool permission override.
+  childToolGuard?: (toolName: string, input: unknown, agentName?: string) => Promise<string | undefined>,
 ): Promise<CreateAgentSessionOptions> {
   const settingsManager = SettingsManager.create(context.cwd, agentDir, {
     projectTrusted: context.projectTrusted,
@@ -229,7 +230,7 @@ export async function createPiSessionOptions(
         onUpdate: unknown,
         ctx: unknown,
       ) => {
-        const reason = await childToolGuard(def.name, params);
+        const reason = await childToolGuard(def.name, params, context.config.name);
         if (reason) {
           return {
             content: [{ type: "text", text: `已由桌面审批策略拦截：${reason}` }],

@@ -92,6 +92,7 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
   const git = info?.git;
   const stats = info?.stats;
   const usage = info?.contextUsage;
+  const subagent = info?.subagentUsage;
   const showTasks = streaming || tasks.length > 0;
   const queued = queue.steering.length + queue.followUp.length;
   const visibleTodos = todos.filter((t) => t.status !== "deleted");
@@ -208,6 +209,35 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
               <Group title="统计">
                 <Row icon="context">{stats.userMessages + stats.assistantMessages} 条消息 · {stats.toolCalls} 次工具调用</Row>
                 <Row icon="command">{stats.tokens.total.toLocaleString()} tokens{stats.cost > 0 && ` · $${stats.cost.toFixed(4)}`}</Row>
+              </Group>
+            )}
+
+            {subagent && (
+              <Group title="子代理消耗">
+                <details>
+                  <summary className="flex cursor-pointer list-none items-center gap-2 text-[12.5px] text-foreground">
+                    <Icon name="context" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 break-words">
+                      {subagent.count} 个 · {subagent.tokens.toLocaleString()} tokens
+                      {subagent.cost > 0 && ` · $${subagent.cost.toFixed(4)}`}
+                    </span>
+                    {(subagent.perChild?.length ?? 0) > 0 && (
+                      <span className="ml-auto text-[10px] text-muted-foreground">明细 ▾</span>
+                    )}
+                  </summary>
+                  {(subagent.perChild?.length ?? 0) > 0 && (
+                    <div className="mt-1 space-y-1 border-l border-border/60 pl-3">
+                      {subagent.perChild!.map((c) => (
+                        <Row key={c.id} icon="context" title={c.id}>
+                          <span className="text-muted-foreground">{c.agentName}</span>
+                          {" · "}
+                          {c.tokens.toLocaleString()} tokens{c.cost > 0 && ` · $${c.cost.toFixed(4)}`}
+                          {c.elapsedMs > 0 && ` · ${(c.elapsedMs / 1000).toFixed(1)}s`}
+                        </Row>
+                      ))}
+                    </div>
+                  )}
+                </details>
               </Group>
             )}
           </>

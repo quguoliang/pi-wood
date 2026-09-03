@@ -173,6 +173,26 @@ export const RuntimeInfoSchema = z.object({
       cost: z.number(),
     })
     .optional(),
+  // T6.6：子代理成本汇总（token/费用）。主进程对活跃 parent 会话的子代理运行注册表求和得出；
+  // 无子代理时该字段缺席（渲染层据此不显示该行）。tokens = 各 child 的 input+output 之和。
+  subagentUsage: z
+    .object({
+      tokens: z.number(),
+      cost: z.number(),
+      count: z.number(),
+      perChild: z
+        .array(
+          z.object({
+            id: z.string(),
+            agentName: z.string(),
+            tokens: z.number(),
+            cost: z.number(),
+            elapsedMs: z.number(),
+          }),
+        )
+        .optional(),
+    })
+    .optional(),
   git: GitInfoSchema.optional(),
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>;

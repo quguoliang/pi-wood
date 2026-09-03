@@ -215,6 +215,15 @@ const api = {
     ipcRenderer.on("plugins:statusbar", h);
     return () => ipcRenderer.removeListener("plugins:statusbar", h);
   },
+  // T6.7 子代理 per-tool 权限
+  subagentsListProfiles: (): Promise<unknown[]> => ipcRenderer.invoke("subagents:listProfiles"),
+  subagentsSetPermission: (
+    agent: string,
+    tool: string,
+    action: "allow" | "ask" | "deny" | "inherit",
+  ): Promise<unknown[]> => ipcRenderer.invoke("subagents:setPermission", { agent, tool, action }),
+  subagentsClearPermissions: (agent: string): Promise<unknown[]> =>
+    ipcRenderer.invoke("subagents:clearPermissions", { agent }),
 };
 
 export type PiPreloadApi = typeof api;

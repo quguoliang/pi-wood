@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -109,6 +109,10 @@ declare global {
       onPluginOpenFile(cb: (d: { path: string; focus?: boolean }) => void): () => void;
       onPluginPanels(cb: (panels: PluginPanelEntry[]) => void): () => void;
       onPluginStatusbar(cb: (items: PluginStatusItem[]) => void): () => void;
+      // T6.7 子代理 per-tool 权限
+      subagentsListProfiles(): Promise<SubagentProfileInfo[]>;
+      subagentsSetPermission(agent: string, tool: string, action: "allow" | "ask" | "deny" | "inherit"): Promise<SubagentProfileInfo[]>;
+      subagentsClearPermissions(agent: string): Promise<SubagentProfileInfo[]>;
     };
   }
 }

@@ -13,6 +13,7 @@ import { browserCustomTools } from "../agent-tools/browser-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
 import { permissionGateExtension, decide, describeApprovalCall, type ApprovalPolicy } from "../security/approval-gate";
 import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
+import { aggregateRunUsage } from "../subagent/usage.ts";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
 
@@ -204,12 +205,19 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
         () => getPolicy(),
         (title, message, tool) => confirmViaRenderer(title, message, tool),
       ),
-    guardChildTool: async (toolName, input) => {
-      const decision = decide(getPolicy(), toolName, input);
+    guardChildTool: async (toolName, input, agentName) => {
+      // T6.7：按该 child 的 agent profile 名查 per-tool 权限覆盖，喂给审批门
+      // （敏感文件写 / 全局 rules 仍是底线，override 越不过；未配置的 agent/工具继承父全局策略）。
+      const override = agentName ? loadSettings().subagentPermissions?.[agentName] : undefined;
+      const decision = decide(getPolicy(), toolName, input, override);
       if (decision === "allow") return undefined;
-      if (decision === "deny") return "已由安全策略拦截（path-guard / denyAll）";
+      if (decision === "deny") {
+        return override?.[toolName] === "deny"
+          ? `已由子代理「${agentName}」的 per-tool 权限拒绝（${toolName}: deny）`
+          : "已由安全策略拦截（path-guard / denyAll）";
+      }
       const { title, message } = describeApprovalCall(toolName, input);
-      const ok = await confirmViaRenderer(title, message, toolName);
+      const ok = await confirmViaRenderer(agentName ? `子代理「${agentName}」· ${title}` : title, message, toolName);
       return ok ? undefined : "用户拒绝该操作";
     },
     onRuntime: (rt) => {
@@ -625,11 +633,14 @@ export function initEngineIpc(): void {
       adapter ? adapter.getRuntimeInfo() : Promise.resolve({}),
       collectGitInfo(),
     ]);
+    // T6.6：把当前项目子代理运行注册表的 token/费用汇总进 RuntimeInfo（无子代理 → undefined）
+    const subagentUsage = aggregateRunUsage(subagentRuntime ? subagentRuntime.runs.list() : []);
     return {
       cwd: activeProject,
       platform: `${process.platform} ${process.arch}`,
       node: process.version,
       ...pi,
+      subagentUsage,
       git: gitInfo,
     };
   });

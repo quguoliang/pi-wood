@@ -11,8 +11,9 @@ export interface PiWoodSubagentBridge {
   /**
    * child 工具执行前的桌面审批守卫：返回拦截原因字符串=拒绝，返回 undefined=放行。
    * 因 child 会话的 tool_call 事件钩子不触发，故由被包装的 child 工具 execute 直接调用。
+   * `agentName` = 该 child 对应的 agent profile 名（T6.7 per-tool 权限覆盖按此查表；缺省=继承全局）。
    */
-  guardChildTool: (toolName: string, input: unknown) => Promise<string | undefined>;
+  guardChildTool: (toolName: string, input: unknown, agentName?: string) => Promise<string | undefined>;
   /** 扩展建好运行时后回传，供主进程在切项目/停用时回收。 */
   onRuntime: (runtime: PiWoodSubagentRuntimeRef) => void;
   /** T6.5：child 会话原始事件回调（runId, 事件）→ 主进程归一后推给渲染层只读子会话视图。 */
@@ -29,6 +30,16 @@ export interface PiWoodSubagentRunView {
   elapsedMs: number;
   turns: number;
   activity?: string;
+  /** T6.6：镜像 vendored RunView 新增的用量投影（token/费用），供宿主成本汇总读取。 */
+  usage: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    cost: number;
+    contextTokens: number;
+    turns: number;
+  };
 }
 
 export interface PiWoodSubagentRuntimeRef {

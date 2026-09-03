@@ -22,6 +22,7 @@ import type {
   CancellationReason,
   LifecycleStatus,
   SingleResult,
+  UsageStats,
 } from "./types.ts";
 
 /** An immutable row derived from a run. Callers never see the live record. */
@@ -43,6 +44,11 @@ export interface RunView {
    * Absent until live activity or the child's first tool call. Display only.
    */
   activity?: string;
+  /**
+   * pi-wood 本地附加（T6.6 成本汇总）：随投影带出该 run 累计的 token/费用，
+   * 供宿主把子代理消耗递归汇总到父会话展示。vendored 原投影仅取 usage.turns。
+   */
+  usage: UsageStats;
 }
 
 /** The dispatcher's write access to one tracked run. */
@@ -185,6 +191,7 @@ export function createSubagentRuns(
       status: result.lifecycle.phase,
       elapsedMs: Math.max(0, end - result.startedAt),
       turns: result.usage.turns,
+      usage: result.usage,
       // Recorded by the dispatcher's fold or executor activity reporter; the
       // registry never looks inside a transcript. Settled rows are quiet.
       ...(result.lifecycle.phase === "running" &&

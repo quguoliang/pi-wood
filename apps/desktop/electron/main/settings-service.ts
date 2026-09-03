@@ -24,6 +24,13 @@ export interface PiWoodSettings {
   workbench: { layout: unknown | null };
   /** T5.2：插件启用状态（缺省视为启用；显式 false 才禁用） */
   pluginsEnabled: Record<string, boolean>;
+  /**
+   * T6.7：子代理 per-tool 审批权限覆盖（方案 §7.7）。按 agent profile 名索引，
+   * 值是该 agent 内「工具名 → allow|ask|deny」。子代理 child 审批门据此覆盖全局策略；
+   * 未列出的 agent/工具回退父全局审批策略（继承）。刻意存于 pi-wood 自有 settings 而非 agent
+   * frontmatter——vendored profile 校验会把未知 frontmatter 键判为无效并跳过整份 profile。
+   */
+  subagentPermissions: Record<string, Record<string, "allow" | "ask" | "deny">>;
 }
 
 export function defaultSettings(): PiWoodSettings {
@@ -37,6 +44,7 @@ export function defaultSettings(): PiWoodSettings {
     autoAcceptSessions: {},
     workbench: { layout: null },
     pluginsEnabled: {},
+    subagentPermissions: {},
   };
 }
 
@@ -85,6 +93,20 @@ export function getSettings(): PiWoodSettings {
 /** 深合并补丁并落盘，返回最新全量。主进程（如插件启用态）与渲染层 settings:set 都走这里。 */
 export function updateSettings(patch: unknown): PiWoodSettings {
   cached = deepMerge(ensureLoaded(), patch);
+  saveSettings(cached);
+  return cached;
+}
+
+/**
+ * 整体替换某一顶层配置段（非深合并）并落盘 + 更新共享 cached。
+ * 用于「需要删除键」的映射（如 T6.7 subagentPermissions 的清档/继承），
+ * 保证后续其它标签页的 settings:set 深合并不会拿陈旧段回写覆盖。
+ */
+export function replaceSection<K extends keyof PiWoodSettings>(
+  key: K,
+  value: PiWoodSettings[K],
+): PiWoodSettings {
+  cached = { ...ensureLoaded(), [key]: value };
   saveSettings(cached);
   return cached;
 }

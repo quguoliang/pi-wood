@@ -13,6 +13,7 @@ import { initDevServerIpc } from "./workbench/dev-server-detector";
 import { initProviderIpc } from "./provider/provider-manager";
 import { initPluginsIpc, stopAllPlugins } from "./plugins/plugins.ipc";
 import { isPluginProbeMode, runPluginProbe } from "./plugins/plugin-probe";
+import { initSubagentPermissionsIpc } from "./subagent/permissions.ipc";
 import { initWindowIpc } from "./window-controls";
 import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
@@ -152,7 +153,9 @@ if (!gotLock) {
     initWindowIpc(() => mainWindowRef);
     // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
-    initDataIpc(getAgentDir(), getActiveProjectDirSafe);
+    const agentDir = getAgentDir();
+    initDataIpc(agentDir, getActiveProjectDirSafe);
+    initSubagentPermissionsIpc(join(agentDir, "agents")); // T6.7 子代理 per-tool 权限
     initEngineIpc();
     initFileIpc(getActiveProjectDir);
     initTerminalIpc(sendToRenderer);
