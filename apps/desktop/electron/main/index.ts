@@ -3,13 +3,15 @@ import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// T8.P：主进程产物已切 ESM（out/main/index.mjs），__dirname 不可用，以 import.meta.url 推导
+// T8.P：主进程产物已切 ESM（out/main/index.js 在 type:module 下即 ESM；electron-vite 只把 preload 改名 .mjs），
+// __dirname 不可用，以 import.meta.url 推导
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
 import { initEngineIpc, getActiveProjectDir, getActiveProjectDirSafe } from "./engine/engine-manager";
+import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine-process-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc } from "./workbench/browser-service";
@@ -138,7 +140,9 @@ function createWindow(): void {
   }
 }
 
-const gotLock = app.requestSingleInstanceLock();
+// T8.0 P1 探针：无窗、自检后 app.exit。必须**跳过单例锁**——探针可与用户开着的 dev 实例并存
+const PROBE_ENGINE = isEngineProcessProbeMode();
+const gotLock = PROBE_ENGINE || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
@@ -168,6 +172,11 @@ if (!gotLock) {
     // T7.10 Agent Memory headless 探针：注入临时目录跑真 MemoryService，断言 scope/reviewed/隔离后 app.exit
     if (isMemoryProbeMode()) {
       await runMemoryProbe();
+      return;
+    }
+    // T8.0 P1 探针：fork utilityProcess 跑 Pi 引擎，断言装载性/双向 RPC/成本残留，自检后 app.exit(0|1|2)
+    if (PROBE_ENGINE) {
+      await runEngineProcessProbe();
       return;
     }
     ipcMain.handle("app:ping", () => ({

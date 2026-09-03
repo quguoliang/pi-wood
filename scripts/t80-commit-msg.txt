@@ -1,0 +1,37 @@
+T8.0 双探针：utilityProcess 引擎 + git worktree 生命周期 → D 方案判 Go
+
+新增探针（§7.9 关键路径门禁，无窗、自检后 app.exit）：
+- electron/main/engine/engine-child.mjs：utilityProcess 子进程入口（独立 .mjs，不打进
+  bundle）。双向帧协议 {kind:invoke|respond|event|cancel|control}、child 侧 ctx.ui 反向
+  RPC、宿主实现的 probe_host_echo customTool、关停走 runtime.dispose()（广播
+  session_shutdown）而非 session.dispose()
+- engine-process-probe.ts（electron . --engine-process-probe）：P1-a 装载性 / P1-b 双向
+  RPC / P1-c 成本与残留 / P1-d 打包形态；探针模式跳过单例锁以便与开着的 dev 并存
+- worktree-probe.mjs（纯 Node）：P2-a 生命周期 / P2-b 会话分家 / P2-c 六类降级
+
+实测结果：P1 dev 形态 14/14、P2 20/20 → 判 Go，D 方案不退路。
+- child 内 15 个工具与主进程内基线逐个全等（含 5 个社区包工具 + Skill mcp-scripting），
+  diagnostics 0 error ⇒ utilityProcess 里扩展加载等价于主进程
+- 事件流/反向 tool:execute/反向 ui:confirm 三链路闭环；cancel 可中止在跑的一轮；
+  child 硬崩只掉自己，主进程与另一 child 照常响应
+- fork→ready 75~88ms、装配 ≈1.1s、child RSS 198~225MB/对话（3 路 ≈600~675MB < 1GB 预算）
+- runtime.dispose() 1ms 返回、4 个 child 全部离场、node/python.exe Δ0（MCP 零残留）
+- worktree add 64~69ms（真实仓库 151~180ms）、不复制 node_modules（工作树 3.3MB）、
+  两树 diff 互不污染、两份改动先后 apply 回流、同行冲突被拒不自动合、清理回基线、
+  会话目录按 cwd 编码分家、六类降级均有显式文案
+
+三条实测发现（写进下游任务）：
+1. git apply --3way 对含空行上下文的补丁非零退出但内容已落盘（git 2.54 判 trailing
+   whitespace）→ T8.6 固定 --3way --ignore-whitespace（实测归零）+ 以内容复核
+2. 打包态 child 入口缺席（files 只有 out/**），而直接往 files 加源码路径会让
+   electron-builder 把工作区依赖映射算错（package:dir 失败，已回滚并留注释）
+   → T8.1 前置：构建时拷进 out/main/ 并对其 asarUnpack（不能用 extraResources，
+   落到 app 树外解析不到 @earendil-works/*）
+3. utilityProcess.fork 的 env 值含 undefined 直接 Invalid value for env（首轮全挂在此）
+
+度量口径两处修正：proc.pid 本机为 undefined → 由 child 自报；tasklist 按 PID 取 RSS
+解析不出值 → 以 child 自报 memoryUsage().rss 为准。性能红线表实测定档 4 行，其余 6 行
+如实标注为「T8.0 无对象可测，待 T8.1/T8.3/T8.5 实测定档」。
+
+顺带补 T8.P 打包侧证据：packaged exe 无头跑通主进程 ESM（读设置、注凭据、落日志），
+安装/交互仍未验（T5.3 阻塞不变）。

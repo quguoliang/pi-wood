@@ -1,0 +1,12 @@
+=== T8.0 P1 探针（form=packaged，node=22.21.1，electron=37.10.3）===
+项目目录（探针 cwd 基准）：C:\Users\1\Desktop\pi-wood\apps\desktop
+凭据：已注入（可真发 prompt）
+基线进程数：electron.exe=7 node.exe=4 总=296
+
+--- P1-d child 入口可解析性 ---
+✗ P1-d child 入口在当前形态下可解析 — form=packaged → 未找到，候选=C:/Users/1/Desktop/pi-wood/apps/desktop/release/win-unpacked/resources/app.asar/electron/main/engine/engine-child.mjs | C:/Users/1/Desktop/pi-wood/apps/desktop/release/win-unpacked/resources/app.asar/out/main/engine-child.mjs | C:/Users/1/Desktop/pi-wood/apps/desktop/release/win-unpacked/resources/app.asar/out/engine-child.mjs
+
+=== 结论 ===
+0/1 条通过
+  ✗ P1-d child 入口在当前形态下可解析 — form=packaged → 未找到，候选=C:/Users/1/Desktop/pi-wood/apps/desktop/release/win-unpacked/resources/app.asar/electron/main/engine/engine-child.mjs | C:/Users/1/Desktop/pi-wood/apps/desktop/release/win-unpacked/resources/app.asar/out/main/engine-child.mjs | C:/Users/1/Desktop/pi-wood/apps/desktop/release/win-unpacked/resources/app.asar/out/engine-child.mjs
+No-Go：装载性未达标，按退路回落「A + 每项目一活跃对话」并重写本节

@@ -6,6 +6,11 @@ files:
   - out/**
   - package.json
   - "!**/*.map"
+# ⚠ T8.0/P1-d 实测：utilityProcess 子进程入口 electron/main/engine/engine-child.mjs 在打包态缺席
+#   （files 只含 out/**）。直接往 files 里加该源码路径会让 electron-builder 把工作区依赖映射算错
+#   （报 "packages/engine/package.json must be under apps/desktop"，package:dir 直接失败）。
+#   正解留 T8.1 落地：由构建把入口拷进 out/main/ 并对 out/main/engine-child.mjs 用 asarUnpack
+#   （留在 app 树内才能解析 @earendil-works/* 依赖；extraResources 会落到 app 外、解析不到 SDK）。
 win:
   target:
     - target: nsis
