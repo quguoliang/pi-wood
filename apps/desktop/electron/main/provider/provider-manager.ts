@@ -45,7 +45,11 @@ const CustomProviderArgSchema = z.object({
 
 let cachedAgentDir: string | undefined;
 
-/** §8 规则：主进程禁止静态 import Pi（ESM-only），一律动态 import */
+/**
+ * T8.P 保留动态 import（非格式原因）：agentDir 惰性求值 + cachedAgentDir 缓存；
+ * Pi 已在 sdk-adapter 静态引入（旧「主进程禁止静态 import Pi」规则仅适用于 CJS 产物），
+ * 此处仅命中模块缓存。保留理由：本模块在引擎启动前就要跑（T3.2 密钥→env），结构不动。
+ */
 async function getAgentDirLazy(): Promise<string> {
   cachedAgentDir ??= (await import("@earendil-works/pi-coding-agent")).getAgentDir();
   return cachedAgentDir;

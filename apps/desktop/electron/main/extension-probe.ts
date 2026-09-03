@@ -13,6 +13,8 @@ export function isExtensionProbeMode(): boolean {
 
 export async function runExtensionProbe(send: (channel: string, data: unknown) => void): Promise<void> {
   /* eslint-disable @typescript-eslint/no-explicit-any */
+  // T8.P 保留动态 import（非格式原因）：探针自带独立装配路径（不依赖引擎/sdk-adapter），
+  // 便于单独验证「主进程内直接加载 Pi SDK」这一链路；Pi 静态与否不影响探针结论。
   const {
     createAgentSessionServices,
     createAgentSessionFromServices,

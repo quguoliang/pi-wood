@@ -42,6 +42,8 @@ export interface SessionTreeResult {
   defaultLeafId?: string;
 }
 
+// T8.P 保留动态 import（非格式原因）：Pi SDK 已随 sdk-adapter 静态进入主进程启动图，
+// 此处动态调用仅命中模块缓存，保留是为了维持本模块「按需取 SessionManager」的既有结构、零行为变更。
 async function loadPi(): Promise<typeof import("@earendil-works/pi-coding-agent")> {
   return import("@earendil-works/pi-coding-agent");
 }

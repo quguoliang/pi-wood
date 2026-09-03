@@ -1,6 +1,10 @@
 import { app, shell, BrowserWindow, ipcMain } from "electron";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// T8.P：主进程产物已切 ESM（out/main/index.mjs），__dirname 不可用，以 import.meta.url 推导
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
@@ -58,7 +62,8 @@ function createWindow(): void {
     ...(process.platform === "win32" ? { frame: false } : { titleBarStyle: process.platform === "darwin" ? ("hiddenInset" as const) : ("default" as const) }),
     backgroundColor: "#202020",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      // T8.P：electron-vite ESM 产物入口为 [name].mjs；sandbox:false 是 ESM preload 的硬依赖（不得改回 true）
+      preload: join(__dirname, "../preload/index.mjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
@@ -173,7 +178,8 @@ if (!gotLock) {
     initSettingsIpc();
     initProviderIpc();
     initWindowIpc(() => mainWindowRef);
-    // Pi ESM-only：agentDir 动态获取后再注册数据域 IPC（§8 规则：主进程禁止静态导入 Pi）
+    // T8.P 保留动态 import（非格式原因）：Pi 已随 sdk-adapter 静态进入启动图，此处仅命中模块缓存；
+    // 保留动态写法以维持「先取 agentDir、再注册依赖它的数据域 IPC」的注册时序，改动面最小。
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
     const agentDir = getAgentDir();
     initDataIpc(agentDir, getActiveProjectDirSafe);

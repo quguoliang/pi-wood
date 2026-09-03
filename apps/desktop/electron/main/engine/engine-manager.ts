@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow, dialog } from "electron";
 import { execFile } from "node:child_process";
 import { writeFileSync, mkdirSync, readFileSync, statSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir, homedir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -203,9 +204,15 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
   reinjectProviderEnv();
   const next = new SdkAdapter();
-  // T6.2（方案 1）：子代理以 SDK 托管的 ESM 扩展经 jiti 运行时加载（不打进 CJS 主进程）。
+  // T6.2（方案 1）：子代理以 SDK 托管的 ESM 扩展经 jiti 运行时加载（不打进主进程 bundle）。
+  // T8.P：产物切 ESM 后 __dirname 不可用，改 import.meta.url 推导；
+  //   dev 下产物在 out/main/index.mjs，"../../electron/..." 回到源码树 ✓；
+  //   packaged 下该相对路径落 asar 内不存在——已知遗留（T8.0/P1-d 复验），此处仅换基准不改语义。
   // child 审批门通过 globalThis 桥复用桌面 getPolicy + ApprovalCard confirm，杜绝审批旁路。
-  const subagentEntryPath = join(__dirname, "../../electron/main/subagent/pi-wood-subagent-entry.ts");
+  const subagentEntryPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../electron/main/subagent/pi-wood-subagent-entry.ts",
+  );
   const subagentEnabled = existsSync(subagentEntryPath);
   globalThis.__piwoodSubagentBridge = {
     buildChildGate: () =>

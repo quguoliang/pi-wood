@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "description": "pi-wood 桌面应用（Electron main/preload/renderer）",
+  "type": "module",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "node ../../scripts/ensure-electron.mjs && electron-vite dev",

@@ -1,0 +1,22 @@
+T8.P 主进程 CJS→ESM（§7.9 多对话批第 0 步）
+
+- desktop package.json 加 type:module；main 字段保持 out/main/index.js
+  （实测 electron-vite 2.3 的 [name].mjs 改名只作用于 preload，main 侧仅 format=es，
+  .js 在 type:module 下即 ESM；计划原文写改 .mjs 是错的，已回退）
+- electron.vite.config.ts / main/index.ts / engine-manager.ts 的 __dirname 全改
+  fileURLToPath(import.meta.url)；preload 路径改 ../preload/index.mjs
+  （sandbox:false 为 ESM preload 硬依赖，注释锁死）
+- 验收靶子：sdk-adapter.ts 的 Pi SDK 改静态 import * as PiSdk（ESM-only 包在 ESM 下
+  合法＝切净硬证明；渲染层经 @pi-wood/engine 根入口零影响）
+- 余 5 处动态 import 保留并各加「T8.P 保留动态 import（非格式原因）」注释
+  （Pi 已随启动图加载，动态仅命中模块缓存，保留为维持注册时序 + 最小改动面）
+- 门禁 9 项全绿（scripts/t8p-gate.ps1，日志 docs/proofs/ui-v3/t8p-gate.log）：
+  typecheck/test/build EXIT=0；产物 grep 断言 main 0×"use strict"·0×__defProp·
+  0×require(·静态 Pi=1·动态 Pi=5，preload .mjs 存在；plugin/goal/memory 三探针 EXIT=0；
+  ui-stress 10000 / capture / ui-chat 真机对话 EXIT=0；package:dir EXIT=0 产
+  release/win-unpacked（安装运行仍未验，T5.3 环境阻塞不变）
+- 顺手修两起环境故障：pnpm install 复原丢失的 @pi-wood/plugin-api 三处 workspace
+  junction（曾令 typecheck/build/test 同根因全挂，也是此前 pnpm dev 起不来的原因）；
+  三处旧包名死链接 node_modules/@pidesk/* 移入 .trash（曾令 @electron/rebuild ENOENT
+  挡 package:dir）
+- 执行计划勾 T8.P（含两处计划假设偏差的实测修正）+ §8 记录

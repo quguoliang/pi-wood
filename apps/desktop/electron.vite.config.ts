@@ -1,7 +1,11 @@
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+
+// T8.P：desktop 包已 "type": "module"，配置按 ESM 加载，__dirname 不可用
+const root = dirname(fileURLToPath(import.meta.url));
 
 // workspace 包以 TS 源码直连（不出 dist）：
 // main/preload 侧 exclude 出 externalize 列表，由 esbuild 打进产物；
@@ -13,7 +17,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: workspacePackages })],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "electron/main/index.ts") },
+        input: { index: resolve(root, "electron/main/index.ts") },
       },
     },
   },
@@ -21,19 +25,19 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "electron/preload/index.ts") },
+        input: { index: resolve(root, "electron/preload/index.ts") },
       },
     },
   },
   renderer: {
-    root: resolve(__dirname, "src/renderer"),
+    root: resolve(root, "src/renderer"),
     resolve: {
-      alias: { "@": resolve(__dirname, "src/renderer/src") },
+      alias: { "@": resolve(root, "src/renderer/src") },
     },
     plugins: [react(), tailwindcss()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "src/renderer/index.html") },
+        input: { index: resolve(root, "src/renderer/index.html") },
       },
     },
   },

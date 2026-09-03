@@ -48,6 +48,8 @@ export class ProjectManager {
     requiresResources: (cwd: string) => boolean;
   }> {
     this.trustCtx ??= (async () => {
+      // T8.P 保留动态 import（非格式原因）：trust 首次调用才惰性装配并缓存于 trustCtx；
+      // Pi 已在 sdk-adapter 静态引入，此处仅命中模块缓存，保留惰性结构不动。
       const pi = await import("@earendil-works/pi-coding-agent");
       const store = new pi.ProjectTrustStore(this.agentDir);
       return {

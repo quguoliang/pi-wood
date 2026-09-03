@@ -14,8 +14,11 @@ import type {
  * - 持有 runtime（工厂随 newSession/switchSession/fork 按 cwd 重建服务）
  * - 事件经 normalizeEngineEvent 归一化后分发
  *
- * Pi SDK 为运行时动态导入（保持本包类型可被渲染层安全引用）。
+ * T8.P：主进程产物已切 ESM（desktop "type":"module"），Pi SDK（ESM-only）改静态 import——
+ * 这是从「CJS 时代靠动态 import 挡 ERR_PACKAGE_PATH_NOT_EXPORTED」到「ESM 类型级安全」的验收靶子。
+ * 渲染层不受影响：本文件仅在 "@pi-wood/engine/sdk" 子路径（主进程专用）可达，根入口仍只导出类型。
  */
+import * as PiSdk from "@earendil-works/pi-coding-agent";
 import { normalizeEngineEvent } from "./event-bridge";
 import type {
   AvailableModel,
@@ -48,7 +51,7 @@ export class SdkAdapter implements EngineAdapter {
     this.agentDir = opts.agentDir;
     this.uiBridge = opts.uiBridge ?? noopBridge;
 
-    this.pi = (await import("@earendil-works/pi-coding-agent")) as unknown as PiModule;
+    this.pi = PiSdk as unknown as PiModule;
     const runtimeFactory = async (factoryOpts: RuntimeFactoryOptions) => {
       const services: AgentSessionServicesLike = await this.pi!.createAgentSessionServices({
         cwd: factoryOpts.cwd,
