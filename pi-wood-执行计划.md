@@ -578,7 +578,7 @@
 ## 7.8 OpenChamber 全仓借鉴批次（T7.1~T7.12）
 
 > **2026-09-02 决策**：系统性扫描 OpenChamber（`openchamber/openchamber`，本地 clone `/Users/admin/Desktop/personal/openchamber`）全仓，子代理 UX 层（§7.7）之外，整理出 12 项可借鉴模式。**原则：模式全搬，传输层不搬**（opencode HTTP/SSE → pi-wood in-process SDK + IPC）。按价值分三档：第一档高价值（T7.1~T7.6）建议优先做；第二档中价值（T7.7~T7.12）后续排期。
-> **现状核实**（源码级）：Composer 已有附件管线（`PromptCommandSchema.attachments`）；审批门四档策略已落地（`approval-gate.ts`）；会话 `items` 为 `ConversationItem` 判别联合（`session-store.ts`）；右栏 Chrome 式单标签（`RightPane.tsx`，`WorkbenchTab` 可扩展）；浏览器面板 headless Playwright 已落地；SDK fork 能力已有（`engine:fork` 通道）；provider 管理 8 内置源 + safeStorage 已落地；EnvironmentPanel 显示 RuntimeInfo（含 contextUsage）。
+> **现状核实**（源码级）：Composer 已有附件管线（`PromptCommandSchema.attachments`）；审批门四档策略已落地（`approval-gate.ts`）；会话 `items` 为 `ConversationItem` 判别联合（`session-store.ts`）；右栏 Chrome 式单标签（`RightPane.tsx`，`WorkbenchTab` 可扩展）；浏览器面板 headless Playwright 已落地；SDK 有 fork 能力但**桌面侧只有通道声明**（`ipc-schema/src/engine.ts:273` `ENGINE_CHANNELS.fork`，主进程**无 handler、preload 无桥**，2026-09-03 复核订正，补做见 §7.9 T8.1 步骤 6）；provider 管理 8 内置源 + safeStorage 已落地；EnvironmentPanel 显示 RuntimeInfo（含 contextUsage）。
 
 ### 第一档：高价值，建议优先
 
@@ -686,7 +686,7 @@
 
 > **完成说明与偏差**：本项目是**单 adapter / 单活跃会话**，SDK `fork()` 会把该 runtime 的活跃会话切成分支并重绑事件流，无法满足"不扰动主会话 + 与进行中任务并发"（那是 T6.1 多会话并发的范畴）。经用户拍板，**偏离计划的"真 fork 继承全史"**，改为**独立第二运行时 + 上下文前言**：① `engine-manager` 新增与主 adapter 完全隔离的 `btwAdapter`（`ensureBtwAdapter()` 惰性起、同 `projectDir`、**静默 uiBridge、customTools 空、注入 `denyAll` 审批门**杜绝副作用与审批弹窗），事件经新通道 `engine:btwEvent` 转发（不进主 `engine:event`）；换项目 `ensureEngineUnlocked` 里 `closeBtw()` 释放。② `buildBtwPromptText`：前置合成 system-reminder（"by-the-way…只回答此问题、勿继续主会话任务/计划"）+ 渲染层 `buildContextBlock` 裁的最近 ≤12 轮纯文本上下文（仅供参考）+ 问题。③ `use-composer-controller.send()` 在 streaming 早退**之前**拦截 `/^\/btw(\s|$)/` → 走侧边、主会话不收消息（主任务流式进行中亦可问）。④ `btw-store` 按 `currentSessionId` 存转录本（`message_update`/`agent_end`/`turn_end` 归约），切换/切回各看各的（满足"切回还在"）。⑤ 右栏新增 `btw` tab（`workbench-store`+`RightPane`+`BtwPanel` 只读，`Markdown`+`ThinkingCard`），「采用到主会话」经 `piwood:composer-insert` 追加；`Ctrl+Shift+B` 打开、面板 `x` 触发 `engine:btwClose` 释放。IPC/preload/类型：`btwAsk/btwAbort/btwClose/btwEvent`。
 - 来源：OpenChamber `packages/ui/src/lib/btw.ts`（fork 会话 + 合成 part 防任务串扰 + metadata 关联）
-- 前置：SDK fork 能力（已有 `engine:fork` 通道）
+- 前置：~~SDK fork 能力（已有 `engine:fork` 通道）~~ → 2026-09-03 复核订正：**只有通道声明、主进程无 handler、preload 无桥**，故当时「fork 不切主会话」不可用（真正原因是 `AgentSessionRuntime` 单活跃会话 + 通道未接线，见 §7.9 现状核实）
 - 步骤：
   1. **Composer 识别 `/btw` 前缀**：输入框 text 以 `/btw `（或 `/btw\n`）开头时，提取后面的问题作为侧边问题，不发到主会话
   2. **主进程 fork 会话**：调用 SDK fork（不切换当前 currentSessionId），fork 继承完整对话历史作为上下文
@@ -827,12 +827,355 @@
 11. **T7.8 定时任务**（大改动，自动化场景）
 12. **T7.12 用量/配额追踪**（中改动，账单透明）
 
+## 7.9 多对话并发（T8.P + T8.0~T8.8 · 原 T6.1 的正式展开）
+
+> **落地第 0 步已独立成任务：T8.P「主进程产物切 ESM」**（2026-09-03 第三轮决策，见本节内 T8.P）。它不给多对话带来任何隔离收益，独立前置的理由是**一次只动一处未知**——本批会同时改「引擎所在进程」和「Pi/扩展的加载链」，两件事叠加时崩局无法归因。
+>
+> **2026-09-03 第一轮拍板**：① 形态＝**单窗口多对话标签 + 后台并行执行**（切走的对话不中断、继续跑，标签上显进度/待审批/未读；切回来看到完整过程）。多窗口不在本批，但 T8.2 把事件路由从「写死窗口[0]」改成可定向，为其预留。② 作用域＝**直接覆盖多项目并发**（不按「先同项目再跨项目」分步），故本批是架构级改造而非 UI 加层；原 §8（2026-09-01「T6.1 多项目并发会话｜待办」）登记的改造范围在此展开成可勾选清单，T6.1 作废、以本节为准。
+>
+> **2026-09-03 第二轮拍板（评审后追加，改变了架构形态）**：在「扩展模块态在进程内无法隔离 + 同项目两对话会互踩文件」两条复核结论出来后，用户选择最激进档：
+> ③ **允许同一项目开多个并行对话，并直接上 git worktree 隔离**（每对话一个独立工作树 + 独立分支，完成后经 diff 回流主工作树）——不做「每项目一活跃对话」的保守版。
+> ④ **引擎搬进 `utilityProcess`**（每对话一个引擎子进程），用进程边界换取真隔离，接受随之而来的内存/启动成本与 RPC 协议工作量。
+> 二者互为支撑：worktree 使每对话的 cwd 天然不同（Pi 会话目录、扩展、快照、终端都随之按对话分开）；进程化则一举消掉「同 cwd 命中 `extensionCache` 共享模块态」「`globalThis.__piwoodSubagentBridge` 单例」「子代理 runtime 单槽」三类进程内串扰（见现状核实表）。**代价**：工期由 11~13 人日翻到 **约 22~28 人日**，且**关键路径变成 T8.0 进程化可行性探针**——若探针证 utilityProcess 载不动 Pi SDK/扩展（ESM + jiti + asar 三重风险，见 T8.0 与风险 1），则按已写定的**退路**改回「进程内引擎池 + 每项目一活跃对话 + 先修 `runtime.dispose()`」，届时本节需据此修订并记 §8。
+>
+> **一句话评估**：**可行，但会话本体便宜、隔离很贵**。Pi 的会话对象极轻（离线探针实测：一套 services 内再造一个会话 **1~3ms、RSS 增 0MB**；一段 120 条 ×≈3.5KB 的历史 **≈0.3MB 堆**），所以「多对话」本身的内存不是问题；**贵的是隔离**——进程内隔离做不到（扩展模块态被 `loader.js` 的进程级 `extensionCache` 复用），于是隔离只能是「各自一进程」，每对话净增从「几十 MB 堆」变成「一整个 Node/V8 + 全套扩展 + 其子进程的 RSS」。设计主轴因此定为：**每对话 = 一个引擎子进程 + 一个 git worktree + 一条 RPC 通道**，再套 **可见性驱动节流 + 全局并发闸门 + LRU 休眠（=优雅关停进程）**。
+>
+> **改造体量（客观计数，别低估）**：`engine-manager.ts` 内 **30 个 `ipcMain.handle`、11 处 `requireAdapter()`** 全部隐含「当前唯一会话」；渲染层 **16 个文件**订阅 `useSessionStore`；主进程 **5 个文件 21 处**引用 `activeProject`（`index.ts`/`engine-manager`/`memory`/`review`/`plugins`）。进程化再叠加：**9 个 customTool**（`browser-tools.ts` 5 + `memory-tools.ts` 4）、**1 个 inline 扩展**（`permissionGateExtension`）与**1 个经 `additionalExtensionPaths` 加载的子代理 ESM 入口**（`pi-wood-subagent-entry.ts`）全在主进程侧——跨进程后这些都得改成 child→main 的反向 RPC（工具执行、审批 confirm、ctx.ui 往返）；打包链路的 asar/`extraResources` 一并受影响（T5.3 环境阻塞项叠加）。
+
+### 现状核实（源码级，2026-09-03 复核）
+
+| 单点假设 | 位置 | 多对话并发的后果 |
+|---|---|---|
+| 全局唯一 `adapter` + `activeProject`，换项目 `adapter.stop()` 重建 | `engine/engine-manager.ts:72-73,198-202,361-362` | 切项目/切对话即销毁上一个引擎，**在跑的请求被中断，无后台续跑** |
+| SDK 一个 `AgentSessionRuntime` 只持一个活跃会话；`newSession/switchSession/fork` **先 teardown 当前 runtime 再建下一个** | `@earendil-works/pi-coding-agent` `dist/core/agent-session-runtime.d.ts:38-41`；桌面侧 `packages/engine/src/sdk-adapter.ts:247-268` | 单 runtime 内「切对话」结构性做不到「两个对话同时活着」→ **必须多引擎/多会话实例**，不是加个 currentSessionId 就行 |
+| **桌面 `SdkAdapter.stop()` 直接 `session.dispose()`，绕过 `AgentSessionRuntime.dispose()` 的 `session_shutdown` 广播** | `packages/engine/src/sdk-adapter.ts:192-196`；对比 SDK `agent-session-runtime.js::dispose()`（先发 `session_shutdown reason:"quit"` 再 `session.dispose()`）与 `agent-session.js::dispose()`（invalidate runner + `cleanupSessionResources`） | 扩展注册的 `session_shutdown` 清理（MCP 关服务、子代理收尾）**在桌面停引擎时根本不跑**。现状单引擎只在换项目/退出触发一次，几乎不可见；**对话池化后 suspend/resume 变成高频操作 → 直接放大成子进程与状态泄漏**。T8.1 必须先改成走 `runtime.dispose()` |
+| 事件 payload 不带会话/项目归属；`send()` 写死 `getAllWindows()[0]` | `packages/ipc-schema/src/engine.ts:60-99`（全变体无 sessionId，但均 `.passthrough()`）、`engine-manager.ts:131-133,277` | 事件无法路由；即便开第二窗口也只收到窗口[0] 的流 |
+| **扩展模块态在进程内无法隔离**：`DefaultResourceLoader` 走 `loadExtensionsCached`，其 `extensionCache` 是 `loader.js` 的**模块级全局 Map**、只按 `extensionCacheCwd`/`generation` 失效（`resource-loader.js:412,426,441`；`extensions/loader.js:116-130,410-434,499-525`） | 同左 | ① **同一 cwd 建第二个引擎命中缓存 → 拿到同一个 factory → 扩展「模块顶层 state」跨对话共享**（factory 内局部 state 才每次新建）→ 方案 A 在进程内也拿不到真隔离；② **不同 cwd 交替建引擎会 `clearExtensionCache()` 并重生成号** → 上次的工厂缓存整体作废、扩展被**重新求值**，旧实例仍被活会话持有却无人回收 → 像 `pi-mcp-adapter` 这类在 init/factory 里拉起子进程的扩展，**每对话净增一套子进程且不会随 JS 对象释放**（叠加上一行 `session_shutdown` 不广播 → 泄漏近乎必然）。这是选 ④「引擎进 `utilityProcess`」的直接理由 |
+| Pi 会话目录**按 cwd 编码**（`~/.pi/agent/sessions/<encoded-cwd>/*.jsonl`） | SDK `SessionManager`（`session-service.ts:12` 注明与 CLI 同源） | ① 同项目两对话共用同一 sessions 目录 → 会话树混在一起；② **worktree 化会把会话分家到 `<encoded-worktree>`** → T1.4「CLI `pi --resume` 续同一会话」与左栏 `SessionManager.list(cwd)` 必须按「主项目 + 其全部 worktree」聚合，否则用户从 CLI 看不到桌面新对话（回归 T1.4 硬验收） |
+| 渲染层单一扁平 `items` + 单一 `streaming/queue/liveText` | `stores/session-store.ts:66-81`，16 个消费文件；`App.tsx:114` 单条 `onEngineEvent` 全局喂入 | 并发流式互相覆盖，历史整表替换（`loadMessages/reset:319-345`），无分片/keep-alive |
+| 审批与 ctx.ui 队列按全局数字 id、无会话归属 | `engine-manager.ts:88-93,142-154,167-183` | 对话 A 的审批卡可能显示在 B 的界面并被 B 的应答放行；超时拒绝错配 |
+| 子代理运行时单槽 + `globalThis.__piwoodSubagentBridge` 单例桥 | `engine-manager.ts:79,210,468-473` | 多项目并存时后创建的引擎覆盖桥与 `subagentRuntime`，前一个项目的子代理归属丢失 |
+| `/btw` 第二运行时单槽、换项目一并释放 | `engine-manager.ts:76,201,430-431` | 只容一个侧边问答；跨对话生命周期归属错 |
+| 辅助/审查/审计三个隔离运行时各自 module 单例 + 单个 `inFlight` 布尔 | `assist/assist-service.ts:23,85-86`、`review/review-service.ts:21,86-87`、`goal/goal-audit.ts:20,81` | 多对话并发时**后到的直接静默跳过**（assist 返 null / review 报「已有一次在跑」/goal 审计 undefined）→ 变成不可见的功能失效 |
+| MemoryService project scope 绑唯一活动项目 | `memory/memory-service.ts:23,48,64,90,152` | 对话在 B 项目时，A 项目对话的 agent 写记忆会落错项目 |
+| 快照 / git 采集 / 文件树 / 审查 diff 绑 `activeProject` | `engine-manager.ts:74,98,274-275`、`index.ts:183`、`review/review.ipc.ts` | 工作区状态跨对话串台，回滚归属不清 |
+| 右栏标签集全局单套（`openTabs`/`diffs`），面板每类单实例 | `stores/workbench-store.ts:17,32`、`components/right/RightPane.tsx:151-206` | 对话 A 打开的文件/diff/终端在对话 B 里也看得到 |
+| 终端主进程已支持多 pty，但面板每项目仅 1 个且换项目 kill；浏览器是全局单例 headless page | `workbench/terminal-service.ts:17`、`TerminalPanel.tsx:35,65`、`workbench/browser-service.ts:21-52` | 多对话并发时终端被 kill 丢上下文；浏览器状态共享（一个对话导航会顶掉另一个） |
+| 子代理并发无上限；深度 `MAX_SUBAGENT_DEPTH=1` | `subagent/vendor/runner.ts:19,27`、`vendor/docs/adr/0001-unbounded-subagent-concurrency.md` | 单对话即可无界扇出，×N 对话是进程/上下文最坏放大器 |
+| 插件宿主每插件 1 个 utilityProcess、崩溃退避重启 ≤3 | `plugins/plugin-host.ts:17,127` | 与对话数无关（宿主级共享），**本项不恶化** |
+| 已按 sessionId 分键、天然可复用 | `provider/usage-tracker.ts:49,81`、`goal/goal-runtime.ts:40`、`stores/btw-store.ts`(`bySession`) | 用量归属、目标状态、侧边转录本无需改造 |
+| 会话持久化本就是 per-cwd jsonl（多会话是数据层既有事实） | Pi `SessionManager`（`~/.pi/agent/sessions/<encoded-cwd>/`）、`electron/main/engine/session-service.ts:49-61`、`ipc/data.ipc.ts:91-101` | **数据模型不欠缺**：缺的只是引擎池 + 渲染层并发，不改存储格式 |
+
+### 探针实测（2026-09-03，性能评估的事实底座）
+
+脚本 `apps/desktop/scratch/multi-session-probe.mjs`（Node 22.14 linux-arm64、`HOME=/tmp/probehome`、`PI_OFFLINE=1`、`--expose-gc`，每步 gc 后取 `memoryUsage()`）：
+
+```
+[services shared] create=20ms  mem={rss:172, heap:38}
+  [session B0] create+bind=3ms  tools=4     ← 第 2~6 个会话：1~3ms，RSS 全程不涨
+  [session B1..B5] create+bind=1~3ms
+B: N=6 总增 RSS=0MB heap=0MB
+方案 A（每会话独立 services）+ 首个 session 合计 = 21ms
+```
+
+另测上下文驻留成本（`memsim.mjs`）：8 对话 × 120 条（单条≈3.5KB 正文 + tool 输出）= 960 条，**堆增 2.2MB → 每对话 ≈0.3MB**。
+
+> **⚠ 数据适用边界（必须写清，否则会被当成承诺）**：沙箱 `HOME` 为空 → **未加载任何社区扩展、无凭据、无 MCP**，故 `createAgentSessionServices` 的 20/6ms 只是「无扩展」下界。真机 `~/.pi/agent/npm` 装了 `pi-mcp-adapter`/`pi-web-access`/`pi-plan-mode` 等，扩展经 jiti 加载、部分扩展自己拉子进程 → **每对话一套 services 的真实成本要靠 T8.0 在真机重测后才能定预算**。同理 Node 20 跑不动本 SDK（缺 `fs.globSync`、undici@8 要 `markAsUncloneable`，探针须 Node 22+ 或 Electron 内跑）——这也是本项目「无窗探针必须在真机/Electron 里跑」的又一例证。
+
+### 方案选型（A/B/C 已评估并否决，采用 D）
+
+- **A 每对话一套进程内 `SdkAdapter`** — ❌ 否决：所谓"隔离最彻底"经复核不成立。扩展工厂被 `loader.js` 的**进程级 `extensionCache`** 按 cwd 复用（现状核实表第 5 行），同 cwd 的多对话共享扩展模块态、跨 cwd 交替还会整体作废缓存并重求值 → 串扰与"旧实例持有者已走、新副本又起一套子进程"两种坏情况同时存在。仍可作为 D 探针失败时的**降级退路**（配合"每项目一活跃对话"规避同 cwd 共享）。
+- **B 每项目一套 services + 每对话一个 `AgentSession`** — ❌ 否决：省的是无关紧要的 1~3ms/0MB，代价是把扩展实例与 `extensionsResult.runtime` 显式共享（`agent-session.js:2189,2195`），比 A 更差。仅保留为"同项目内并行只读副对话"的极端省钱形态，不进本批。
+- **C 多窗口（每对话一窗口）** — ❌ 否决：隔离粒度是渲染进程而非引擎，引擎仍在同一主进程内共享扩展模块态；且渲染进程 ×N、跨窗口审批与 workbench 状态全要重做，与既有 UI 偏好（交互统一贴 Composer）冲突。T8.2 的可定向路由为其留缝，本批不做。
+- **✅ D 每对话 = 一个 `utilityProcess` 引擎 + 一个 git worktree + 一条双向 RPC（本批采用）**：
+  - **换来**：真隔离——扩展模块态、`globalThis.__piwoodSubagentBridge` 单例、子代理 runtime 单槽、`btwAdapter` 单槽全部退化为"每进程一份"，串扰类别从 5 个（现状核实表）归零；崩溃隔离（坏扩展只砸一个对话，插件宿主已有退避重启范式可抄）；worktree 顺带解决"同项目两对话互踩文件 / `git index.lock` 打架 / 快照回滚撤销他人改动"。
+  - **代价（明码）**：① RSS 由"共享堆"变"每对话一整个 Node/V8 + 全套扩展 + 其子进程"，**每对话净增预计 100~300MB 量级，由 T8.0 出真数后回填红线**；② 冷启动 = fork + ESM 载 SDK + jiti 载全部扩展（进程内探针下界 20ms，真机含扩展为秒级，同样待 T8.0）；③ **9 个 customTool + 审批门 inline 扩展 + 子代理入口**都在主进程侧，须改造成 child→main 反向 RPC（工具执行、`confirm/select/input` 往返），并新增一层 child 生命周期/背压/看门狗协议；④ 打包链路（asar / `extraResources` / `.ts` 扩展入口能否在 packaged child 里被 jiti 读到）与 T5.3 环境阻塞叠加；⑤ 工期 **22~28 人日**（约 A 方案的两倍）。
+- **退路（写死，避免探针翻车后临时决策）**：若 T8.0 判 D 不可行（utilityProcess 内 SDK/扩展装载失败、或 RPC 往返延迟使流式体感明显回退、或每对话 RSS 超预算且无法收敛），则本批降级为 **A + 每项目一活跃对话 + 先落 `stop()→runtime.dispose()` 修复 + worktree 隔离延后**，据此修订本节并重记 §8；届时同项目多对话回到"另立一批随 worktree 一起做"。
+
+### 性能红线（每个任务的验收都要对着这张表量，超线即不合格）
+
+> 打「⏳」的数字现在是**待回填占位**，必须由 T8.0 在真机（已装社区包 + 已配凭据）测出的基线替换；填不了数就不许进 T8.1。「度量口径」列是硬性要求——**没有可自动判定的口径，红线就只是愿望**，一律经 `--concurrency-probe` 输出计数 + 退出码。
+
+| 维度 | 预算 | 度量口径（怎么自动判） | 保障手段 |
+|---|---|---|---|
+| 每对话净增 RSS（含引擎子进程 + 其扩展/子进程） | ⏳ 真机基线；候选 ≤ 300MB/对话、3 对话合计 ≤ 1GB | 探针轮询 `utilityProcess` 与主进程 RSS，取「起第 N 个对话前后的进程树 RSS 差」 | 活跃进程硬上限（默认 3，可配 1~4）+ LRU 关停 |
+| 对话冷启动（fork + 载 SDK + 载扩展 + `bindExtensions`） | ⏳ 候选 ≤ 3s（首 token 前可接受，须有进度态） | 探针打时间戳：fork→`ready` 帧→首个 `agent_start` | 引擎惰性起、worktree 后台预建、启动期显「正在准备引擎…」 |
+| RPC 往返延迟（child→main→renderer 两跳） | 事件到达 ≤ 20ms p95；审批往返 ≤ 40ms p95 | 探针在帧上打 `t0`，渲染层回 `t1`，主进程统计 p50/p95 | 批流（多事件一帧）、结构化克隆而非 JSON、高频 delta 走合并通道 |
+| 后台对话事件流量 | ≤ 6 帧/秒/对话 | 主进程 IPC 计数器（每对话每秒帧数、每帧聚合条数） | text/tool/bash delta 按 200ms 或 4KB 聚合（T8.3） |
+| 3 路并发流式时前台对话体感 | 无可感知掉帧（rAF 帧间隔 ≤ 33ms 的 p95）、主进程 CPU ≤ 单核 60% | 渲染层内置 rAF 掉帧计数器 + 探针读主进程 CPU | 仅 active 对话逐 token 上屏；后台只更摘要徽章（≤2Hz） |
+| 切换已激活对话首屏 | ≤ 100ms | 从 `setActiveConversation` 到首帧渲染打点 | store 分片常驻、不整表重读 jsonl |
+| 休眠→恢复（关停进程→重 fork→`switchSession`） | ≤ 4s（含冷启动），且必须给进度态 | 探针计时 | 只休眠非 streaming；恢复即续 jsonl |
+| worktree 创建 / 回流 | 创建 ≤ ⏳（中大型仓库实测）、回流 `git apply` ≤ 1s | 探针跑 `git worktree add` 计时（含 node_modules 是否被复制的坑） | 惰性建树、复用 `.pi-wood/worktrees/`、只 diff 不复制依赖 |
+| 全局在飞 prompt | ≤ 3（可配 1~6） | 探针断言峰值并发数 | 超限入 per-对话队列、标签显「排队中」（T8.5） |
+| 全局在飞子代理 run | ≤ 6（跨对话共享；另加 per-对话 ≤ 4） | 探针数 `runs.list()` 峰值 | `agent_start` 接缝排队而非直接 spawn（T8.5） |
+| 残留进程数 | 关闭全部对话后回到基线（**MCP 子进程零残留**） | 探针起/关 3 轮后 `ps`/`tasklist` 计数比对 | `stop()`→`runtime.dispose()` 修复 + 进程退出后看门狗扫残留（T8.5） |
+| 单对话体感 | **不得回退**（流式延迟、审批往返、`ctx.ui` 阻塞往返） | 并发数=1 跑 `--ui-chat` 门禁并与改造前逐位对照 | D 的最大风险点：多两跳 RPC，必须用并发=1 的 A/B 对照守住 |
+
+### [ ] T8.P **全批第 0 步**：主进程产物由 CJS 切 ESM（前置，先于 T8.0）
+- 来源：2026-09-03 第三轮决策（评审「把 CJS 改 ESM 对整体有帮助吗」时拍板：独立成批、置于多对话最前）
+- 前置：无。**T8.0/P1 与 T8.1 的 child 入口设计都以它已完成为前提**
+- **为什么放最前（不是为了收益，是为了归因）**：§7.9 会同时改动「引擎所在进程」与「Pi/扩展的加载链（ESM-only SDK + jiti + asar）」。模块格式与加载链是同一条链路，两件事一起做，任何 packaged/dev 崩局都无法二分归因。先单独切 ESM、单独验干净，把未知数从 2 降到 1。
+- **它不解决什么（写死，防止误判为"顺手把隔离也解决了"）**：`extensionCache` 的进程级模块态共享、子进程泄漏、两跳 RPC 时延、token/429 成本、worktree 冲突——**一条都不解决**。现存的格式坑已被写法挡住：产物 `out/main/index.js` 是 CJS，但 Pi SDK 的 5 个入口全是真动态 import（`out/main/index.js:46,671,1099,1235,2117`），首方源码里 `require(` **0 处** → 切 ESM 只是把「不得静态 import ESM-only 包」这条纪律变成类型级安全。
+- 已核实的可行性事实：`electron-vite@2.3.0` 自带 ESM 支持——`supportESM()` 判 Electron 主版本 **≥28**（本机 `electron ^37.10.3` ✓），且当 `package.json` 的 `type==='module'` 时 main/preload 的 rollup `format` 自动取 `es` 并把入口文件名改成 `[name].mjs`；**无需升级 electron-vite/vite/electron**。ESM preload 需 `sandbox: false`，`index.ts:62` 已是该值（**顺带确认这是硬依赖，日后不得随手把 sandbox 改回 true**）。
+- 步骤（改动面很小，逐项验）：
+  1. `apps/desktop/package.json`：加 `"type": "module"`；`main` 由 `out/main/index.js` → **`out/main/index.mjs`**（因 electron-vite 改产物扩展名）
+  2. `electron.vite.config.ts`：配置自身在 `type: module` 下按 ESM 加载，3 处 `resolve(__dirname, ...)` → `fileURLToPath(import.meta.url)` 推出的 `__dirname`（否则 vite 配置直接报 `__dirname is not defined`）；`externalizeDepsPlugin({ exclude: workspacePackages })` 保持不变
+  3. `electron/main/index.ts`：`__dirname` → `import.meta.url`；preload 路径 `../preload/index.js` → `../preload/index.mjs`；`--ui-chat`/各探针的 `electron . --flag` 入口随 `main` 字段自动生效，无需改脚本
+  4. `electron/main/engine/engine-manager.ts:208`：`join(__dirname, "../../electron/main/subagent/pi-wood-subagent-entry.ts")` 改 `import.meta.url` 基准，**并复验 dev 与 packaged 两种形态下该 `.ts` 路径仍解析正确**（这是 §7.9 现状核实里「路径基准随产物形态漂移」的老问题，MEMORY 已有同类条目）
+  5. CJS 依赖的 ESM 互操作逐个冒烟（named import 走 cjs-module-lexer 启发式，是本次最可能翻车点）：`@lydell/node-pty`、`playwright-core`（`{ chromium }`）、`zod`、`diff`、`ignore`、`shiki`、四个 `@pi-wood/*` workspace 包
+  6. **解禁一处静态 import 作为验收靶子**：`packages/engine/src/sdk-adapter.ts:51` 的动态 import 改静态 `import`（Pi 是 ESM-only，CJS 下必崩、ESM 下合法）——**这一处改动能 build + 真机跑通，才算真的切过去了**；其余 4 处动态 import 保持动态（避免启动即载重 SDK），并在注释里说明为何保留
+  7. 文档与记忆同步：MEMORY 里「第一方代码别静态 import 进 bundle（esbuild 转 require 即崩）」一条**改为标注「仅适用于 CJS 产物；desktop 主进程已于 T8.P 切 ESM」**，§8 记偏差；`apps/desktop/DESIGN.md`/`PRODUCT.md` 若有构建描述一并对齐
+- 验收：
+  - [ ] `pnpm -r typecheck` 全绿；`pnpm exec electron-vite build` 三目标成功，且 **`out/main/index.mjs`/`out/preload/index.mjs` 内不再出现 `"use strict"` + `__defProp` 的 CJS 序言、含 `import`/`export` 语句**（grep 断言，别靠肉眼）
+  - [ ] dev 真机启动闭环不回退：选项目 → 对话 → 工具卡 → 审批 → 终端(node-pty) → 浏览器(playwright) → 代码高亮(shiki) 全部可用
+  - [ ] 探针全绿：`--plugin-probe`/`--goal-probe`/`--memory-probe` 仍 EXIT=0，`--ui-stress 10000` 与 `--capture` 双布局复验通过
+  - [ ] 子代理仍生效：`agent_start` → 社区/自建 agent 委派链可用（验 `pi-wood-subagent-entry.ts` 经 jiti 在新路径基准下仍被加载）
+  - [ ] 打包态至少产一次物并记录（若受 T5.3 环境阻塞无法装/跑，**必须显式标注"打包态未验"**，不许把 dev 绿当作 packaged 绿）
+  - [ ] `sdk-adapter.ts:51` 静态 import 后 `git grep -n "await import(\"@earendil-works"` 余 4 处且各有保留理由的注释
+- 验证方式：`pnpm -r typecheck && pnpm exec electron-vite build && grep -c '"use strict"' out/main/index.mjs` + 真机 dev 冒烟 + 三探针退出码
+- 预估：**0.5~1 天**（含真机冒烟）。风险集中在步骤 5/6 的 CJS↔ESM 互操作与步骤 4 的路径基准，不在格式本身
+- **退路**：若步骤 5 出现无法绕过的 CJS named-import 互操作问题（某依赖只能 `createRequire` 取），不阻塞本批——保留 `createRequire` 局部兜底并记 §8，只要主产物是 ESM 即达成目的
+
+### [ ] T8.0 前置探针：utilityProcess 引擎可行性 + worktree 生命周期（D 方案的 Go/No-Go 门禁）
+- 来源：本节「方案选型 D」「性能红线」占位数字；§0 规则 3（偏差先记录再动工）；Phase 0 既有探针范式（`--plugin-probe`/`--memory-probe`/`--goal-probe`，无窗 + `app.exit(0/1)`）
+- 前置：**T8.P（主进程已切 ESM，child 入口才能用静态 ESM import 验）**。**但必须在 T8.1 之前完成**——本批所有预算与选型都挂在它的结论上，跳过后写码等于赌
+- 步骤：
+  1. **新建 `electron/main/engine/engine-process-probe.ts`**（`electron . --engine-process-probe`，`index.ts` `whenReady` 检 flag → 早返回、不起窗口、不加载引擎），仿插件宿主的 `utilityProcess.fork(entry, [], {stdio:['ignore','pipe','pipe']})`（⚠ 选项是 `stdio` 不是 `stdout/stderr`，此坑已入 MEMORY）
+  2. **P1-a 装载性**：child 内**动态 `import()`** Pi SDK（ESM-only，绝不能被 CJS bundle 静态 require；入口须像子代理扩展那样以 `.ts`/`.mjs` 独立文件经 jiti 或动态 import 加载、不打进 `out/main`），跑 `createAgentSessionServices` → `createAgentSessionFromServices` → `bindExtensions({mode:'rpc'})` → 读 `getActiveToolNames()`。断言：工具数 ≥ 内置 4，且**已装社区包的工具真的出现**（对齐 §8 T3.1 探针的 `plan_mode_*` 判据）——这证伪/证实「utilityProcess 里扩展加载是否等价于主进程」
+  3. **P1-b 双向 RPC**：定义最小帧协议 `{id, kind: event|invoke|respond|cancel}`，child→main 推事件、main→child 下发 `prompt`、**child→main 反向请求** `tool:execute`（模拟 `memory_save`/`browser_navigate`）与 `ui:confirm`（审批门）。断言：往返闭环、超时能取消、child 崩溃不波及主进程（对照组）
+  4. **P1-c 成本与残留**：串行起 1/2/3 个 child，记录 fork→ready→首 token 各段 ms、child RSS 与进程树 RSS、`ps`/`tasklist` 计数（重点抓 MCP 类扩展拉起的子进程）；每个 child **先 `runtime.dispose()`（发 `session_shutdown`）再退出**，然后断言「进程树回到基线、零残留子进程」——本条同时验证「现状 `session.dispose()` 绕过 shutdown」的修复是否真能把扩展子进程收干净
+  5. **P1-d 打包风险预判**：dev 与 `electron-vite build` 产物两种形态各跑一次（`app.getAppPath()` 在 asar 内、`.ts` 扩展入口能否被 child 的 jiti 读到），跑不通就明确记为「需 `extraResources`/`asarUnpack`」并连带 T5.3
+  6. **P2-a worktree 生命周期**：在真 git 仓库上跑 `git worktree add <proj>/.pi-wood/worktrees/<conv> -b piwood/<conv>` → 两对话各改同一文件不同行 → 各 `git diff` 干净、互不影响 → `git apply` 回流主工作树 → `git worktree remove` + `git worktree prune` + 删分支；测 `node_modules` **不被复制**（worktree 天然不含未跟踪依赖，须显式处理软链/复用）并计时
+  7. **P2-b Pi 侧连带影响**：断言 worktree 的会话落到 `~/.pi/agent/sessions/<encoded-worktree>/`，且 **CLI 在主项目 `pi --resume` 看不到它** → 记录左栏/`sessionsList` 必须按「主项目 + 其全部 worktree」聚合的改造点（否则 T1.4 的 CLI 互通硬验收会退化）
+  8. **P2-c 降级路径**：非 git 目录、脏工作树、detached HEAD、submodule、Windows 路径长度与大小写不敏感各跑一次，产出「不支持时的显式提示」文案（不许静默变成"共享主工作树并行跑"）
+  9. 结论（P1/P2 每组的实测值、Go/No-Go、需要新增的协议字段与打包改动）写回本节表格 + §8 日志
+- 验收：
+  - [ ] `electron . --engine-process-probe` **EXIT=0**，打印 P1-a~d 全部数据（ms/RSS/进程数/残留计数）
+  - [ ] child 内扩展工具集与主进程一致（社区包工具出现、`diagnostics` 无 error），否则判 **No-Go → 走退路**
+  - [ ] 双向 RPC 三条链路闭环（事件流、`tool:execute`、`ui:confirm`）+ child 崩溃不影响主进程
+  - [ ] **零残留**：3 轮起停后进程树与子进程数回到基线（这是 `session_shutdown` 修复是否有效的硬证据）
+  - [ ] `--worktree-probe` **EXIT=0**：两对话同项目并行改同文件互不干扰、`git apply` 回流成功、清理彻底、非 git/脏树/submodule 均有显式降级提示
+  - [ ] 性能红线表的 ⏳ 占位全部回填真数（含每对话 RSS、冷启动、RPC p95、worktree 建/回流耗时），并据此确认或修订「活跃进程上限默认 3」
+  - [ ] Go/No-Go 结论 + 全部偏差写入 §8 决策日志（No-Go 时按退路重写本节，不许就地妥协）
+- 验证方式：`pnpm --filter @pi-wood/desktop probe:engine-process` + `probe:worktree`，退出码即判据；数据以表格回填本节
+
+### [ ] T8.1 EngineHost 子进程化 + 对话注册表（ConversationRegistry）
+- 来源：§8（2026-09-01 T6.1 改造范围 ①）+ 本节现状核实「唯一 adapter/activeProject」「SDK 单活跃会话」「事件 payload 无归属」「stop() 绕过 session_shutdown」四行 + 第二轮拍板 ③④
+- 前置：T8.0（Go）
+- 步骤：
+  1. **child 入口 `electron/main/engine/engine-child.ts`**（独立文件，**不打进 CJS `out/main`**，理由同子代理扩展：Pi 是 ESM-only、`esbuild` 转 require 即 `ERR_PACKAGE_PATH_NOT_EXPORTED`）：内部 `import()` SDK → 建 services → 建 session → `bindExtensions` → 经 `process.parentPort` 收发帧；启动即回 `ready{pid, cwd, tools, sessionId}`。⚠ 需凭据：由主进程把 provider env 注入 fork 的 `env`（`reinjectProviderEnv()` 的结果随 fork 传下去，密钥不落 child 磁盘）
+  2. **帧协议**（`packages/ipc-schema/src/engine-rpc.ts`，zod 定义 + 纯函数编解码可单测）：下行 `invoke{reqId, method, params}` / `cancel{reqId}` / `inject-tool-result` / `shutdown`；上行 `event{conversationId, seq, event}`（**带 seq 供乱序/丢帧检测**）/ `invoke{reqId, kind:"tool:execute"|"ui:request"|"approval:confirm"}` / `result{reqId}`。高频 delta 在 child 侧先按 **50ms 或 8KB** 合帧再上抛，主进程按可见性二次聚合（T8.3）
+  3. **把主进程侧能力做成反向 RPC**：`browserCustomTools()`(5) + `memoryCustomTools()`(4) = **9 个 customTool** 不再直接注入 session，而是 child 侧生成 9 个"代理工具"（同名同 TypeBox 参数，`execute` 转发 `tool:execute` 给主进程执行再回结果）——**工具名必须过 `^[a-zA-Z0-9_-]+$`**（点号坑已入 MEMORY，`ensureEngineUnlocked` 现有校验保留并前移到 child）；`permissionGateExtension` 的 `confirm`/`isAutoAccept` 改走 `approval:confirm` 往返；子代理入口 `pi-wood-subagent-entry.ts` 由 child 经 `additionalExtensionPaths` 加载、`globalThis.__piwoodSubagentBridge` 从"进程内单例桥"退化为**每 child 一份**（串扰天然消失），主进程只保留 `subagentRuntime` 的**跨进程快照镜像**（`engine:subagentRuns` 改为 per-conversation envelope 推送）
+  4. **`ConversationHandle{ id, projectDir, worktreePath, proc, rpc, sessionFile?, status: spawning|idle|streaming|waiting_approval|queued|suspended|dead, lastActiveAt, inFlightPrompt, pendingApprovals:Set, lastSeq }`** + `Map<conversationId, handle>` + `activeConversationId`；纯函数（LRU 选谁关停、seq 对账、状态机迁移）抽 `conversation-core.ts` 便于 `node --test` 穷举
+  5. **`SdkAdapter` 拆两侧**：`LocalSdkAdapter`（child 内，几乎就是今天的实现）+ `RemoteEngineAdapter`（主进程，实现同一个 `EngineAdapter` 接口、把调用序列化到 RPC）→ **`engine-manager` 的 30 个 handler 与 11 处 `requireAdapter()` 只改"取哪个 handle"，不改业务逻辑**，这是把风险压到最小的关键设计。旧 `SdkAdapter.stop()` **必须先修**：走 `runtime.dispose()`（异步、先发 `session_shutdown` 再 `session.dispose()`），否则 child 关停时扩展子进程（MCP）不回收——该修复与 D 无关，独立可先落
+  6. **`AdapterFactory` 注入点**（本步不做，后面所有门禁就只能真机手验）：registry 接受可选 `adapterFactory`，探针/单测注入 **stub adapter**（按脚本吐 `message_update`/`tool_execution_*`/`agent_settled`、假 sessionId、可控延迟）→ 并发/串台/排队/审批归属全部可在无密钥下确定性复现；真 key 只用于一次目检
+  7. **生命周期**：`create`（惰性 fork，含 worktree 预建 T8.6）/ `suspend`（`shutdown` 帧 → 等 child 优雅退出 → `proc.kill()` 兜底 → 只留 `sessionFile`+`worktreePath`）/ `resume`（重 fork + `switchSession`）/ `close`（含 worktree 回收与回流提示）。**⚠ `suspend` 会 abort 正在跑的一轮**：`session.dispose()` 内含 `abortBash()`（SDK 实测）→ 正在跑的 `npm test` 会被杀、可能留半执行副作用 → **只允许在 `agent_settled` 边界休眠**，streaming 中一律跳过
+  8. **上限与自愈**：`MAX_LIVE_ENGINES`（默认 3，可配 1~4，来自 T8.0 实测）超线只关停非 streaming 且最久未活跃者，全在跑则拒绝新建并提示（不静默杀任务）；child 崩溃 → 标记 `dead` + 保留 worktree/sessionFile 可一键恢复 + `ui.notify`，退避重启 ≤3 沿用 `plugin-host` 范式；主进程退出前对所有 child 广播 `shutdown` 并等收敛（配合既有 `isDestroyed()` 防护，防"Object has been destroyed"回归）
+  9. **看门狗**：每对话 child 退出后延迟 2s 扫一次「该 child 派生的进程树」是否有残留（MCP 类），有则记录 pid 列表并 toast（不偷偷 kill，先暴露）
+  10. 补 `ENGINE_CHANNELS.fork` 的 handler + preload 桥（现仅通道声明 `ipc-schema/src/engine.ts:273`）→ 语义定为「**从该对话某条消息另开一个新对话**」（新对话自带独立 worktree，天然不互踩）
+- 验收：
+  - [ ] 单项目 2 对话 + 跨项目 1 对话并存：三边各自流式跑完、互不打断（stub adapter 探针断言，非手验）
+  - [ ] 同项目两对话的 **cwd 不同**（worktree 生效），扩展模块态互不可见（哨兵：child A 写模块级值，child B 读不到）
+  - [ ] 超过 `MAX_LIVE_ENGINES` → 最旧非在跑对话被关停，唤醒后上下文/模型/thinking 档位完整恢复
+  - [ ] `suspend` 只在 `agent_settled` 边界发生；streaming 中的对话永不被自动关停（探针断言"正在跑 bash 时不会被休眠"）
+  - [ ] **反复 suspend/resume/close 不积累资源**：进程树与 `session_shutdown` 计数在 3 轮后回基线；`stop()→runtime.dispose()` 修复有独立回归单测/探针
+  - [ ] child 崩溃只砸坏该对话（其余对话与主进程存活、可恢复）；主进程退出不留孤儿
+  - [ ] 9 个代理工具在 child 侧可被模型调用且结果正确回传；工具名全部过 OpenAI 兼容正则
+  - [ ] `conversation-core` 状态机 + LRU + seq 对账 + 帧编解码纯函数 `node --test` 穷举（含乱序/丢帧/重复帧）
+  - [ ] `pnpm -r typecheck` + `pnpm -r test` + `pnpm build` 全绿；`--plugin-probe`/`--goal-probe`/`--memory-probe` 回归 EXIT=0
+- 验证方式：`--concurrency-probe`（T8.8，stub adapter 注入）+ 单测 + `--engine-process-probe` 复跑
+
+### [ ] T8.2 IPC 契约加 conversationId + 事件按对话路由
+- 来源：§8（T6.1 改造范围 ②）+ 现状核实「事件 payload 不带会话/项目归属」行
+- 前置：T8.1
+- 步骤：
+  1. `ipc-schema/src/engine.ts`：新增 `ConversationEventEnvelopeSchema { conversationId, projectDir, event }`，`ENGINE_CHANNELS.event` 改为推 envelope（**内部 `EngineEventSchema` 各变体是 `.passthrough()`，故也可给事件本身打 `conversationId` 标签**——选 envelope，避免与 Pi 原生字段撞名且校验面更小）；`prompt/steer/followUp/abort/newSession/switchSession/getState/getRuntimeInfo/compact/setModel/setThinking/listCommands` 命令 schema 统一加可选 `conversationId`（缺省=active，向后兼容）
+  2. 新增通道：`engine:listConversations`（拉快照）、`engine:createConversation`、`engine:suspendConversation`、`engine:closeConversation`、`engine:setActiveConversation`（渲染层告知可见对话，主进程据此节流）
+  3. `send(channel, data, conversationId?)`：按 envelope 定向；**保留 `getAllWindows()[0]` 兜底的同时，改成按 `webContents` 路由表**（`index.ts:27,136` 单窗口/单实例锁现状不变，为将来多窗口留缝）
+  4. 子代理事件（`:247 subagentEvent`、`:237 subagentRuns`）、assist（`:356 model_changed` 等）、goal/usage 推送全部包 envelope；`send(ENGINE_CHANNELS.event, ...)` 的 5 处直接调用一并改
+  5. preload + `global.d.ts` 同步签名（渲染层不传即 active）
+  6. **两层协议分清（别把 RPC 当 IPC）**：`child → main` 走 T8.1 的 RPC 帧（带 `seq` 供乱序/丢帧对账，child 侧已按 50ms/8KB 合帧）；`main → renderer` 走本任务定义的 envelope（按可见性二次聚合后推）。`conversationId` 由主进程按 handle 归属附加，**不信任 child 自报的会话身份**（child 只报 `seq` 与方法调用，归属与鉴权在主进程）
+- 验收：
+  - [ ] 两对话同时流式，各自 store 只收到自己的事件（探针逐条断言 sessionId/conversationId 匹配、零串台）
+  - [ ] 未传 `conversationId` 的旧调用路径行为与现状逐位一致（回归不破）
+  - [ ] envelope schema 校验失败不丢事件（丢事件要计数 + warn，别静默）
+  - [ ] child 上报的 `seq` 断号可检测并显式告警（丢帧不许静默）
+  - [ ] `pnpm -r typecheck` + build 全绿
+- 验证方式：契约纯函数单测（envelope 归一/未知 channel 前向兼容）+ `--concurrency-probe` 串台断言
+
+### [ ] T8.3 渲染层 store 按对话分片 + 可见性驱动节流（性能主战场）
+- 来源：现状核实「渲染层单一扁平 items」「右栏标签集全局单套」两行 + 性能红线「事件流量」「帧率」
+- 前置：T8.2
+- 步骤：
+  1. `stores/session-store.ts` 由单状态改 **slice-per-conversation**：`byConversation: Map<convId, ConversationSlice{items, streaming, liveText, liveThinking, queue, currentSessionId, engineReady, unreadCount, hasPendingApproval, scrollTop}>`；`handleEvent` 纯化为 `(slice, event) => slice`（提为可单测纯函数，`session-store.test.ts` 直接喂事件序列，含乱序/交错）
+  2. 16 个消费文件改 `useSessionStore(s => s.byConversation.get(activeId))` 选择器（新增 `useActiveConversation()` / `useConversationSlice(id)` hook 收敛），**后台对话的 store 更新不得触发前台组件重渲染**（靠选择器隔离）
+  3. **可见性节流**：主进程按 `activeConversationId` 分档——active 逐 token 推；后台对话 `text_delta`/`tool_execution_update`/`bash_execution_update` 按 **200ms 或 4KB** 聚合，且只推「里程碑」（turn_end / agent_settled / tool 起止 / 待审批），标签上仅显 `运行中 · N 工具 · +M 次调用` 摘要（≤2Hz）
+  4. **历史按需装载**：后台对话的事件在渲染层只累积到轻量摘要，不物化 `items`；首次激活该对话时才 `loadMessages` 整读 jsonl 并与已收增量按 message id/序号**对账去重**（避免双份历史与顺序错乱）
+  5. 虚拟化沿用（`MessageList.tsx:142-148`，`estimateSize:96/overscan:8`），live 尾块仍不入虚拟列表但**只在 active 对话渲染**；每对话记住 `scrollTop`/「跟底」状态
+  6. 内存护栏：单对话 `items` 超阈值（如 2000 条）时只保留尾部 + 「上滑加载更早」按需从 jsonl 取，防 N 个历史同时吃堆（现状 `debug:stress` 5 万条仅验过单列表虚拟化的事实不代表分片后仍安全）
+- 验收：
+  - [ ] 3 对话并发流式：后台对话 IPC ≤6 条/秒/对话（探针计数，与 T8.0 标定基线对照）
+  - [ ] 3 对话并发流式时前台对话无可感知掉帧（对照单对话录屏/帧率采样）、主进程单核 CPU ≤60%
+  - [ ] 切到后台对话 → 首屏 ≤100ms 且内容完整（含期间增量不丢不重）
+  - [ ] 后台对话渲染不引发 active 组件重渲染（React Profiler 或渲染计数断言）
+  - [ ] 各对话滚动位置独立保持；未读计数在切过去时清零
+  - [ ] `pnpm -r typecheck` + `pnpm -r test`（含 store 归约纯函数穷举）+ build 全绿
+- 验证方式：`--ui-stress` 扩展为「N 路交错事件流」离线灌入；`--concurrency-probe` 统计事件条数与节流效果
+
+### [ ] T8.4 审批与 ctx.ui 按对话归属 + PromptTray 显示来源
+- 来源：§8（T6.1 改造范围 ③）+ 现状核实「审批与 ctx.ui 队列按全局数字 id、无会话归属」行 + 用户 UI 偏好（交互统一贴 Composer，禁浮窗/模态）
+- 前置：T8.2
+- 步骤：
+  1. `pendingApprovals`/`pendingUiRequests`（`engine-manager.ts:88-93`）key 由裸 `number` 改 `` `${conversationId}:${seq}` ``，并记 owner；`approval:respond`/`ui:respond` 校验「应答者必须是发起对话」（否则跨对话误放行＝安全旁路）
+  2. `confirmViaRenderer`/`requestUi` 载荷加 `conversationId` + 对话标题/项目名；子代理 child 审批沿用 `guardChildTool` 路径但同样带归属
+  3. `PromptTray` 头部加来源行「来自对话：<标题> · <项目名>」（点击跳到该对话再应答）；队列按对话分组显示，**仍贴 Composer 正上方**、不加浮窗/模态
+  4. **⚠ 超时按可见性分档（现在的 120s 一刀切在多对话下会把用户没看到的任务静默判死）**：active 对话保持 120s 默认拒绝；**非 active 对话的 pending 不计时**（或降到小时级 + 到点自动暂停该对话而非直接拒），标签红点常驻，用户切过去后才恢复 120s 计时。`approval:respond` 之外新增 `approval:focus-requested`（点徽章直达该对话并滚到对应审批卡）
+  5. `approval:acceptAll`（T7.2）改为**只放行该对话**的 pending（现遍历全局会跨对话放行）
+  6. 标签徽章：该对话有待审批 → 红点；非 active 对话来审批时不改用户当前视图、不抢焦点（只在标签与徽章提示）
+  7. **跨进程底线**：审批/`ctx.ui` 的结论**只能由主进程经渲染层应答注入 child**，child 侧 `guardChildTool`/`permissionGateExtension` 拿不到任何本地兜底放行路径（deny-by-default：无应答 = 拒）；`approval:confirm` RPC 帧带一次性 token 防重放
+- 验收：
+  - [ ] A 对话的 bash 审批卡显示来源且只能被 A 的应答放行；在 B 对话里应答 A 的请求被拒（单测/探针断言 owner 校验）
+  - [ ] 两对话同时待审批 → 队列两条、来源可分辨、各自超时互不影响
+  - [ ] **后台对话的审批不会因用户看不见而被 120s 静默拒**（探针：非 active pending 在 120s 后仍在、红点在、切过去可应答）
+  - [ ] child 无本地放行路径：不发 `approval:respond` 时该工具必被拒（探针断言 deny-by-default + 重放 token 失效）
+  - [ ] `acceptAll` 只清该对话 pending，别对话不受影响
+  - [ ] 审批仍在 Composer 上方 PromptTray 呈现（无新增浮窗/模态，符合用户偏好）
+  - [ ] `pnpm typecheck` + desktop test + build 全绿
+- 验证方式：归属校验纯函数单测 + 真机两对话并发审批目检
+
+### [ ] T8.5 并发闸门：prompt 队列 / 子代理全局上限 / 第二运行时 per-对话化
+- 来源：现状核实「子代理运行时单槽 + 全局桥」「btw 单槽」「三个第二运行时 module 单例 + 单飞」「子代理并发无上限」四行 + 性能红线「在飞 prompt / 子代理 run」
+- 前置：T8.1、T8.2
+- 步骤：
+  1. **prompt 闸门**：全局 `inFlightPrompts ≤ 3`（设置项 1~6），**并与「活跃引擎子进程数 ≤ `MAX_LIVE_ENGINES`」取交集**（进程数才是真正的资源上限，prompt 闸是成本/限流闸），超限的 prompt 入该对话队列并显「排队中」；与 provider 429/退避联动——连续限流时临时降到 1 并发并在用量页提示（复用 T7.12 `quotaWarnings`）
+  2. **子代理全局闸**：跨对话共享 `MAX_TOTAL_CHILD_RUNS`（默认 6）+ per-对话 ≤4，在 `agent_start` 接缝（child 侧 `subagent/bridge.ts` / `guardChildTool` 同层）**排队而非直接 spawn**；不改 vendored 内核语义、也不违反其 ADR 0001（它是「无上限」的设计，我们在宿主侧加闸门即兼容）。`__piwoodSubagentBridge`（`engine-manager.ts:210`）与 `subagentRuntime` 单槽（`:79`）随进程化天然变成**每 child 一份**，主进程只做跨进程聚合（成本汇总由「对 `runs.list()` 全量求和」改为「对各对话上报的 per-child run 求和」，T6.6 语义不变）
+  3. **第二运行时策略（⚠ 别把修 bug 做成成本放大器）**：`assist-service`/`review-service`/`goal-audit` 的 `inFlight` 从「全局一个、后到静默跳过」改为 **per-conversation 单飞**（修隐性坏掉），但**默认只为 active 对话生成会话辅助**（T7.9 每轮 settle 一次＝N 倍成本），后台对话在**被切回时补生成一次**；AI 审查/goal 审计保持「谁点谁触发 + 全局并发 ≤2 + 排队可见」，UI 必须有明确状态而非 null
+  4. **goal 模式互斥**：`settings`/`goal-runtime` 加「同时只允许一个对话处于 goal active」（目标模式本就每轮自动续跑，×N 对话＝成本乘积失控），第二个对话开 goal 时给出显式提示（可强制接管并暂停前者）
+  5. **btw 并入注册表**：`btwAdapter` 作为 `kind:"btw"` 的对话句柄，随所属对话 close 一起释放（现 `:201` 只在换项目时 `closeBtw`，多对话下会漏）；进程化后 btw 的 denyAll + 静默 uiBridge 语义保持不变（子进程天然隔离，比今天更强）
+  6. **残留看门狗**：对话 close/suspend 后 2s 扫该 child 派生的进程树，发现残留（MCP/子代理 shell）→ 记录 pid + toast 暴露（先可见，再谈自动收），并把计数交给探针断言「零残留」
+  7. **成本护栏**：对话标签悬浮/右键显示该对话 token/费用（`usage-tracker` 已按 sessionId 分键，零改造复用）；超月配额时按设置「降并发 / 阻止新建对话 / 仅告警」
+- 验收：
+  - [ ] 第 4 个并发 prompt 被排队（探针断言在飞数 ≤ 上限、被排队的最终执行、不丢）
+  - [ ] 两对话各起子代理：全局 child run ≤6 且 per-对话 ≤4、归属对话正确、`runs` 事件不串台
+  - [ ] 两对话各自点 AI 审查 → 两个结果都返回（不再互相吞）；后台对话 settled 不产生 assist、切回后补生成
+  - [ ] 同时刻最多 1 个 goal active；强行开第二个有明确提示且前者被暂停（不静默双跑）
+  - [ ] `/btw` 在两个对话各开一个，关一个不影响另一个，且对话 close 后第二运行时被回收（无进程/会话残留）
+  - [ ] **零残留断言**：close 全部对话后进程树回到基线（含 MCP 类扩展子进程）
+  - [ ] 用量视图能按对话归属显示 token/费用，月配额超限动作生效
+  - [ ] `pnpm -r typecheck` + `pnpm -r test` + build + 三探针回归 EXIT=0
+- 验证方式：`--concurrency-probe` 计数断言（在飞 prompt / child run / 辅助运行时并发 / 残留 pid）；单飞、互斥与配额纯逻辑单测
+
+### [ ] T8.6 git worktree 隔离与变更回流（第二轮拍板 ③ 的核心）
+- 来源：本节「方案选型 D」+ 现状核实「Pi 会话目录按 cwd 编码」行 + 风险 6
+- 前置：T8.1（句柄含 `worktreePath`）；实测判据来自 T8.0 P2
+- 步骤：
+  1. 新建 `electron/main/worktree/worktree-service.ts` + 纯函数 `worktree-naming.ts`（worktree 路径 `<projectDir>/.pi-wood/worktrees/<convShortId>`、分支 `piwood/<convShortId>`、Windows 路径长度与非法字符、大小写不敏感）→ `node --test` 穷举
+  2. 生命周期：`ensure(convId, base)` → `git worktree add -b piwood/<id> <path> HEAD`（**惰性**：新建对话时后台预建，fork 自某消息时也建）；`remove` → `worktree remove` + `prune` + 删分支（有未提交改动则拒绝并提示先回流/丢弃）；app 启动 `worktree list --porcelain` 对账恢复孤儿树
+  3. **回流（merge-back）**：对话 close 或用户点「回流」→ 取 `git diff main...piwood/<id>`（含 untracked 显式列出）→ DiffPanel 审 → `git apply --3way` 到主工作树；**冲突则不自动合并**，给「保留在 worktree 稍后手工处理」出口；回滚语义仍走既有快照（T2.2），但快照按 worktree 目录一份
+  4. **引擎侧接线**：child 的 `projectDir` 用 `worktreePath`（→ Pi 会话目录、bash cwd、工具默认路径全部落在树上，两对话物理不互踩）；`node_modules` **不复制**（探针实测耗时/体积后定策略：共享软链 / 复用主树 / 提示手工安装，三者之一，不许静默）
+  5. **非 git / 异常降级**：非 git 仓库、脏树、detached HEAD、submodule、worktree 不受支持的平台 → 明确弹窗「该对话将共享主工作树，存在互相覆盖风险」并可取消创建；此路径**必须显式**，不能悄悄退化
+  6. **磁盘配额**：`settings.worktree.{enabled=true, maxTotalBytes, keepAfterClose=false}`；超配额拒建并提示清理入口（Settings 新增「工作树」页，列全部树 + 占用 + 回流/删除）
+- 验收：
+  - [ ] 同项目两对话各改同一文件不同行 → 两边 `git diff` 互不含对方改动、两引擎 bash cwd 不同（探针断言）
+  - [ ] 回流：`git apply --3way` 成功路径 + 冲突时不自动合并且有明确出口（含单测 fixture）
+  - [ ] close 后 worktree 与分支按设置被清理；孤儿树在重启后被对账恢复
+  - [ ] 非 git / 脏树 / submodule 三种降级各有显式提示文案且不静默共享主树
+  - [ ] `node_modules` 策略由 T8.0 实测选定并在文档/设置里写明（不复制依赖）
+  - [ ] 大仓库（≥1 万文件）下建树耗时不阻塞 UI（探针计时 + 后台异步）
+  - [ ] `pnpm -r typecheck` + `pnpm -r test` + build 全绿
+- 验证方式：`--worktree-probe`（T8.0 P2 复用，真 git 仓库上跑全生命周期）EXIT=0 + 纯函数单测
+
+### [ ] T8.7 工作台与项目级资源作用域
+- 来源：现状核实「MemoryService 绑唯一活动项目」「快照/git 采集/文件树绑 activeProject」「右栏标签集全局单套」三行 + T7.10 偏差(b)（worktree 路径归主项目）
+- 前置：T8.2、T8.6（可与 T8.3 并行）
+- 步骤：
+  1. 主进程**一律按 `conversationId → worktreePath ?? projectDir` 解析**工作区能力：`fs:*`、git 采集（`engine-manager.ts:98` 用模块级 `activeProject` 的 `git()`/`collectGitInfo()` 参数化）、快照（`:74,274-275` 每树一份并记 owner）、审查 `git diff`（`review/review.ipc.ts`）、插件宿主与 `plugins.ipc` 的活动项目语义（改为「按调用来源对话」并在权限文档写明）
+  2. **记忆 scope 归一（补 T7.10 遗留偏差 b）**：`memory-service.ts:48,64,90` 的 `getProjectDir` 对 worktree 路径**归到主项目根**（`<proj>/.pi-wood/worktrees/<id>` → `<proj>`），否则每个对话各写一份 `<worktree>/.pi-wood/memory/project.json`、记忆被切碎
+  3. **写并发保护**：`memory`（read-modify-write 全量覆盖）、`settings`、快照索引三处加**按文件路径的写队列**（Pi SDK 自带 `withFileMutationQueue` 同思路），两对话同时 `memory_save` 不得丢条目；单测造并发写断言
+  4. 渲染层 workbench 作用域：`workbench-store.ts` 的 `openTabs`/`activeTab`/`diffs`/`requestedFile` 从全局单套 → `Map<conversationId, TabSet>`（右栏切对话跟着换，已开面板不销毁、非 active `hidden` 保活——沿用 RightPane 现有常驻挂载策略 `:151-206`）
+  5. 终端：面板不再「每项目 1 个 + 换项目 kill」（`TerminalPanel.tsx:35,65`），改 per-对话终端集合（主进程 `workbench/terminal-service.ts:17` 本就支持多 pty），切对话保留各自 shell 与滚动缓冲；上限（如全局 8 个 pty）+ 关闭即 kill
+  6. 浏览器：`workbench/browser-service.ts:21-52` 的全局单 page 改为 **per-conversation page（共享一个 browser）**，上限 2 个活跃 page（其余挂起只留 URL），避免一个对话导航顶掉另一个；headless 进程仍一份以控内存
+  7. 左栏 `SessionTree` 升级为「项目 → 对话」两级 + 运行态徽章，**并聚合主项目与其全部 worktree 的 `sessions/<encoded-cwd>/`**（否则 worktree 化后桌面看不到彼此、CLI 侧也看不到桌面新对话 → 破坏 T1.4 硬验收）；`activateProject` 不再隐式切换/销毁对话
+  8. 文件树/编辑器脏态：per-对话保留未保存草稿（T7.11 草稿按 sessionId 已成立）与编辑光标，避免切对话丢改动
+- 验收：
+  - [ ] 两个不同项目的对话并存：文件树、git 分支/变更数、快照、记忆 project scope 各自正确、互不覆盖（探针断言）
+  - [ ] 同项目两对话（两个 worktree）：文件树/diff/终端各自指向自己那棵树；`memory_save` 两条都落到**主项目**同一文件、都不丢
+  - [ ] A 对话的终端 shell 与滚动缓冲在切到 B 再切回后仍在；未被 kill
+  - [ ] A/B 各自浏览器页面互不导航覆盖；活跃 page 数不超上限
+  - [ ] 右栏标签集随对话独立（开/关/激活态各自持久化恢复）
+  - [ ] **CLI 互通不回退**：桌面在 worktree 建的会话，在**主项目**目录 `pi --resume` 可选到（左栏聚合的硬证据）
+  - [ ] 并发写队列有单测（两对话同时 memory_save / settings patch，无丢更新）
+  - [ ] `pnpm typecheck` + desktop test + build + 三探针回归全绿
+- 验证方式：无窗探针 `--workspace-scope-probe`（2 项目 + 同项目两 worktree，交叉调 fs/git/snapshot/memory/term 断言归属）+ 真机目检
+
+### [ ] T8.8 多对话 UI（标签条 / 进度徽章 / 未读）+ 并发门禁与回归
+- 来源：本节「第一轮拍板 ①」（用户指定单窗口多对话标签）
+- 前置：T8.1~T8.7
+- 步骤：
+  1. 中栏顶部（`ConversationHeader` 同排）加对话标签条：标题（首条用户消息，与会话列表同源）、状态指示（转圈=streaming、红点=待审批、蓝点=有未读新回复、灰=已关停、虚线=引擎启动中）、关闭按钮；「+」新建对话（选项目 + 是否建 worktree + 可 fork 自当前对话）
+  2. 键盘可达（对齐 §11 与 T5.1 结论）：`Ctrl+Shift+[` / `Ctrl+Shift+]` 切对话、`Ctrl+Shift+N` 新建、`Ctrl+W` 关闭当前（须先确认不误杀在跑任务）、命令面板聚合「跳到有未读的对话 / 关闭其他对话 / 关停此对话引擎 / 回流此对话改动」
+  3. 「在跑任务的对话被关闭」→ 明确二选一（**关停引擎但保留可恢复** / **中止任务**），默认前者且 toast 说明，绝不静默 abort；退出 app 时若仍有 N 个在跑 → 确认框列清单
+  4. worktree 可见性：标签上标「树」角标 + 悬浮显示 `<worktreePath>` 与未回流改动数；`EnvironmentPanel` 加「活跃对话 N/M · 在飞 prompt X/Y · 子代理 run Z/W · 引擎进程 RSS 合计」一行；用量页加按对话细分
+  5. **门禁探针** `electron . --concurrency-probe`（无窗、**stub adapterFactory 注入**、轮询断言、`app.exit(0/1)`）最小用例集：① 2 项目 × 各 2 对话并行、事件零串台 ② 切走不打断、切回历史完整且不重复（`seq` 对账）③ LRU 关停→resume 上下文/模型恢复 ④ prompt 与进程双闸门排队语义 ⑤ 子代理全局/per-对话上限与归属 ⑥ 审批 owner 校验 + deny-by-default + 后台不超时 ⑦ close 全部后引擎子进程/第二运行时/pty/MCP **零残留**、无 `Object has been destroyed` ⑧ 性能红线表逐条实测（RSS/冷启动/RPC p95/帧率/事件流量）
+  6. 回归与文档：`--plugin-probe`/`--goal-probe`/`--memory-probe`/`--engine-process-probe`/`--worktree-probe` 必须全 EXIT=0；方案文档 §2.2/§10 增补「多对话 + 引擎子进程 + worktree」架构段（本文档先行，方案修订走 §8 记录）
+- 验收：
+  - [ ] `--concurrency-probe` 8 条全 PASS、EXIT=0
+  - [ ] 五探针（plugin/goal/memory/engine-process/worktree）回归 EXIT=0、`pnpm -r typecheck`、`pnpm -r test` 全绿、`pnpm build` 三目标成功
+  - [ ] 性能红线表逐条实测达标（数据写回本节表格并记 §8）
+  - [ ] **并发数=1 时行为与改造前逐位一致**（流式体感、审批往返、`ctx.ui` 阻塞往返、关窗/退出无崩溃）
+  - [ ] 真机（带密钥）跑一次「2 项目 + 同项目双 worktree」共 4 对话并行改代码 + 全部回流 的端到端目检并留证
+  - [ ] 打包版冒烟（若 T8.0 P1-d 指出需 `extraResources`/`asarUnpack`，此处必须实测 packaged child 能加载 SDK 与扩展）
+- 验证方式：探针退出码 + 门禁数据 + 真机目检截图（`docs/proofs/T8.8/`）
+
+### 边界（本批明确不做，另立任务）
+- **多窗口**（每对话一窗口）：T8.2 已把事件路由做成可定向，但窗口生命周期、渲染进程 ×N 内存、跨窗口审批与 workbench 状态不在本批。
+- **回流自动化（自动 merge / 自动 rebase / 自动提 PR）**：本批只做「生成 diff → 人审 → `git apply --3way`，冲突不自动合」。全自动合并是独立设计（涉及评审语义与责任归属）。
+- **引擎进程预热池 / 跨对话共享 services**：进程成本压不下来时才做（预热 1 个 idle child、或 child 内多 session 复用），本批先用「惰性起 + LRU 关停 + 上限 3」。
+- **worktree 间的依赖与构建共享**：`node_modules`/构建缓存策略按 T8.0 实测三选一并写死在设置说明里，不做智能共享（pnpm store 级去重属独立课题）。
+- **跨机器 / 多端会话同步**：与 Pi jsonl 现有 CLI↔桌面互通（T1.4）不冲突，不扩范围。
+
+### 风险清单（登记进 §8 并在 T8.0 后复核）
+1. **utilityProcess 载不动 Pi/扩展 = 本批直接翻车**（关键路径）。三类诱因：Pi 是 **ESM-only**、扩展经 **jiti** 运行时加载 `.ts`、打包后入口在 **asar** 内。→ **第一类诱因由 T8.P 先行消掉**（主/子进程同为 ESM 后可以静态 import，不必再靠 esbuild 的动态 import 写法兜）；余下两类由 T8.0 P1-a/P1-d 证；失败即走「方案选型」里写死的退路，不许边写边改。
+2. **RSS 与冷启动线性放大**：每对话一整个 Node/V8 + 全套扩展 + 其子进程。沙箱探针的「1~3ms / 0MB」只证**会话对象**便宜，**不证进程模型便宜**。→ 上限默认 3、LRU 关停、用量页显示每对话成本；数字待 T8.0。
+3. **两跳 RPC 侵蚀单对话体感**：今天事件是 `session.subscribe → send → renderer`，改后多一跳序列化与往返。本项目最在意的就是流式手感。→ 红线表「单对话体感不得回退」+ child 合帧 + `seq` 对账 + 并发=1 A/B 对照门禁。
+4. **子进程成为新的泄漏面**：引擎 child、其扩展拉起的 MCP/shell 子进程、pty、playwright page——任一没随 close 收干净就是孤儿。已查到 `SdkAdapter.stop()` 绕过 `session_shutdown`（现状核实「`SdkAdapter.stop()` 绕过 `session_shutdown`」行）＝**今天的既有缺陷会在多对话下变成必然泄漏**。→ T8.1 步骤 5 修 + T8.5 看门狗 + T8.8 用例⑦ 零残留硬断言。
+5. **能力代理的正确性风险**：9 个 customTool 与审批门改成跨进程后，「工具结果丢失/超时/重复执行」「child 自行判定审批」都可能变成静默错误或安全旁路。→ 一次性 token、deny-by-default、`reqId` 幂等、探针断言。
+6. **成本线性放大是产品问题不是技术问题**：N 个并发对话＝N 倍 token 与账单，加上 goal 自动续跑＝乘积。→ T8.5 闸门 + goal 单活 + assist 仅 active + T7.12 配额告警 + 「在跑对话」可视。
+7. **provider 429 / 队列饥饿**：多家 OpenAI 兼容端点并发上限低。→ 闸门阈值可自动降级（非硬编码 3）。
+8. **子代理扇出 ×N 对话**是最坏放大器，且 vendored 侧「无上限」是刻意设计（ADR 0001）→ 宿主侧排队而非改内核。
+9. **第二运行时静默失效**：现 `inFlight` 单飞在多对话下不是「报错」而是「悄悄没有结果」→ per-对话单飞 + **仅 active 生成** + UI 反馈，别修成成本放大器。
+10. **worktree 自身的坑**：磁盘占用（大仓库 ×N）、`node_modules` 缺失导致 agent 跑不了测试、`.gitignore` 外的生成物分叉、未回流改动被静默丢弃、Windows 路径长度。→ T8.6 全部要求显式提示 + 设置页可视化 + 探针计时。
+11. **CLI 互通与左栏聚合退化**（worktree 副作用）：会话按 cwd 分家 → 桌面/CLI 互相看不见。→ T8.7 步骤 7 + 验收「CLI 互通不回退」。
+12. **同项目两对话仍可能语义冲突**：物理文件隔离了，但同一个数据库、同一个 dev server 端口、同一份外部状态照样打架（本批只保证文件层不互踩）。
+13. **审批跨对话误放行＝安全旁路**（不是体验问题）：T8.4 owner 校验 + deny-by-default 双断言。
+14. **切对话时的 store 分片一致性**：后台增量与 jsonl 整读对账若做不好会重复/丢消息（v3 那批字段 bug 同类坑）→ 归约纯函数化 + 穷举单测 + `seq` 断号检测。
+15. **渲染层选择器误用退化成全局重渲染**：分片后 ×N 订阅。→ React Profiler / 渲染计数断言（T8.3 验收④）。
+16. **退出/关窗竞态回归**：多引擎 child + 多 pty + 插件 utilityProcess 的异步回调更容易晚于窗口销毁到达。→ 沿用 `isDestroyed()` + try/catch，handle 记 `disposed` 后一律短路，退出前广播 `shutdown` 并等收敛（MEMORY 已记同类崩溃）。
+17. **进程被系统/杀软杀死**：macOS 内存压力、Windows Defender 都可能收掉 child。→ `dead` 态可一键恢复（保留 worktree + sessionFile）、退避重启 ≤3（抄 `plugin-host`）、日志留证。
+
+### 落地顺序（依赖链 + 风险前置，合计约 22~28 人日）
+0. **T8.P 主进程产物切 ESM**（0.5~1 天，**全批第 0 步**：先把模块格式与加载链单独验干净，再动进程模型）
+1. **T8.0 双探针（Go/No-Go）**（2~3 天，含 utilityProcess 原型与 worktree 实测；**禁止跳过**，它决定 D 还是退路）
+2. **`SdkAdapter.stop() → runtime.dispose()` 修复**（0.5 天，**独立先落**、与多对话无关但被多对话放大）
+3. **T8.1 EngineHost + 注册表 + RPC 协议 + stub 注入点**（4~5 天，全批最大风险面）
+4. **T8.2 conversationId 契约与两层路由**（1.5 天）
+5. **T8.3 渲染层分片 + 可见性节流**（2~3 天，性能主战场，可与 T8.4 并行）
+6. **T8.4 审批归属 + 超时分档 + deny-by-default**（1.5 天，安全底线优先于美观）
+7. **T8.6 worktree 生命周期与回流**（3~4 天，第二轮拍板 ③ 的实体）
+8. **T8.7 工作区/面板作用域 + memory 归一 + 写队列**（2~3 天，可与 T8.3 并行）
+9. **T8.5 并发闸门 + 成本防线 + 看门狗**（1.5~2 天）
+10. **T8.8 多对话 UI + 八条门禁 + 五探针回归 + 真机目检**（2~3 天，收口）
+> **可交付切点（若中途需要发版）**：做完 1~6 即可发「多对话并行 + 同项目共享工作树（有提示）」的内部版；T8.6 worktree 与 T8.8 UI 收口后再对外。**T8.1~T8.4 未合入前不要开始 T8.5/T8.6/T8.7**（否则「单引擎假设残留」与「多引擎代码」两套心智并存，最容易出事）。
+
 ## 8. 变更与决策日志（持续追加，倒序）
 
 > 格式：`日期 | 任务号 | 类别(偏差/决策/风险) | 内容 | 影响`
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-03 | T8.P（§7.9） | 决策+核实 | **评审「CJS→ESM 对整体是否有帮助」→ 结论：不解决 §7.9 任何一条风险，但值得做；独立成任务 T8.P 并置于多对话全批最前（第 0 步）**。**核实证据**：① 现存格式坑已被写法挡住——主进程产物 `out/main/index.js` 确为 CJS（`"use strict"` + `__defProp` 序言、12 处 `require(`、3 处 `__dirname`），**但 Pi SDK 的 5 个入口全是真动态 import**（`out/main/index.js:46,671,1099,1235,2117`），且**首方 TS 源码里 `require(` 计数为 0** → 「静态 import ESM-only 包即 `ERR_PACKAGE_PATH_NOT_EXPORTED`」那条老坑（T6.2 崩局、已入 MEMORY）今天不再咬人，切 ESM 属**把纪律变类型级安全**的清债。② 工具链无需升级：`electron-vite@2.3.0` 已内建 ESM（`chunks/lib-BmEkZIgk.mjs:107-110` `supportESM()` 判 **Electron ≥28**，本机 `electron ^37.10.3` ✓；`:261,371` 读 `package.json` `type==='module'` 自动把 main/preload 的 rollup `format` 取 `es`；`:410-421` 输出入口改 **`[name].mjs`** → `package.json.main` 与 preload 路径必须同步改）。③ ESM preload 的前置条件 `sandbox: false` 已满足（`electron/main/index.ts:62`）——**记为硬依赖，日后不得随手改回 true**。④ 子进程模块格式与主进程无关（今天的子代理扩展就是靠 SDK jiti 以 ESM 独立文件绕开 CJS）→ **切 ESM 并不能替代 utilityProcess 的隔离决策**，`extensionCache` 进程级共享、泄漏、成本、审批归属、worktree 冲突一条都不解。**为何仍要前置做**：§7.9 同时改「引擎所在进程」与「Pi/扩展加载链（ESM-only + jiti + asar）」，模块格式正在这条链上——两件事一起做，任何 dev/packaged 崩局无法二分归因；先单独切净、单独验，把未知数从 2 降到 1。**真正顺带的收益**（写进 T8.P 而非另立任务）：child 入口可与主进程同格式静态 import、5 处动态 import 样板可收编、3 处 `__dirname` 归一、未来 `@pi-wood/*` 出真 dist 包更顺。**风险点已预判**：CJS named-import 互操作（`playwright-core` 的 `{ chromium }`、`@lydell/node-pty`）与 `engine-manager.ts:208` 子代理 `.ts` 入口的路径基准随 dev/packaged 漂移；**打包态受 T5.3 环境阻塞 → 验收要求显式标注"打包态未验"，不许拿 dev 绿当 packaged 绿**。预估 0.5~1 天。 | §7.9 落地顺序新增第 0 步 T8.P（先于 T8.0 探针）；T8.0 前置改为 T8.P；风险 1 的第一类诱因（ESM-only 格式）标为已被 T8.P 消掉 |
+| 2026-09-03 | T8.0~T8.8（§7.9） | 决策+偏差+风险 | **多对话并发第二轮评审 → 架构改判为方案 D（推翻同日上一条的「v1 走 A」）**。**复核出的新证据/问题**：① **A 的"隔离最彻底"不成立**——`DefaultResourceLoader` 走 `loadExtensionsCached`，其 `extensionCache` 是 `extensions/loader.js:116-130` 的**进程级全局 Map**、仅按 `extensionCacheCwd`/generation 失效（调用点 `resource-loader.js:412,426,441`；jiti `moduleCache:false`）→ **同 cwd 命中缓存返回同一 factory ⇒ 扩展「模块顶层 state」跨对话共享；跨 cwd 交替则 `clearExtensionCache()` 整体作废并重新求值**，旧实例仍被活会话持有却无人回收（MCP 类扩展每对话净增一套子进程）。② 叠加同日查出的 `SdkAdapter.stop()` 绕过 `session_shutdown` ⇒ **多对话下泄漏近乎必然**，该修复单列为落地第 2 步（可先于本批独立落）。③ **同项目两对话共享 cwd**：互踩文件、`git index.lock` 竞争、快照回滚撤销对方改动。④ **后台对话审批沿用 120s 默认拒绝**＝用户看不见的任务被静默判死 → 超时按可见性分档（active 120s、非 active 不计时 + 红点）。⑤ **`suspend` 会 abort 在跑的一轮**（SDK `session.dispose()` 内含 `abortBash()`）→ 只允许在 `agent_settled` 边界关停。⑥ **assist/review 的 `inFlight` 改 per-对话是修 bug 却会变成 N 倍成本放大器** → 改「仅 active 生成、切回补生成」，并新增 **goal 模式单活**（自动续跑 ×N 对话＝成本乘积失控）。⑦ **memory/settings 是 read-modify-write 全量覆盖** → 并发写丢更新，需按路径写队列（Pi 自带 `withFileMutationQueue` 同思路）。⑧ **Pi 会话目录按 cwd 编码** → worktree 化令会话分家，破坏 T1.4 的 CLI 互通硬验收与左栏聚合 → 左栏须聚合「主项目 + 其全部 worktree」。⑨ 性能红线原**无可自动化度量口径**（帧率/CPU 无测法）→ 每行补「度量口径」列，规定探针输出计数 + 退出码。**用户拍板**：允许同项目多对话并**直接上 git worktree 隔离**（`git diff` → 人审 → `git apply --3way` 回流，冲突不自动合）；**引擎搬进 `utilityProcess`**（每对话一进程 + 双向 RPC）。据此 §7.9 重写：现状核实 +2 行、选型改为 **D（A/B/C 全否决，A 保留为退路）**、性能红线重定并标 ⏳ 待回填、T8.0 改**双探针 Go/No-Go**（P1 utilityProcess 载 SDK+扩展/asar/崩溃隔离/零残留；P2 worktree 生命周期 + 非 git 降级 + CLI 分家）、T8.1 改 EngineHost + RPC（9 个 customTool 与审批门走反向调用、child 禁自批 + deny-by-default、stub `AdapterFactory` 保离线门禁）、新增 **T8.6 worktree**、T8.7 工作区作用域（memory scope 归一 + 写队列 + 会话树聚合）、T8.8 UI 与 8 条门禁、边界与 17 条风险重写。 | **工期 11~13 → 22~28 人日**；关键路径压到 T8.0，**No-Go 即按写死的退路回落「A + 每项目一活跃对话」**；仍未开工 |
+| 2026-09-03 | T8.0~T8.7（§7.9）/ T6.1 | 决策+实测+偏差 | **新功能评估：支持同时多个对话 → 立为 §7.9「多对话并发」T8.0~T8.7 待办清单，原 T6.1（2026-09-01 登记）作废并入**。**用户拍板两项**：① 形态＝单窗口多对话标签 + **后台并行执行**（切走不中断）；② 作用域＝**直接覆盖多项目并发**（不分「先同项目再跨项目」）→ 属架构级改造。**评估结论：可行，且瓶颈不在内存**——离线探针 `apps/desktop/scratch/multi-session-probe.mjs`（Node 22.14 arm64、`HOME=/tmp/probehome`、`PI_OFFLINE=1`、`--expose-gc`）实测：**一套 `createAgentSessionServices` 内再造会话 1~3ms、6 个会话 RSS/heap 净增 0MB**；独立 services+首会话 21ms；`memsim.mjs` 测 8 对话 × 120 条（≈3.5KB/条）历史**堆增 2.2MB → 每对话 0.3MB**。⚠ **数据边界已写进文档**：沙箱 `HOME` 空 → **无社区扩展、无凭据、无 MCP**，故只是下界；真机扩展成本须 T8.0 复测后才能定预算。**另踩实一条环境事实**：Node 20 载不动本 SDK（`node:fs` 无 `globSync`；undici@8 要 `markAsUncloneable`）→ 探针须 Node 22+ 或在 Electron 内跑（补强「无窗探针跑真机/Electron」既有惯例）。**真瓶颈定位四处**：① 每对话重复加载扩展 ② LLM 并发即 token 成本/provider 429 放大 ③ 子代理扇出无上限（`vendor/docs/adr/0001-unbounded-subagent-concurrency.md` 明文不封顶）×N ④ 渲染层事件风暴（每 `text_delta` 一条 IPC + 一次 zustand set，N 路叠加）。**架构硬事实（决定为什么必须多引擎）**：Pi `AgentSessionRuntime` 只持一个活跃会话，`newSession/switchSession/fork` **先 teardown 当前 runtime 再建下一个**（`dist/core/agent-session-runtime.d.ts:38-41`）→ 单 runtime 内「切对话」结构性无法做到两个对话同时活着。**选型**：v1 **方案 A（每对话一套 `SdkAdapter`，照已验证的 `btwAdapter` 范式扩 Map）**——隔离彻底、风险最低；**方案 B（每项目一套 services + 每对话一个 `AgentSession`，`createAgentSessionFromServices` 显式接受 services，`agent-session-services.js:116`）留作 A 超预算时的性能开关**，因其共享 `extensionsResult.extensions`+`runtime`（`agent-session.js:2189,2195`）会让**有状态扩展跨对话串扰**（plan-mode 模式位 / MCP 连接 / 子代理 runtime），但 `uiContext` 是 per-runner（`extensions/runner.js:269`）故 ctx.ui 不串；**方案 C 多窗口出本批**（渲染进程 ×N 内存 + 跨窗口审批 + 与「交互贴 Composer」偏好冲突）。**顺带查出一个既有缺陷（与多对话强相关）**：桌面 `SdkAdapter.stop()` 直接调 `session.dispose?.()`（`packages/engine/src/sdk-adapter.ts:192-196`），**绕过了 `AgentSessionRuntime.dispose()` 里的 `session_shutdown reason:"quit"` 广播**（SDK 侧 `agent-session-runtime.js::dispose` 是先广播再 `session.dispose()`）→ 扩展注册的 `session_shutdown` 清理（MCP 关服务、子代理收尾）在桌面停引擎时从不执行。单引擎时代只在换项目/退出各触发一次，基本不可见；**一旦对话池化、suspend/resume 变高频就会积累子进程与状态泄漏**，故已写入 §7.9 现状核实表第 3 行 + T8.1 步骤 3 前置修复与验收项。**改造体量已量化**：`engine-manager` 30 个 `ipcMain.handle` + 11 处 `requireAdapter()`、`send(ENGINE_CHANNELS.event,...)` 5 处、渲染层 16 个文件订阅 `useSessionStore`、主进程 5 文件 21 处 `activeProject`；估 **11~13 人日**，T8.0 探针必须先行。**顺带修正一处文档不准确**：§7.8「现状核实」写「SDK fork 能力已有（`engine:fork` 通道）」——核实为**通道声明有（`ipc-schema/src/engine.ts:273`）、主进程无 handler、preload 无桥**；已在 T8.1 步骤 10 补做并把语义定为「从该对话某条消息另开新对话」（多对话天然分叉入口）。**同时记录**：`EngineEventSchema` 各变体均 `.passthrough()` → 给事件打 `conversationId` 标签不破契约（T8.2 选 envelope 以免与 Pi 原生字段撞名）。 | §7.9 八项待办（T8.0 探针先行）；T6.1 作废；**未开工**，本文档仅完成评估与排期。**【同日第二轮改判：本条的「v1 走 A」已被上行 D 方案取代】** |
 | 2026-09-03 | T7.10→真机回归 | 修复+踩坑 | **「发消息不出回复」根因定位**：非 T7.12（其仅 agent_settled 后记用量、try/catch 吞、且实测 `~/.pi-wood/usage/2026-09.json` 正常落盘=引擎确在跑），而是 **T7.10 memory 工具名用了点号**（`memory.save/list/read/delete`）。DeepSeek(OpenAI 兼容) 端点要求 `tools[i].function.name` 匹配 `^[a-zA-Z0-9_-]+$`，点号 → **整轮请求 400 `Invalid 'tools[9].function.name'`、助手 `content:[]`、`stopReason:"error"` → 渲染层无 text_delta、回复区空白**。证据：`~/.pi/agent/sessions/.../*.jsonl` 末条 assistant 消息 `errorMessage` 明列该 400。**为何此前门禁全绿未捕获**：memory/goal/plugin 探针与单测均走 fake adapter/纯函数，从不打真 API，工具名合法性只在真机首聊才暴露。修：① `memory-tools.ts` 四工具名全改下划线 `memory_save/memory_list/memory_read/memory_delete`（含 `memory_list 返回的 id` 描述）；② `store.ts::renderForAgent` 提示语同步 `memory_read/save/delete`（否则模型按旧名调用→unknown tool）；③ **防御性门禁**：`engine-manager.ensureEngineUnlocked` 构造 customTools 后逐个 `if(!/^[a-zA-Z0-9_-]+$/.test(t.name)) throw`（启动即失败，杜绝同类静默空回复，注释记此坑）；④ 执行计划 §7 T7.10 相关行 + 本行更新。**⚠ 教训入 MEMORY/§8**：凡涉真机 LLM 的工具/扩展，工具名须过 OpenAI 兼容正则；纯 fake 探针覆盖不到此约束。 | 真机回复恢复；防同类回归 |
 | 2026-09-03 | T7.12 用量/配额追踪 | 完成+偏差 | **B 类收尾项（per-provider 月度用量 + 配额告警 + 设置「用量」页）**。核心思路：`getSessionStats().tokens/cost` 是**会话累计**值，故按「每个 sessionId 维护上次快照、每轮 agent_settled 求非负差」归属到当时 `model`("provider/id")、单调累加进**月度文件** `~/.pi-wood/usage/<YYYY-MM>.json`——跨月自然新文件＝重置。① 纯函数 `provider/usage-core.ts`：`monthKey(now)`(UTC YYYY-MM)、`parseStore`(坏/非对象→{}、逐项归一负/非数 0)、`serializeStore`、`addDelta(store,pid,mid,delta)`(不可变、total 缺省=input+output、零增量/缺 pid|mid 不改)、`toEntries`(provider→model 排序)、`providerTotals`、`quotaWarnings`(token/cost 达阈各报、只报超限)——**`usage-core.test.ts` 9/9**。② `provider/usage-tracker.ts`：`UsageTracker({appDataDir,now,getQuota})`——`baselines:Map<sessionId,Snapshot>`、`recordUsage(sid,pid,mid,stats)` 求 max(0,cur-prev) 增量落本月文件、`readUsage(month?)`→`UsageView{month,entries,totals,warnings,quota}`、`configureUsageTracker/getUsageTracker` 单例——**`usage-tracker.test.ts` 4/4**（会话求差不重复计/累计下降不产负增量+跨会话分开/**跨月新文件从 0 起旧月不串**/provider 汇总+配额）。**注**：constructor 不用 TS 参数属性（`node --test` strip-types 不支持，改显式字段）。③ 写侧 `engine-manager` agent_settled 分支（goal tick 之后）：读 `next.getRuntimeInfo()`→`model` split provider/id + `stats.tokens/cost`→`getUsageTracker()?.recordUsage`（try/catch 吞、非关键路径；未装 tracker 则 no-op）。④ `ipc-schema/usage.ts`（UsageEntry/ProviderTotal/QuotaWarning/ProviderQuota/UsageView zod + `ENGINE_CHANNELS.getUsage="engine:getUsage"`）；`provider/usage.ipc.ts` `initUsageTracking()`（configure + `engine:getUsage` handler，可选 `month` 参）+ `index.ts` whenReady 注册（早于引擎 settle）；preload/global.d.ts `getUsage(month?)`。⑤ `settings-service` 加 `quota:Record<pid,{monthlyTokenBudget?,monthlyCostBudget?}>` + 默认 {}（写走 settingsSet 深合并、清档设 0）。⑥ 渲染层 `UsageSettingsPanel`（`‹ YYYY-MM ›` 月份切换、provider 卡片=名+本月 tokens+cost+`quotaWarnings` 红「超配额」徽章+token 预算进度条、多模型 `chevron` 展开、月度预算 `Input`→settingsSet quota 回填刷新、无用量空态）挂 SettingsModal「用量」tab。**⚠ 偏差/范围**：(a) **step2「超限自动切 provider」未做**（默认只告警不阻断，符合验收③「显示 warning」）；(b) **step5 EnvironmentPanel 快捷行 deferred**（设置页已覆盖全部验收，再挂一处 getUsage 轮询价值有限，留后续）；(c) 存储位置从计划 `usage/<providerId>.json`（按 provider）改为**按月份 `<YYYY-MM>.json`**（月内 provider→model 二维），更契合「月度配额/跨月重置」且单文件不膨胀；(d) 归属精度：以 settle 时刻 `getRuntimeInfo().model` 为准，一轮内切模型会把整轮增量记给最后一个模型（罕见，可接受）。**门禁**：`pnpm -r typecheck` 全绿、`pnpm -r test` **103/103**（desktop 85 含 usage-core 9+usage-tracker 4）、`electron-vite build` ✓、`--memory-probe`/`--goal-probe`/`--plugin-probe` 回归全 EXIT=0。**⚠ 真机带模型目检留后**：跑几轮对话→设置「用量」页数字与 RuntimeInfo 累计一致。 | T7.12 ✅；**B 类全部收口**（剩 T7.8 定时任务，已搁置）|
 | 2026-09-03 | T7.10 Agent Memory | 完成+偏差 | **B 类第五项：跨会话记忆——agent 用 memory.* 工具把偏好/事实/参考落盘，global/project 双 scope + unreviewed 安全模式 + 设置「记忆」管理页**。① 纯函数 `memory/store.ts`：`parseItems`（坏/非数组→[]、逐项规整：非法 type→fact/scope→global/reviewed 严格===true/缺 id|title|body 丢）、`serializeItems`、`addItem`（同 `scope::title` 忽略大小写 upsert，内容变则 `reviewed` 复位 false、保留 createdAt；title/body 必填→error；title≤200/body≤2000 clip；新增 reviewed:false）、`deleteById`/`setReviewed`/`updateItem`（改内容复位 reviewed）/`renderForAgent`（分【全局】【本项目】两段、未确认标注）——**`store.test.ts` 9/9**（往返/归一/upsert/校验/内容未变不复位/删除/命中）。② `memory/memory-service.ts`：`MemoryService`（注入 `{appDataDir,getProjectDir}`）——global→`~/.pi-wood/memory/global.json`、project→`<projectDir>/.pi-wood/memory/project.json`；`save`（scope=project 需活动项目否则 error）、`list/read/remove/markReviewed/edit`（id 全局唯一，locate 先 global 后 project 落对应文件）；`configureMemoryService/getMemoryService` 单例供 工具/IPC/探针 共用。③ `agent-tools/memory-tools.ts`：`memoryCustomTools()` 四 `CustomToolDef`（`memory.save/list/read/delete`，TypeBox 参数，execute 走 getMemoryService，返回文本；save→「已保存记忆：{title}（scope,已新增/更新,待确认）」，描述含 scope+unreviewed 语义）；`engine-manager` 主 adapter `customTools:[...browserCustomTools(), ...memoryCustomTools()]`。④ `ipc-schema/memory.ts`（MemoryItem/MemoryListResult/MEMORY_CHANNELS）+ `memory/memory.ipc.ts` `initMemoryIpc`（configure + list/save/update/setReviewed/delete，IPC 边界 unknown→string 归一）+ `index.ts` 注册 + preload/global.d.ts。⑤ 渲染层 `MemorySettingsPanel`（global/project 分区、类型/reviewed 徽章、内联编辑、确认/取消确认、删除、手动新增）挂 SettingsModal「记忆」tab。⑥ headless `--memory-probe`（注入临时 appDataDir + 可切换 projectDir 跑真 fs 服务）7/7 EXIT=0：global 保存落 global.json、project 保存落 `<projA>/.pi-wood/memory/project.json`、确认转正、同标题 upsert 不新增+内容变复位 reviewed、**切到 projB 其 project 空/切回 projA 仍在**（scope 隔离）、删除。**门禁**：`pnpm -r typecheck` 全绿、`pnpm -r test` **90/90**（desktop 72 含 store 9）、`electron-vite build` ✓、`--memory-probe`/`--goal-probe`/`--plugin-probe` 全 EXIT=0。**⚠ 计划偏差**：(a) 工具实现走 **in-process customTool**（同 browser-tools），非计划 `extensions/memory-extension.ts` 的 Pi 扩展——pi-wood agent 工具本就是 customTools 且在主进程有 fs，最自然；(b) project scope **直接用活动项目目录**，未做计划 step3「worktree 路径归到主项目」的归一（v1 够用，git worktree 场景留后续）；(c) step6「对话流内工具卡『确认』快捷按钮」**deferred**——`memory.save` 返回文本已含「待确认」，用户经「记忆」页确认即满足验收③，通用 ToolCard 内嵌需 action 通道、价值有限；(d) **agent 侧自动注入已有记忆到上下文**未做（现靠 agent 主动 memory.list），留后续增强；(e) 未复用生态 pi 内存扩展（app 级存储/reviewed/设置集成，市场扩展形态不匹配，同 T5.4-5.6 判定）。**⚠ 真机带模型目检留后**：让 agent save 一条→新会话 list→设置页确认。 | T7.10 ✅（B 类第五项）；剩 T7.8 定时任务 / T7.12 用量追踪 |
@@ -871,7 +1214,7 @@
 | 2026-09-01 | UI 打磨·设计工程(二) | 完成 | **续批：裸 `<button>` 按压反馈 + 两处克制动效**（承上一批）。**只给"离散可按压控件"加 `:active` scale，全宽行/标签页/窗口控制/正文内图标一律不加**（Emil 品味：整行缩放难看、窗控不应动）。加反馈者：`MessageList` 滚动到底 FAB（`active:scale-[.95]` + 出现 `fade-in-0`，保 `-translate-x-1/2` 仅动 opacity 不冲突）、`Composer` 附件移除×（`.9`，小目标略强）、`PackageMarket` 分段 tab（`.97`）、`RightPane` 标签关闭×（`.9`，原 `transition-opacity`→含 transform）；`transition-colors` 相应改为 `transition-[...transform]`。**新增两处低频动效**：① `RightPane.Launcher` 空态四张瓦片 `animate-in fade-in-0 slide-in-from-bottom-2` 错峰淡入（delay `i*55ms`、`[animation-fill-mode:both]` 防闪现）；② `MessageList` live 尾块（每轮流式挂载一次）`fade-in-0 duration-200` 轻淡入——**刻意不给虚拟化的已提交行加进场动画**（虚拟列表滚动复用 DOM 会逐行重播=flicker，且属高频，违反铁律）。门禁：desktop+ui-kit `tsc --noEmit` 全绿；新类全为仓内既有 tw-animate-css 工具族 | UI/动画打磨 ✅ |
 | 2026-09-01 | UI 打磨·设计工程 | 完成 | **以 emilkowalski/skills 套件跑一轮 UI/动画评审并落地高杠杆打磨**（pick-ui-library → review/improve/find-animation → emil-design-eng）。**选型结论：现有栈即最优，无需换库**——已装 sonner(toast)/cmdk(命令面板)/zustand/clsx+cva/shiki 均与清单一致；primitives 用 Radix（清单推 base-ui，但 shadcn 生态=Radix，按"已在用则不动"保留）；虚拟化用 @tanstack/react-virtual（清单推 Virtuoso，同上不强换）；**未装任何 motion 库=正确**（本项目动效全 CSS，符合"简单 hover/fade 不必上 motion"）。**发现的动画问题（Before→After）**：① 全仓无 `:active` 按压反馈（Emil #1 原则）→ ui + ui-kit `buttonVariants` 基座加 `motion-safe:active:scale-[0.97]`，`transition-colors`→`transition-[transform,background-color,color,border-color,box-shadow]`（覆盖 43 处 Button，含发送键）；② `popover.tsx`/`dropdown-menu.tsx`(Content+SubContent) 缺 origin 感知、从中心缩放 → 补 `origin-(--radix-*-content-transform-origin)`（select/tooltip 本已正确、dialog 模态豁免居中）；③ `switch.tsx`/`tabs.tsx` 裸 `transition-all` → 收敛为精确属性列表；④ 发送键 className 冗余 `transition-colors` 会覆盖基座 transform 过渡致缩放瞬跳 → 删除。**新增（仅限首屏 delight 预算）**：OnboardingComposer 空态问候/卡片/快捷提示 `animate-in fade-in-0 slide-in-from-bottom-2` 错峰淡入（delay 0/80/160+45n、`[animation-fill-mode:both]` 防闪现）。**保留（尊重既定决策、不churn）**：AppShell `transition-[flex-grow]`（可折叠面板布局属性，drawer 曲线已对）、PanelFade 收起 `ease-in`（150ms 微出）。门禁：apps/desktop + ui-kit `tsc --noEmit` 全绿；dev 实例 HMR 生效；所有新类均为仓内既有 tw-animate-css/Radix 工具族 | UI/动画打磨 ✅ |
 | 2026-09-01 | T6.2 子代理（pi-subagents）接线 | 待办 | **子代理能力落地，用户指定排最后做**。A 方案（低成本）：在 `engine-manager` 启动 `SdkAdapter` 前设 `process.env.PI_SUBAGENT_PI_BINARY` = **内嵌 SDK 的 `dist/bundle/cli.js`**（从 `node_modules/@earendil-works/pi-coding-agent` 读 `package.json.bin` 解析，版本天然对齐、随 `pi update --self` 跟，免依赖全局 pi）。依据（已探针实证）：`pi-subagents` 的 `getPiSpawnCommand`（`src/runs/shared/pi-spawn.ts`）win32 下——若设了 `PI_SUBAGENT_PI_BINARY` 且为 `.js` → 产出 `{command:process.execPath, args:[cli,…]}`；实测 `node <cli.js> --version`→`0.84.4` exit 0（子进程能起）。前台 spawn 的 child `spawnEnv={...process.env}`（`runs/foreground/execution.ts:615`）→ 继承 `DEEPSEEK_API_KEY` → 前台子代理真可用。**⚠ 当前已装未接线**：`pi-subagents` 已在 `settings.json.packages`，默认解析会走到 `pi-spawn.ts:190` 抛 `Could not resolve the Pi CLI on Windows`（peer `pi-coding-agent` 不在其树、`import.meta.resolve` 失败）→ 模型一旦调 `subagent` 即报错；接线前要么补 A、要么 `pi remove pi-subagents`。**未验残留**：async/后台 runner（jiti `async-execution.ts:567`、Windows control-channel）未端到端跑，真多代理 e2e 需带密钥实跑一次。**长期更优（路线 C）**：in-process 子代理——用 `createAgentSessionFromServices` 造带子集工具/模型的派生会话并发跑（≈ Claude Agent SDK 主流做法，不 spawn CLI、跨平台干净），可作为把子代理做成一等特性时采纳 | 排最后；未接线前调用即抛错 |
-| 2026-09-01 | T6.1 多项目并发会话 | 待办 | **多项目/多会话并行提问**——登记为独立架构任务，**非子代理**（子代理=同一 workspace 内并行分片；此需求=多个独立 cwd、各自引擎与会话流的并发会话）。**现状：不支持**，全链路单例假设（已核代码）：`engine-manager.ts:61` 模块级单 `adapter`，`ensureEngine` 158–159 同项目复用、**换项目 `adapter.stop()` 重建**（切换会 abort 前一个在跑的请求，无后台续跑）；`session-store` 单 `activeProject`/单 `streaming`/单 `items`；`App.tsx:78` 单条 `onEngineEvent` 全局事件流喂一个 MessageList；`send()`→`getAllWindows()[0]` + dev 单例锁 → 即使开第二窗口仍共用同一 adapter、事件只回窗口[0]。**改造范围**：① `engine-manager` 单 `adapter` → `Map<projectDir, SdkAdapter>` + 切走保活（仿右栏 workbench 让 pty 常驻，不 stop）；② 事件带 `projectId` 路由，`ENGINE_CHANNELS.event` + 渲染层 store 按会话分片（`items/streaming/queue` keyed by session）；③ `pendingApprovals`/`pendingUiRequests` 的 Map key 现按数字 id，需再带项目归属；④ 窗口/标签：多窗口各绑会话（每个 webContents 收自己事件）或单窗口会话标签 + 后台并行。**边界**：每引擎各自 spawn 子进程（MCP/子代理）、并发下 token/成本/审批各自计。**优先级：排在当前扩展批次（T3.1/T3.4/子代理接线）收口之后再开一轮设计** | 立为后续任务，未开始 |
+| 2026-09-01 | T6.1 多项目并发会话 | 待办 | **多项目/多会话并行提问**——登记为独立架构任务，**非子代理**（子代理=同一 workspace 内并行分片；此需求=多个独立 cwd、各自引擎与会话流的并发会话）。**现状：不支持**，全链路单例假设（已核代码）：`engine-manager.ts:61` 模块级单 `adapter`，`ensureEngine` 158–159 同项目复用、**换项目 `adapter.stop()` 重建**（切换会 abort 前一个在跑的请求，无后台续跑）；`session-store` 单 `activeProject`/单 `streaming`/单 `items`；`App.tsx:78` 单条 `onEngineEvent` 全局事件流喂一个 MessageList；`send()`→`getAllWindows()[0]` + dev 单例锁 → 即使开第二窗口仍共用同一 adapter、事件只回窗口[0]。**改造范围**：① `engine-manager` 单 `adapter` → `Map<projectDir, SdkAdapter>` + 切走保活（仿右栏 workbench 让 pty 常驻，不 stop）；② 事件带 `projectId` 路由，`ENGINE_CHANNELS.event` + 渲染层 store 按会话分片（`items/streaming/queue` keyed by session）；③ `pendingApprovals`/`pendingUiRequests` 的 Map key 现按数字 id，需再带项目归属；④ 窗口/标签：多窗口各绑会话（每个 webContents 收自己事件）或单窗口会话标签 + 后台并行。**边界**：每引擎各自 spawn 子进程（MCP/子代理）、并发下 token/成本/审批各自计。**优先级：排在当前扩展批次（T3.1/T3.4/子代理接线）收口之后再开一轮设计** | ~~立为后续任务，未开始~~ → **2026-09-03 已由 §7.9「多对话并发」（T8.0~T8.7）展开为可勾选清单并作废本条**；行内引用的 `engine-manager.ts:61/158-159`、`App.tsx:78` 行号已漂移（现依次为 `:72`、`:199-200`、`App.tsx:114`），以 §7.9 现状核实表为准 |
 | 2026-09-01 | T3.4 插件市场 | 完成 | **插件市场落地，接真实 pi-agent 生态**：调研确认 `pi` CLI 无内置 search/registry（纯源安装 `npm:`/`git:`/url/local），pi 扩展实际以 **npm 包**发布（`@plannotator/pi-extension`、`pi-subagents`、`@gotgenes/pi-permission-system`、`@ff-labs/pi-fff`…）。故市场数据源=**npm registry 公开检索 API** `https://registry.npmjs.org/-/v1/search?text=<q> pi`（主进程 `fetch`，PI_HINT 正则过滤 pi 生态、按 name 去重）。① `data.ipc.ts` 新增 `packages:search`（返回 `MarketItem[]`）、`packages:uninstall`→`pi remove`、`packages:update`→`pi update [spec|--extensions]`；沿用 `packages:list/install`；**fetch 加 `AbortSignal.timeout(12000)`**（首版无超时→Electron 主进程首连偶发挂起、UI 无限转圈，已修）+ 超时/网络错误友好文案。② preload+global.d.ts 暴露 `packagesSearch/Uninstall/Update` + `PiMarketItem` 全局类型。③ 新建 `PackageMarket.tsx`（shadcn Dialog）：发现/已安装 两段 + 搜索框（350ms 防抖，空查询给默认「发现」词）+ 卡片栅格（名称/版本 Badge/作者·日期/描述 line-clamp/安装-卸载），安装/卸载后 `loadInstalled()` + `engineReload()` 热重载生效（引擎未就绪则提示下次选项目生效）。④ 侧栏「插件市场」按钮由 open-settings 改派 `piwood:open-marketplace`，App.tsx 监听渲染。`Icon.tsx` 加 `package`。门禁：typecheck 全绿、build 通过；真实 dev 实例点「插件市场」→发现页拉到 10+ 真实 pi 扩展卡片渲染、已安装页空态正确 | T3.4 插件市场 ✅ |
 | 2026-09-01 | UI v4-右侧栏Chrome标签化 | 决策+完成 | **右侧栏弃用 dockview，重做为「空态启动器 + Chrome 式单标签」**（用户嫌原固定按钮条丑、参考 ZCode）。① `workbench-store` 新增 `openTabs: WorkbenchTab[]`/`activeTab`+`openTab/closeTab/setActiveTab/hydrateTabs`，`openWorkbench()` 改直连 store（去掉 `piwood:open-workbench` 事件）；`openTab` 顺带派发 `piwood:reveal-inspector`。② `RightPane` 重写：`openTabs.length===0` → 居中启动器（审查/终端/浏览器/文件 四张圆角卡，图标+名称+快捷键，点击创建）；否则 → Chrome 标签条（激活标签 `bg-surface-app` 与内容连通、`×` 常显，未激活 `×` 悬停显）+ 右侧 `+` Popover 新增菜单 + 最右收起按钮；内容区把**所有已开面板常驻挂载、非激活 `hidden`（display:none）**保活（终端 pty/浏览器态不丢）。③ `TerminalPanel` 用 **ResizeObserver 观察宿主**替代 window resize——隐藏→显示时 refit。④ `AppShell` 加 `piwood:reveal-inspector` 监听：开面板时若右栏收起则自动展开。⑤ `App.tsx` 接四快捷键 Ctrl+Shift+G/Ctrl+\`/Ctrl+T/Ctrl+P → openWorkbench。标签 `diff→审查`（原变更）。持久化改 `settings.workbench:{openTabs,activeTab}`（原 dockview layout 作废）。dockview 依赖暂留 package.json 不卸（避免 pnpm 依赖变动触发 electron 重下陷阱）。门禁：typecheck 全绿、build 通过；`--capture` 预置 settings 两态截图（空态启动器 / 三标签 Chrome 条）均贴合参考 | 右侧栏 ✅ |
 | 2026-09-01 | UI v4-中栏Header | 完成 | **中栏顶部新增 `ConversationHeader`（对话标题栏）**：① 左侧 message 图标（`Icon.tsx` 新增 `message: MessageSquare`）+ **对话标题**——取 `session-store.items` 首条 `kind==="user"` 文本（折叠空白、单行 truncate），与会话列表 `firstMessage` 同源；无会话时回退 activeProject 目录名 → "新任务"。② 右侧视图开关：**运行时信息看板**（`panelTop`，点亮态跟 `environmentOpen`）常驻；**右侧工作台开关**（`panelRight`）按"就近"规则——`settings.window.rightCollapsed` 为真（右栏收起）才显示在此最右点开，右栏展开时隐藏。③ 右栏展开态的收起按钮改由 `RightPane` 自身 nav 最右侧提供（`flex-1` 撑开 + `panelRight` 收起，派发 `piwood:toggle-inspector`）。**下沉清理**：`TitleBar` 原两枚切换按钮（panelTop/panelRight）移除，仅留引擎状态点 + 窗口控制；`environmentOpen`/`onEnvironmentToggle` 从 `TitleBar`、`AppShell` props 一并删除（App 直接把 state 交给 ConversationHeader 与 EnvironmentPanel）。右栏开合状态经 `useSettingsStore(s=>s.settings.window.rightCollapsed)` 单一订阅、`patch` 响应式回流。门禁：typecheck 全绿、build 通过；`--capture` 双态截图（右栏开→收起按钮在右栏头、右栏关→展开按钮在中栏头最右）均到位 | 中栏信息架构 ✅ |
@@ -960,3 +1303,4 @@
 | T3.1~T3.4 | §5/§6.5/§7/§10.6 | Phase 3 | "装一个社区 Pi 包，扩展+主题+Skill 全生效；CLI/桌面互通" |
 | T4.1~T4.3 | §9/§10.3/§12-Phase4 | Phase 4 | "权限矩阵用例全过；危险命令/敏感文件默认拦截" |
 | T5.1~T5.3 | §6/§5.8/§10.6/§11-6/7/10 | Phase 5 | "干净安装三平台，新用户 10 分钟跑通" |
+| T8.P + T8.0~T8.8（本文档 §7.9，原 T6.1） | §2.1/§2.2/§3.1/§4.1~4.3/§5.2/§9/§10.2~10.4/§11-1/2/4 | **无对应原门禁**（本文档自设批次，2026-09-03 立项） | "单窗口内多项目多对话并行（每对话＝一个引擎子进程 + 一个 git worktree）：切走不打断、切回历史完整不重复、审批不串台且后台不静默超时、并发与成本有闸门、变更可回流、性能红线逐条实测达标（T8.8 `--concurrency-probe` 8 条 EXIT=0 + 五探针回归 + 并发数=1 无回退）" |
