@@ -128,7 +128,12 @@ async function collectGitInfo(): Promise<GitInfo | undefined> {
 
 function send(channel: string, data: unknown): void {
   const win = BrowserWindow.getAllWindows()[0];
-  win?.webContents.send(channel, data);
+  if (!win || win.isDestroyed()) return; // 关窗/退出竞态：挡掉已销毁窗口，防 "Object has been destroyed"
+  try {
+    win.webContents.send(channel, data);
+  } catch {
+    /* webContents 已销毁，静默丢弃 */
+  }
 }
 
 /** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise） */

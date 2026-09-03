@@ -22,7 +22,13 @@ import { loadPrivateEnv } from "./private-env";
 
 let mainWindowRef: BrowserWindow | undefined;
 function sendToRenderer(channel: string, data: unknown): void {
-  mainWindowRef?.webContents.send(channel, data);
+  // 关窗/退出时子进程 exit 等异步回调可能晚于窗口销毁到达 → 挡掉已销毁窗口，防 "Object has been destroyed"
+  if (!mainWindowRef || mainWindowRef.isDestroyed()) return;
+  try {
+    mainWindowRef.webContents.send(channel, data);
+  } catch {
+    /* webContents 已销毁等，静默丢弃 */
+  }
 }
 
 const debugLog = (line: string): void => {
