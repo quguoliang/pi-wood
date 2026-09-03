@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,10 @@ export function FilesPanel(): React.JSX.Element {
   const [searchResults, setSearchResults] = useState<Array<{ path: string }> | null>(null);
   const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState("");
+  // T7.7 审查发现跳转：CodeMirror 实例（类型从 onCreateEditor 回调推导，避免直依赖 @codemirror/view）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const viewRef = useRef<any>(null);
+  const [pendingReveal, setPendingReveal] = useState<{ path: string; line: number } | null>(null);
 
   const active = openFiles.find((f) => f.path === activeFile);
   const activeContent = active?.content ?? "";
@@ -83,9 +87,31 @@ export function FilesPanel(): React.JSX.Element {
 
   useEffect(() => {
     if (!requestedFile) return;
-    openFile({ path: requestedFile, name: requestedFile.split(/[\\/]/).pop() ?? requestedFile, type: "file" });
+    const { path, line } = requestedFile;
+    openFile({ path, name: path.split(/[\\/]/).pop() ?? path, type: "file" });
+    if (line != null) setPendingReveal({ path, line });
     clearRequestedFile();
   }, [clearRequestedFile, openFile, requestedFile]);
+
+  // 待定位文件已加载且编辑器就绪 → 定位到行（1-based）并居中滚动，随后清除
+  useEffect(() => {
+    if (!pendingReveal || activeFile !== pendingReveal.path) return;
+    const view = viewRef.current;
+    if (!view) return;
+    const total = view.state.doc.lines;
+    const n = Math.min(Math.max(1, pendingReveal.line), total);
+    const linePos = view.state.doc.line(n).from;
+    view.dispatch({ selection: { anchor: linePos } });
+    requestAnimationFrame(() => {
+      try {
+        const coords = view.coordsAtPos(linePos);
+        if (coords) view.scrollDOM.scrollTop += coords.top - view.scrollDOM.getBoundingClientRect().top - 80;
+      } catch {
+        /* 定位失败忽略 */
+      }
+    });
+    setPendingReveal(null);
+  }, [pendingReveal, activeFile, activeContent]);
 
   const saveActive = (): void => {
     if (!active) return;
@@ -179,6 +205,9 @@ export function FilesPanel(): React.JSX.Element {
                   editable={editing}
                   basicSetup={{ foldGutter: false, searchKeymap: false }}
                   extensions={isJsLike(active.path) ? [javascript()] : []}
+                  onCreateEditor={(view) => {
+                    viewRef.current = view;
+                  }}
                   onChange={(value: string) =>
                     setOpenFiles((fs) =>
                       fs.map((f) =>

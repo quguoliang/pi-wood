@@ -12,13 +12,13 @@ export interface DiffItem {
 
 interface WorkbenchState {
   diffs: DiffItem[];
-  requestedFile?: string;
-  /** Chrome 式右侧栏：已打开的面板（顺序即标签顺序）与当前激活项。空数组 → 显示启动器。 */
+  /** 请求 FilesPanel 打开的文件（T7.7 审查可带定位行）。消费后清空。 */
+  requestedFile?: { path: string; line?: number };
   openTabs: WorkbenchTab[];
   activeTab: WorkbenchTab | null;
   addDiff: (diff: DiffItem) => void;
   removeDiff: (id: string) => void;
-  requestFile: (path: string) => void;
+  requestFile: (path: string, line?: number) => void;
   clearRequestedFile: () => void;
   openTab: (tab: WorkbenchTab) => void;
   closeTab: (tab: WorkbenchTab) => void;
@@ -32,7 +32,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   diffs: [],
   addDiff: (diff) => set((state) => ({ diffs: [...state.diffs, diff] })),
   removeDiff: (id) => set((state) => ({ diffs: state.diffs.filter((diff) => diff.id !== id) })),
-  requestFile: (path) => set({ requestedFile: path }),
+  requestFile: (path, line) => set({ requestedFile: { path, line } }),
   clearRequestedFile: () => set({ requestedFile: undefined }),
 
   openTabs: [],
@@ -71,7 +71,7 @@ export function openWorkbench(tab: WorkbenchTab): void {
   useWorkbenchStore.getState().openTab(tab);
 }
 
-export function openWorkbenchFile(path: string): void {
-  useWorkbenchStore.getState().requestFile(path);
+export function openWorkbenchFile(path: string, line?: number): void {
+  useWorkbenchStore.getState().requestFile(path, line);
   openWorkbench("files");
 }

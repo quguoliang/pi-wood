@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -121,6 +121,8 @@ declare global {
       goalClear(sessionId: string): Promise<null>;
       goalUpdateObjective(sessionId: string, objective: string): Promise<GoalState | null>;
       onGoalStatus(cb: (state: GoalState | null) => void): () => void;
+      // T7.7 代码审查
+      reviewRun(): Promise<ReviewResult>;
     };
   }
 }

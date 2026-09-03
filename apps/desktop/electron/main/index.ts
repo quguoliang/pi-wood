@@ -16,6 +16,7 @@ import { isPluginProbeMode, runPluginProbe } from "./plugins/plugin-probe";
 import { initSubagentPermissionsIpc } from "./subagent/permissions.ipc";
 import { initGoalIpc } from "./goal/goal.ipc";
 import { isGoalProbeMode, runGoalProbe } from "./goal/goal-probe";
+import { initReviewIpc } from "./review/review.ipc";
 import { initWindowIpc } from "./window-controls";
 import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
@@ -176,6 +177,7 @@ if (!gotLock) {
     initDevServerIpc();
     initPluginsIpc(sendToRenderer);
     initGoalIpc(sendToRenderer); // T7.5 目标模式
+    initReviewIpc(); // T7.7 代码审查流
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

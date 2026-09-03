@@ -241,6 +241,8 @@ const api = {
     ipcRenderer.on("goal:status", h);
     return () => ipcRenderer.removeListener("goal:status", h);
   },
+  // T7.7 代码审查
+  reviewRun: (): Promise<unknown> => ipcRenderer.invoke("review:run"),
 };
 
 export type PiPreloadApi = typeof api;
