@@ -10,6 +10,7 @@ import { SdkAdapter } from "@pi-wood/engine/sdk";
 import { normalizeEngineEvent, type DesktopUiBridge } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
+import { memoryCustomTools } from "../agent-tools/memory-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
 import { permissionGateExtension, decide, describeApprovalCall, type ApprovalPolicy } from "../security/approval-gate";
 import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
@@ -251,7 +252,7 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
   await next.start({
     projectDir,
     uiBridge: uiBridge(),
-    customTools: browserCustomTools(),
+    customTools: [...browserCustomTools(), ...memoryCustomTools()],
     inlineExtensions: [
       permissionGateExtension(
         () => getPolicy(),

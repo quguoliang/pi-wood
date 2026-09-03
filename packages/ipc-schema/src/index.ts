@@ -4,3 +4,4 @@ export * from "./plugins.ts";
 export * from "./subagents.ts";
 export * from "./goal.ts";
 export * from "./review.ts";
+export * from "./memory.ts";

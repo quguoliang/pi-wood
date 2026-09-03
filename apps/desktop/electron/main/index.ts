@@ -17,6 +17,8 @@ import { initSubagentPermissionsIpc } from "./subagent/permissions.ipc";
 import { initGoalIpc } from "./goal/goal.ipc";
 import { isGoalProbeMode, runGoalProbe } from "./goal/goal-probe";
 import { initReviewIpc } from "./review/review.ipc";
+import { initMemoryIpc } from "./memory/memory.ipc";
+import { isMemoryProbeMode, runMemoryProbe } from "./memory/memory-probe";
 import { initWindowIpc } from "./window-controls";
 import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
@@ -157,6 +159,11 @@ if (!gotLock) {
       await runGoalProbe();
       return;
     }
+    // T7.10 Agent Memory headless 探针：注入临时目录跑真 MemoryService，断言 scope/reviewed/隔离后 app.exit
+    if (isMemoryProbeMode()) {
+      await runMemoryProbe();
+      return;
+    }
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
@@ -178,6 +185,7 @@ if (!gotLock) {
     initPluginsIpc(sendToRenderer);
     initGoalIpc(sendToRenderer); // T7.5 目标模式
     initReviewIpc(); // T7.7 代码审查流
+    initMemoryIpc(); // T7.10 Agent Memory
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

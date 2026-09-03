@@ -243,6 +243,13 @@ const api = {
   },
   // T7.7 代码审查
   reviewRun: (): Promise<unknown> => ipcRenderer.invoke("review:run"),
+  // T7.10 Agent Memory
+  memoryList: (): Promise<unknown> => ipcRenderer.invoke("memory:list"),
+  memorySave: (input: unknown): Promise<unknown> => ipcRenderer.invoke("memory:save", input),
+  memoryUpdate: (input: unknown): Promise<unknown> => ipcRenderer.invoke("memory:update", input),
+  memorySetReviewed: (id: string, reviewed: boolean): Promise<boolean> =>
+    ipcRenderer.invoke("memory:setReviewed", { id, reviewed }),
+  memoryDelete: (id: string): Promise<boolean> => ipcRenderer.invoke("memory:delete", { id }),
 };
 
 export type PiPreloadApi = typeof api;
