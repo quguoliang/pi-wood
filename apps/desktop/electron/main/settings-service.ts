@@ -26,6 +26,11 @@ export interface PiWoodSettings {
   };
   /** T7.2：按会话 id 记录「自动接受审批」开关；缺省（无 key）视为未开启（fail closed）。 */
   autoAcceptSessions: Record<string, boolean>;
+  /**
+   * T7.12：per-provider 月度配额（token/cost）。超限在用量页/环境面板告警（默认只警告不阻断）。
+   * providerId → {monthlyTokenBudget?, monthlyCostBudget?}。
+   */
+  quota: Record<string, { monthlyTokenBudget?: number; monthlyCostBudget?: number }>;
   workbench: { layout: unknown | null };
   /** T5.2：插件启用状态（缺省视为启用；显式 false 才禁用） */
   pluginsEnabled: Record<string, boolean>;
@@ -47,6 +52,7 @@ export function defaultSettings(): PiWoodSettings {
     model: { provider: "deepseek", id: "deepseek-v4-flash" },
     approval: { mode: "highRisk", rules: [] },
     autoAcceptSessions: {},
+    quota: {},
     workbench: { layout: null },
     pluginsEnabled: {},
     subagentPermissions: {},

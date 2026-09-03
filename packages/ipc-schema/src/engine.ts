@@ -287,4 +287,6 @@ export const ENGINE_CHANNELS = {
   subagentEvent: "engine:subagentEvent",
   // T3.3：读取当前 Pi 主题 JSON（renderer→main 拉取，用于全应用换肤）
   getPiTheme: "engine:getPiTheme",
+  // T7.12：读取月度用量/配额视图（renderer→main 拉取）
+  getUsage: "engine:getUsage",
 } as const;

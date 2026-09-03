@@ -14,6 +14,7 @@ import { initProviderIpc } from "./provider/provider-manager";
 import { initPluginsIpc, stopAllPlugins } from "./plugins/plugins.ipc";
 import { isPluginProbeMode, runPluginProbe } from "./plugins/plugin-probe";
 import { initSubagentPermissionsIpc } from "./subagent/permissions.ipc";
+import { initUsageTracking } from "./provider/usage.ipc";
 import { initGoalIpc } from "./goal/goal.ipc";
 import { isGoalProbeMode, runGoalProbe } from "./goal/goal-probe";
 import { initReviewIpc } from "./review/review.ipc";
@@ -177,6 +178,7 @@ if (!gotLock) {
     const agentDir = getAgentDir();
     initDataIpc(agentDir, getActiveProjectDirSafe);
     initSubagentPermissionsIpc(join(agentDir, "agents")); // T6.7 子代理 per-tool 权限
+    initUsageTracking(); // T7.12 用量追踪（须在引擎首轮 settle 前配置好单例）
     initEngineIpc();
     initFileIpc(getActiveProjectDir);
     initTerminalIpc(sendToRenderer);

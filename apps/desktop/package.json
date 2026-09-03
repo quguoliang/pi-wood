@@ -14,7 +14,7 @@
     "probe:memory": "node ../../scripts/ensure-electron.mjs && electron-vite build && electron . --memory-probe",
     "postinstall": "electron-builder install-app-deps",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "node --test electron/main/workbench/snapshot-service.test.ts electron/main/subagent/usage.test.ts electron/main/subagent/permissions.test.ts electron/main/security/approval-gate.test.ts electron/main/goal/goal-machine.test.ts electron/main/goal/goal-prompt.test.ts electron/main/review/parse-findings.test.ts electron/main/memory/store.test.ts electron/main/provider/model-pick.test.ts src/renderer/src/lib/tool-groups.test.ts src/renderer/src/lib/theme-adapter.test.ts"
+    "test": "node --test electron/main/workbench/snapshot-service.test.ts electron/main/subagent/usage.test.ts electron/main/subagent/permissions.test.ts electron/main/security/approval-gate.test.ts electron/main/goal/goal-machine.test.ts electron/main/goal/goal-prompt.test.ts electron/main/review/parse-findings.test.ts electron/main/memory/store.test.ts electron/main/provider/model-pick.test.ts electron/main/provider/usage-core.test.ts electron/main/provider/usage-tracker.test.ts src/renderer/src/lib/tool-groups.test.ts src/renderer/src/lib/theme-adapter.test.ts"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

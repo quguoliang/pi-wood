@@ -12,6 +12,7 @@ import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { memoryCustomTools } from "../agent-tools/memory-tools";
 import { reinjectProviderEnv } from "../provider/provider-manager";
+import { getUsageTracker } from "../provider/usage-tracker";
 import { permissionGateExtension, decide, describeApprovalCall, type ApprovalPolicy } from "../security/approval-gate";
 import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
 import { aggregateRunUsage } from "../subagent/usage.ts";
@@ -295,6 +296,22 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
         text,
         { aborted: assistAborted },
       ).catch(() => undefined);
+      // T7.12：记一次会话累计用量到当前 provider/model（按快照求差，见 UsageTracker）
+      void (async () => {
+        try {
+          const ri = await next.getRuntimeInfo();
+          const model = ri.model;
+          const sep = model ? model.indexOf("/") : -1;
+          if (model && sep > 0 && ri.stats) {
+            getUsageTracker()?.recordUsage(next.getSessionId() ?? "", model.slice(0, sep), model.slice(sep + 1), {
+              ...ri.stats.tokens,
+              cost: ri.stats.cost,
+            });
+          }
+        } catch {
+          /* 用量非关键路径 */
+        }
+      })();
     }
     // T2.2：edit/write 前后快照 → diff 推送右栏（含相对路径解析）
     // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测

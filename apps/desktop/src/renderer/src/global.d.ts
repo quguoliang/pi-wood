@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult, MemoryItem, MemoryListResult } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult, MemoryItem, MemoryListResult, UsageView } from "@pi-wood/ipc-schema";
 export {};
 
 declare global {
@@ -129,6 +129,8 @@ declare global {
       memoryUpdate(input: { id: string; title?: string; body?: string; type?: string }): Promise<MemoryItem | null>;
       memorySetReviewed(id: string, reviewed: boolean): Promise<boolean>;
       memoryDelete(id: string): Promise<boolean>;
+      // T7.12 用量/配额
+      getUsage(month?: string): Promise<UsageView | null>;
     };
   }
 }

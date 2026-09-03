@@ -250,6 +250,8 @@ const api = {
   memorySetReviewed: (id: string, reviewed: boolean): Promise<boolean> =>
     ipcRenderer.invoke("memory:setReviewed", { id, reviewed }),
   memoryDelete: (id: string): Promise<boolean> => ipcRenderer.invoke("memory:delete", { id }),
+  // T7.12 用量/配额
+  getUsage: (month?: string): Promise<unknown> => ipcRenderer.invoke("engine:getUsage", { month }),
 };
 
 export type PiPreloadApi = typeof api;
