@@ -8,9 +8,11 @@ import { getMemoryService } from "../memory/memory-service.ts";
  * scope：global 跨项目、project 仅当前项目（由活动项目目录推导，agent 不能指定项目 id）。
  */
 export function memoryCustomTools(): CustomToolDef[] {
+  // 注意：工具名必须匹配 ^[a-zA-Z0-9_-]+$——OpenAI 兼容端点（DeepSeek 等）会拒绝含「.」的名字
+  // （400 Invalid tools[i].function.name），导致整轮请求失败、助手回复为空。故用下划线而非 memory.save 式点号。
   return [
     {
-      name: "memory.save",
+      name: "memory_save",
       label: "保存记忆",
       description:
         "跨会话记住一件事（偏好/事实/参考）。下次会话仍可见。scope=global 跨所有项目、project 仅当前项目（默认 global）。" +
@@ -36,7 +38,7 @@ export function memoryCustomTools(): CustomToolDef[] {
       },
     },
     {
-      name: "memory.list",
+      name: "memory_list",
       label: "列出记忆",
       description: "列出已保存的记忆（全局 + 当前项目），含 id 与是否已确认。未确认条目谨慎参考。",
       parameters: Type.Object({}),
@@ -46,10 +48,10 @@ export function memoryCustomTools(): CustomToolDef[] {
       },
     },
     {
-      name: "memory.read",
+      name: "memory_read",
       label: "读取记忆",
       description: "按 id 读取一条记忆的完整内容。",
-      parameters: Type.Object({ id: Type.String({ description: "memory.list 返回的 id" }) }),
+      parameters: Type.Object({ id: Type.String({ description: "memory_list 返回的 id" }) }),
       async execute(_id, params) {
         const m = getMemoryService().read(String(params.id ?? ""));
         if (!m) return { content: [{ type: "text", text: "未找到该记忆" }], details: {} };
@@ -57,7 +59,7 @@ export function memoryCustomTools(): CustomToolDef[] {
       },
     },
     {
-      name: "memory.delete",
+      name: "memory_delete",
       label: "删除记忆",
       description: "按 id 删除一条记忆。",
       parameters: Type.Object({ id: Type.String({ description: "要删除的记忆 id" }) }),

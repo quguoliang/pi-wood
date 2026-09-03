@@ -250,10 +250,18 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
       }
     },
   };
+  // 工具名校验：OpenAI 兼容端点（DeepSeek 等）要求 function.name 匹配 ^[a-zA-Z0-9_-]+$，
+  // 含「.」等字符会让整轮请求 400、助手回复静默为空（曾踩坑）。启动即失败，避免线上「消息无回复」。
+  const customTools = [...browserCustomTools(), ...memoryCustomTools()];
+  for (const t of customTools) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(t.name)) {
+      throw new Error(`非法工具名 "${t.name}"：须匹配 ^[a-zA-Z0-9_-]+$（不能用「.」，如 memory_save）`);
+    }
+  }
   await next.start({
     projectDir,
     uiBridge: uiBridge(),
-    customTools: [...browserCustomTools(), ...memoryCustomTools()],
+    customTools,
     inlineExtensions: [
       permissionGateExtension(
         () => getPolicy(),

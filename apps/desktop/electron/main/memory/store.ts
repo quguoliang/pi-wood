@@ -175,6 +175,6 @@ export function renderForAgent(globalItems: readonly MemoryItem[], projectItems:
   };
   section("全局记忆", globalItems);
   section("本项目记忆", projectItems);
-  lines.push("", "用 memory.read(id) 看全文，memory.save 新增/更新，memory.delete 删除。标注「未确认」的条目用户尚未审阅。");
+  lines.push("", "用 memory_read(id) 看全文，memory_save 新增/更新，memory_delete 删除。标注「未确认」的条目用户尚未审阅。");
   return lines.join("\n");
 }
