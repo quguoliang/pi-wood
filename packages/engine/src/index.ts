@@ -2,6 +2,8 @@
 // SdkAdapter（含 Pi SDK 动态导入）经 "@pi-wood/engine/sdk" 子路径供主进程使用。
 export type {
   EngineAdapter,
+  EngineSessionRef,
+  EngineStartInfo,
   EngineStartOptions,
   DesktopUiBridge,
   AvailableModel,

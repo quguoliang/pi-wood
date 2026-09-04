@@ -6,11 +6,15 @@ files:
   - out/**
   - package.json
   - "!**/*.map"
-# ⚠ T8.0/P1-d 实测：utilityProcess 子进程入口 electron/main/engine/engine-child.mjs 在打包态缺席
-#   （files 只含 out/**）。直接往 files 里加该源码路径会让 electron-builder 把工作区依赖映射算错
-#   （报 "packages/engine/package.json must be under apps/desktop"，package:dir 直接失败）。
-#   正解留 T8.1 落地：由构建把入口拷进 out/main/ 并对 out/main/engine-child.mjs 用 asarUnpack
-#   （留在 app 树内才能解析 @earendil-works/* 依赖；extraResources 会落到 app 外、解析不到 SDK）。
+# T8.0/P1-d 缺口已在 T8.1 关闭：引擎子进程入口不再是散落在源码树的 .mjs，而是 main 的
+#   **第二个 rollup 入口**（electron.vite.config.ts → out/main/engine-child.js），
+#   与 index.js 同目录，随上面的 out/** 一起进 app.asar。
+#   - 不列 extraResources：那会把入口落到 app 树外，child 里 import "@earendil-works/pi-coding-agent"
+#     会沿 app.asar.unpacked/ → resources/ 找 node_modules 而解析失败。
+#   - 默认不 asarUnpack：child 从 asar 内加载时，bare 依赖仍按 app 根解析。
+#     若打包态探针（probe:conversation:packaged）报「入口存在但加载失败 / Cannot find package」，
+#     再补 asarUnpack: [ "out/main/engine-child.js", "out/main/chunks/**" ] —— 必须连共享 chunk 一起
+#     unpack，否则入口能读到、它 import 的 chunk 读不到（T8.0 踩过的 workspace 映射坑同源）。
 win:
   target:
     - target: nsis

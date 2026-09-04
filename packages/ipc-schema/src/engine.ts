@@ -194,6 +194,17 @@ export const RuntimeInfoSchema = z.object({
     })
     .optional(),
   git: GitInfoSchema.optional(),
+  // T8.1：引擎进 utilityProcess 后，一个对话 = 一个引擎进程。面板/探针据此知道「谁在跑、跑在哪、装配花了多久」。
+  engineProcess: z
+    .object({
+      pid: z.number(),
+      conversationId: z.string(),
+      status: z.string(),
+      bootMs: z.number().optional(),
+      memRssMB: z.number().optional(),
+      droppedEvents: z.number().optional(),
+    })
+    .optional(),
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>;
 

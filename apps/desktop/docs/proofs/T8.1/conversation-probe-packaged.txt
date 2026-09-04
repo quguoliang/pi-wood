@@ -1,0 +1,24 @@
+2026-09-04T01:47:00.591Z form=packaged checks=17 failures=0
+  ✓ C6 引擎子进程入口可解析 — C:\Users\1\Desktop\pi-wood\apps\desktop\release\win-unpacked\resources\app.asar\out\main\engine-child.js
+  · 起始 node/python 计数=0
+  ✓ C1.1 三条对话并存 — count=3 [HT:idle TB:idle WK:idle]
+  ✓ C1.2 三条对话各自独立 pid — 37192,33628,35112
+  ✓ C1.3 引擎确实不在主进程内跑 — main=33868 children=37192,33628,35112
+  ✓ C1.4 三个 child 的工具集逐个全等 — 每集 23 个
+  ✓ C1.5 9 个宿主代理工具已进 session 工具集 — browser_navigate,browser_read_text,browser_click,browser_fill,browser_screenshot,memory_save,memory_list,memory_read,memory_delete
+  · C1.6 三路装配总耗时=3919ms；单路 timings={"servicesMs":451,"runtimeMs":456,"bindMs":5,"totalMs":461}；child RSS=216MB
+  ✓ C1.7 三路冷启动在 15s 内完成 — 3919ms
+  ✓ C5.1 下行 invoke 往返自洽（stats.pid == start 回执 pid） — {"pid":37192,"cwd":"C:\\Users\\1\\Desktop\\pi-wood\\apps\\desktop","uptimeMs":3068,"mem":{"rss":216383488,"heapTotal":116969472,"heapUsed":48112024,"external":4036788,"arrayBuffers":0},"hasEngine":true}
+  ✓ C5.2 上行事件 seq 单调（无重复/倒退帧） — 事件帧=0，越界=0
+  ✓ C2.1 新建后活跃引擎数不超过上限 2 — live=2 [HT:suspended TB:suspended WK:idle yo:idle]
+  ✓ C2.2 超限把最久未活跃的 idle 对话休眠了 — suspended=2
+  ✓ C2.3 休眠对话的 child 确已退出 — 9f8b:0,ae15:0
+  · C2.4 腾位置+新建一路耗时=1648ms（含等 child 优雅退出）
+  ✓ C2.5 休眠对话可唤醒并读到会话状态 — session=01a06a18
+  ✓ C3.1 被杀 child 按退避自动恢复（换了新 pid） — 25216 → 37508 status=idle
+  ✓ C3.2 其余对话不受牵连（崩溃隔离） — alive=1/1
+  ✓ C3.3 主进程存活且帧管道可用（恢复后的对话能完成一次下行往返）
+  · C4.1 全量关停耗时=193ms；剩余记录=HT:dead ZR:dead
+  ✓ C4.2 node/python 回到基线（零残留 = session_shutdown 生效） — 基线=0 现在=0 Δ=0
+  · 反向通道计数：decideApproval=0 次（模型未跑 → 0 次属正常）；toast=6 条
+  · toast 样例：并发引擎已满（上限 2），已休眠后台对话「piwood-conv-a-6STaHT」以腾出位置 | 并发引擎已满（上限 2），已休眠后台对话「piwood-conv-b-btdtTB」以腾出位置 | 并发引擎已满（上限 2），已休眠后台对话「piwood-conv-c-ZqO9WK」以腾出位置

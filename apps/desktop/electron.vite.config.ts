@@ -17,7 +17,12 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: workspacePackages })],
     build: {
       rollupOptions: {
-        input: { index: resolve(root, "electron/main/index.ts") },
+        input: {
+          index: resolve(root, "electron/main/index.ts"),
+          // T8.1：引擎子进程入口，产物 out/main/engine-child.js。
+          // 必须是**独立文件**——utilityProcess.fork 直接加载它，不能只活在 index 的 bundle 里。
+          "engine-child": resolve(root, "electron/main/engine/engine-child.ts"),
+        },
       },
     },
   },

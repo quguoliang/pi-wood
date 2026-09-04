@@ -1,0 +1,26 @@
+T8.1 引擎进 utilityProcess（一对话一进程）+ ConversationRegistry → dev/packaged 双形态 17/17
+
+主干
+- 新建 engine-child.ts（main 的第二 rollup 入口 → out/main/engine-child.js）/ engine-host.ts（fork+帧传输+反向 RPC 服务端+seq 对账+崩溃兜底）/ conversation-registry.ts（句柄表+LRU 循环腾位置+退避重启≤3+残留看门狗）/ conversation-core.ts（状态机/LRU/seq/退避纯函数，+38 例穷举单测）
+- 帧契约 packages/ipc-schema/src/engine-rpc.ts（20 下行命令+4 反向命令+参数校验表；热路径 decodeFrameLoose 不做逐帧 zod）+26 例单测
+- packages/engine/src/remote-adapter.ts：RemoteEngineAdapter implements EngineAdapter，传输可注入（探针/回路共用）
+- SdkAdapter.stop() 改走 runtime.dispose()（补 session_shutdown 广播，否则 MCP/子代理不回收）+ runtime-dispose 4 例回归单测
+
+接口与主进程
+- EngineAdapter：start 返回 EngineStartInfo；getAvailableThinkingLevels/listCommands 变异步；会话替换回传 EngineSessionRef；reload 进接口
+- engine-manager 30 个 handler 业务逻辑零改动，只改「取哪个 handle」+ 只读降级口径 + 审批/快照/子代理按对话归属；默认模型与思考档位重放挂 onConversationReady（幂等键=对话 id+child pid）
+- 换项目不再关停旧引擎（LRU/上限管着）；window-all-closed 广播 shutdown 后强制退出窗口 1.5s→4s
+
+宿主能力与安全
+- agent-tools 拆出 electron-free 的 host-tool-specs.ts：TypeBox 声明含 Symbol 键不可 structuredClone ⇒ 跨进程只过工具名，child 侧生成 9 个同名代理工具，execute 转发 host:tool-execute
+- 审批连策略判定一起留在主进程（host:approval 一次往返给 allow/deny）⇒ child 无本地放行路径，超时=拒；删掉计划里的 host:policy 与 inject-tool-result
+- 子代理桥 globalThis.__piwoodSubagentBridge 退化为每 child 一份（串扰天然消失），主进程只留 runs 快照镜像 + guard-tool 反向裁决
+
+验证
+- 新增 --conversation-probe（probe:conversation / :packaged）：入口解析、三路并存（独立 pid+工具集全等+9 代理工具）、帧往返/seq 单调、超限休眠+唤醒、崩溃隔离+退避恢复、全量关停零残留 Δ0
+- 主机门禁：typecheck/test/build EXIT=0；conversation 17/17（dev 与 packaged 各一轮）、engine-process 14/14、worktree 20/20、plugins/goal/memory 探针 EXIT=0、package:dir EXIT=0；--ui-chat 真机对话在子进程引擎下跑通（docs/proofs/T8.1/t81-ui-chat.png）
+- 发现：utilityProcess.fork 可直接从 app.asar 内加载 ESM 入口并按 app 根解析依赖 ⇒ 不需要 asarUnpack/extraResources（推翻 T8.0 交给本任务的处置）
+- 偏差：child 侧 50ms/8KB 合帧推迟到 T8.3；上行 event 不带 conversationId（归属由主进程附加）；fork 语义暂为当前会话内 fork、同项目多对话等 T8.6
+- packages/{engine,ipc-schema} 补 @types/node devDep（src 用 node: 内建 + 测试用 node:test 后 tsc 需要）
+
+计划：§7.9 T8.1 勾结 + 验收逐条落账 + §8 决策日志新增

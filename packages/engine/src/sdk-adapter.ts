@@ -17,13 +17,20 @@ import type {
  * T8.P：主进程产物已切 ESM（desktop "type":"module"），Pi SDK（ESM-only）改静态 import——
  * 这是从「CJS 时代靠动态 import 挡 ERR_PACKAGE_PATH_NOT_EXPORTED」到「ESM 类型级安全」的验收靶子。
  * 渲染层不受影响：本文件仅在 "@pi-wood/engine/sdk" 子路径（主进程专用）可达，根入口仍只导出类型。
+ *
+ * T8.1 角色变化：自本批起本类是**引擎子进程内**的 Local 实现（由 electron/main/engine/engine-child.ts
+ * 承载），主进程侧改用同 `EngineAdapter` 接口的 `RemoteEngineAdapter` 经 RPC 帧驱动它；同时它也是
+ * 并发探针的 in-process 回路（Loopback 传输 + 同一帧协议），故 EngineAdapter 语义不得随传输方式分叉。
  */
 import * as PiSdk from "@earendil-works/pi-coding-agent";
 import { normalizeEngineEvent } from "./event-bridge";
+import { disposeRuntimeGracefully } from "./runtime-dispose";
 import type {
   AvailableModel,
   DesktopUiBridge,
   EngineAdapter,
+  EngineSessionRef,
+  EngineStartInfo,
   EngineStartOptions,
 } from "./adapter";
 import type { EngineCommand, EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
@@ -44,8 +51,12 @@ export class SdkAdapter implements EngineAdapter {
   private projectDir = "";
   private agentDir: string | undefined;
   private opts: EngineStartOptions | undefined;
+  /** 最近一次装配的扩展/会话诊断（引擎在子进程时随 start 回执上报给注册表） */
+  private lastDiagnostics: Array<{ type?: string; message: string }> = [];
 
-  async start(opts: EngineStartOptions): Promise<void> {
+  async start(opts: EngineStartOptions): Promise<EngineStartInfo> {
+    const t0 = performance.now();
+    const timings: Record<string, number> = {};
     this.opts = opts;
     this.projectDir = opts.projectDir;
     this.agentDir = opts.agentDir;
@@ -53,6 +64,7 @@ export class SdkAdapter implements EngineAdapter {
 
     this.pi = PiSdk as unknown as PiModule;
     const runtimeFactory = async (factoryOpts: RuntimeFactoryOptions) => {
+      const ts = performance.now();
       const services: AgentSessionServicesLike = await this.pi!.createAgentSessionServices({
         cwd: factoryOpts.cwd,
         agentDir: factoryOpts.agentDir,
@@ -63,30 +75,52 @@ export class SdkAdapter implements EngineAdapter {
             : {}),
         } as never,
       });
+      timings.servicesMs = Math.round(performance.now() - ts);
       const result: { session: AgentSessionLike } = await this.pi!.createAgentSessionFromServices({
         services,
         sessionManager: factoryOpts.sessionManager,
         customTools: opts.customTools as never,
       });
       const diags = (services as { diagnostics?: unknown[] }).diagnostics;
-      if (Array.isArray(diags) && diags.length > 0) {
-        console.warn("[engine] session/extension diagnostics:", JSON.stringify(diags));
+      this.lastDiagnostics = (Array.isArray(diags) ? diags : []).map((d) => ({
+        type: typeof (d as { type?: unknown })?.type === "string" ? (d as { type: string }).type : undefined,
+        message: String((d as { message?: unknown })?.message ?? d ?? ""),
+      }));
+      if (this.lastDiagnostics.length > 0) {
+        console.warn("[engine] session/extension diagnostics:", JSON.stringify(this.lastDiagnostics));
       }
       return { session: result.session, services };
     };
 
+    const tr = performance.now();
     this.runtime = await this.pi.createAgentSessionRuntime(runtimeFactory, {
       cwd: this.projectDir,
       agentDir: this.agentDir ?? this.pi.getAgentDir(),
       sessionManager: this.pi.SessionManager.create(this.projectDir),
     });
+    timings.runtimeMs = Math.round(performance.now() - tr);
 
     this.runtime.session.subscribe((raw: unknown) => {
       const event = normalizeEngineEvent(raw, (msg) => console.warn(msg));
       for (const fn of this.listeners) fn(event);
     });
 
+    const tb = performance.now();
     await this.bindExtensions();
+    timings.bindMs = Math.round(performance.now() - tb);
+    timings.totalMs = Math.round(performance.now() - t0);
+
+    const s = this.runtime.session;
+    return {
+      pid: process.pid,
+      cwd: this.projectDir,
+      sessionId: s.sessionId,
+      sessionFile: s.sessionFile,
+      tools: s.getActiveToolNames?.() ?? [],
+      diagnostics: this.lastDiagnostics,
+      timings,
+      memRssMB: Math.round(process.memoryUsage().rss / 1e6),
+    };
   }
 
   /**
@@ -193,9 +227,16 @@ export class SdkAdapter implements EngineAdapter {
   }
 
   async stop(): Promise<void> {
-    this.runtime?.session.dispose?.();
+    // T8.1 前置：必须走 runtime.dispose()（先广播 session_shutdown 再 dispose session）。
+    // 直接 session.dispose() 会让依赖 session_shutdown 回收外部资源的扩展
+    // （MCP stdio 子进程 / 子代理 child 会话）泄漏成孤儿进程树。
+    const rt = this.runtime;
     this.runtime = undefined;
     this.listeners.clear();
+    const result = await disposeRuntimeGracefully(rt as never);
+    if (!result.steps.includes("runtime.dispose")) {
+      console.warn(`[engine] 关停未走 runtime.dispose（steps=${result.steps.join(">")}），扩展资源可能未回收`);
+    }
   }
 
   subscribe(fn: (e: EngineEvent) => void): () => void {
@@ -239,7 +280,7 @@ export class SdkAdapter implements EngineAdapter {
     await this.session().setThinkingLevel(level);
   }
 
-  getAvailableThinkingLevels(): string[] {
+  async getAvailableThinkingLevels(): Promise<string[]> {
     return this.session().getAvailableThinkingLevels();
   }
 
@@ -247,10 +288,11 @@ export class SdkAdapter implements EngineAdapter {
     await this.session().compact(custom);
   }
 
-  async newSession(_opts?: { parentSession?: string }): Promise<void> {
+  async newSession(_opts?: { parentSession?: string }): Promise<EngineSessionRef> {
     await this.runtimeSession().newSession();
     this.rebindSession();
     await this.bindExtensions();
+    return this.sessionRef();
   }
 
   /** 重载扩展资源（对应 Pi /reload） */
@@ -258,16 +300,23 @@ export class SdkAdapter implements EngineAdapter {
     await this.session().reload();
   }
 
-  async switchSession(file: string): Promise<void> {
+  async switchSession(file: string): Promise<EngineSessionRef> {
     await this.runtimeSession().switchSession(file);
     this.rebindSession();
     await this.bindExtensions();
+    return this.sessionRef();
   }
 
-  async fork(entryId: string, pos: "before" | "at"): Promise<void> {
+  async fork(entryId: string, pos: "before" | "at"): Promise<EngineSessionRef> {
     await this.runtimeSession().fork(entryId, pos);
     this.rebindSession();
     await this.bindExtensions();
+    return this.sessionRef();
+  }
+
+  private sessionRef(): EngineSessionRef {
+    const s = this.runtime?.session;
+    return { sessionId: s?.sessionId, sessionFile: s?.sessionFile };
   }
 
   getSessionId(): string | undefined {
@@ -310,7 +359,7 @@ export class SdkAdapter implements EngineAdapter {
   // ---- 内部 ----
 
   /** T5.1：聚合扩展命令 + prompt 模板 + Skill，复用 session 公共成员；未启动降级为空 */
-  listCommands(): EngineCommand[] {
+  async listCommands(): Promise<EngineCommand[]> {
     const s = this.runtime?.session;
     if (!s) return [];
     const out: EngineCommand[] = [];

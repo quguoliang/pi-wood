@@ -6,25 +6,44 @@ import { fileURLToPath } from "node:url";
 import { tmpdir, homedir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type EnginePiTheme, type GitInfo, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
+import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type EnginePiTheme, type GitInfo, type HostApprovalParams, type HostSubagentParams, type HostToolExecuteParams, type HostUiParams, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
-import { normalizeEngineEvent, type DesktopUiBridge } from "@pi-wood/engine";
+import type { DesktopUiBridge, EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
+import { normalizeEngineEvent } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { memoryCustomTools } from "../agent-tools/memory-tools";
+import { ALL_HOST_TOOL_SPECS } from "../agent-tools/host-tool-specs";
 import { reinjectProviderEnv } from "../provider/provider-manager";
 import { getUsageTracker } from "../provider/usage-tracker";
 import { permissionGateExtension, decide, describeApprovalCall, type ApprovalPolicy } from "../security/approval-gate";
-import type { PiWoodSubagentRuntimeRef } from "../subagent/bridge";
+import type { PiWoodSubagentRunView } from "../subagent/bridge";
 import { aggregateRunUsage } from "../subagent/usage.ts";
 import { loadSettings } from "../settings-service";
 import { generateAssist } from "../assist/assist-service";
 import { onGoalSettled } from "../goal/goal-runtime.ts";
+import {
+  closeConversation,
+  configureCapabilities,
+  conversationForProject,
+  ensureConversation,
+  getActiveConversationId,
+  getConversation,
+  listConversations,
+  markPromptInFlight,
+  noteApprovalPending,
+  suspendConversation,
+} from "./conversation-registry";
 
 /**
- * 引擎管理器（T1.3）：主进程持有当前项目的 SdkAdapter 单例。
- * 事件统一经 ENGINE_CHANNELS.event 推送渲染层；ctx.ui 的 notify 转发渲染层，
- * 阻塞式对话框（select/confirm/input）T2.x 接 Radix 时在此挂起 Promise。
+ * 引擎管理器（T1.3 → T8.1）
+ *
+ * T8.1 起主进程**不再直接持有引擎**：Pi SDK 跑在 utilityProcess 里（一条对话一个进程），
+ * 这里只保留「当前对话」的远程适配器 + 宿主能力（桌面工具执行、ctx.ui 往返、审批裁决、
+ * 子代理 runs 镜像）+ 30 个 IPC handler 的业务编排。
+ * 生命周期/并发上限/崩溃自愈的判定在 conversation-core.ts（纯函数）+ conversation-registry.ts。
+ * 事件统一经 ENGINE_CHANNELS.event 推送渲染层；按对话路由是 T8.2 的事，
+ * 本批仍只对 active 对话推全量事件，其余对话的引擎在后台跑但事件不进当前渲染契约。
  */
 
 const StartArgSchema = z.object({ projectDir: z.string().min(1) });
@@ -70,28 +89,30 @@ function prepareAttachments(paths: string[]): { text: string; images: Array<{ ty
   return { text: textBlocks.join("\n"), images };
 }
 
-let adapter: SdkAdapter | undefined;
+/** 当前 active 对话所属项目（git 信息、附件相对路径、快照都按它取） */
 let activeProject = "";
-let activeSnapshots: SnapshotService | undefined;
+/** 按项目的 diff 快照服务：后台对话的 edit/write 事件不能再写进「当时前台项目」的快照里 */
+const snapshotsByProject = new Map<string, SnapshotService>();
+/** 宿主工具实现表（child 侧只有代理工具，执行回到这里） */
+let hostTools: Map<string, ReturnType<typeof browserCustomTools>[number]> | undefined;
+/** 子代理 runs 的跨进程快照镜像（child 每对话一份，主进程只留最新快照供面板/成本汇总） */
+const subagentMirror = new Map<string, PiWoodSubagentRunView[]>();
 // T7.6：与主会话完全隔离的「侧边问答」第二运行时（独立 session/事件流，绝不影响主 adapter）
 let btwAdapter: SdkAdapter | undefined;
 let btwUnsub: (() => void) | undefined;
-// T6.2（方案 1）：子代理运行时由 SDK/jiti 加载的 ESM 扩展创建，经桥回传，供切项目/停用时回收。
-let subagentRuntime: PiWoodSubagentRuntimeRef | undefined;
-// T6.3：订阅 vendored runs 注册表变更，实时把子代理状态推给渲染层面板。
-let subagentRunsUnsub: (() => void) | undefined;
 // T7.9：会话辅助——采集每轮 用户输入 / 助手正文，settled 后触发一次辅助生成
 let assistUserText = "";
 let assistTextBuf = "";
 let assistAborted = false;
 let engineTransition: Promise<void> = Promise.resolve();
 let approvalSeq = 0;
-const pendingApprovals = new Map<number, (allow: boolean) => void>();
+const pendingApprovals = new Map<number, { conv: string; resolve: (allow: boolean) => void }>();
 let uiRequestSeq = 0;
 const pendingUiRequests = new Map<
   number,
   { kind: "select" | "confirm" | "input"; resolve: (value: string | boolean | undefined) => void }
 >();
+let capabilitiesInstalled = false;
 
 const execFileAsync = promisify(execFile);
 
@@ -139,15 +160,17 @@ function send(channel: string, data: unknown): void {
   }
 }
 
-/** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise） */
-function confirmViaRenderer(title: string, message: string, toolName?: string): Promise<boolean> {
+/** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise）。T8.1 起带归属对话 */
+function confirmViaRenderer(conversationId: string, title: string, message: string, toolName?: string): Promise<boolean> {
   const id = ++approvalSeq;
-  send("approval:request", { id, title, message, toolName });
+  send("approval:request", { id, conversationId, title, message, toolName });
+  noteApprovalPending(conversationId, +1);
   return new Promise<boolean>((resolve) => {
-    pendingApprovals.set(id, resolve);
+    pendingApprovals.set(id, { conv: conversationId, resolve });
     setTimeout(() => {
       if (pendingApprovals.has(id)) {
         pendingApprovals.delete(id);
+        noteApprovalPending(conversationId, -1);
         resolve(false); // 超时默认拒绝（方案 §9）
       }
     }, 120_000);
@@ -156,13 +179,6 @@ function confirmViaRenderer(title: string, message: string, toolName?: string): 
 
 function getPolicy(): ApprovalPolicy {
   return loadSettings().approval as ApprovalPolicy;
-}
-
-/** T7.2：当前会话是否开启「自动接受审批」。无会话 id / 未记录一律 false（fail closed）。 */
-function isAutoAcceptForSession(ad: SdkAdapter): boolean {
-  const sessionId = ad.getSessionId();
-  if (!sessionId) return false;
-  return loadSettings().autoAcceptSessions?.[sessionId] === true;
 }
 
 function requestUi(
@@ -196,154 +212,248 @@ export function uiBridge(): DesktopUiBridge {
   };
 }
 
-async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
-  if (adapter && activeProject === projectDir) return adapter;
-  if (adapter) await adapter.stop();
-  await closeBtw(); // T7.6：换项目时一并释放隔离的侧边问答会话
-  await disposeSubagent(); // T6.2：回收上一个项目的子代理运行时
-  // T3.2：钥匙串密钥 → 环境变量（ModelRuntime 凭据解析）
-  reinjectProviderEnv();
-  const next = new SdkAdapter();
-  // T6.2（方案 1）：子代理以 SDK 托管的 ESM 扩展经 jiti 运行时加载（不打进主进程 bundle）。
-  // T8.P：产物切 ESM 后 __dirname 不可用，改 import.meta.url 推导；
-  //   dev 下产物在 out/main/index.mjs，"../../electron/..." 回到源码树 ✓；
-  //   packaged 下该相对路径落 asar 内不存在——已知遗留（T8.0/P1-d 复验），此处仅换基准不改语义。
-  // child 审批门通过 globalThis 桥复用桌面 getPolicy + ApprovalCard confirm，杜绝审批旁路。
-  const subagentEntryPath = join(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../electron/main/subagent/pi-wood-subagent-entry.ts",
-  );
-  const subagentEnabled = existsSync(subagentEntryPath);
-  globalThis.__piwoodSubagentBridge = {
-    buildChildGate: () =>
-      permissionGateExtension(
-        () => getPolicy(),
-        (title, message, tool) => confirmViaRenderer(title, message, tool),
-      ),
-    guardChildTool: async (toolName, input, agentName) => {
-      // T6.7：按该 child 的 agent profile 名查 per-tool 权限覆盖，喂给审批门
-      // （敏感文件写 / 全局 rules 仍是底线，override 越不过；未配置的 agent/工具继承父全局策略）。
-      const override = agentName ? loadSettings().subagentPermissions?.[agentName] : undefined;
-      const decision = decide(getPolicy(), toolName, input, override);
-      if (decision === "allow") return undefined;
-      if (decision === "deny") {
-        return override?.[toolName] === "deny"
-          ? `已由子代理「${agentName}」的 per-tool 权限拒绝（${toolName}: deny）`
-          : "已由安全策略拦截（path-guard / denyAll）";
+type HostTool = ReturnType<typeof browserCustomTools>[number];
+
+/** 宿主工具实现表：child 侧只有同名代理工具，真正执行回到这里（一次构建，进程内复用） */
+function hostToolMap(): Map<string, HostTool> {
+  if (!hostTools) {
+    const map = new Map<string, HostTool>();
+    for (const t of [...browserCustomTools(), ...memoryCustomTools()]) {
+      // 工具名校验：OpenAI 兼容端点（DeepSeek 等）要求 function.name 匹配 ^[a-zA-Z0-9_-]+$，
+      // 含「.」等字符会让整轮请求 400、助手回复静默为空（曾踩坑）。启动即失败，别留给线上「消息无回复」。
+      if (!/^[a-zA-Z0-9_-]+$/.test(t.name)) {
+        throw new Error(`非法工具名 "${t.name}"：须匹配 ^[a-zA-Z0-9_-]+$（不能用「.」，如 memory_save）`);
       }
-      const { title, message } = describeApprovalCall(toolName, input);
-      const ok = await confirmViaRenderer(agentName ? `子代理「${agentName}」· ${title}` : title, message, toolName);
-      return ok ? undefined : "用户拒绝该操作";
-    },
-    onRuntime: (rt) => {
-      subagentRuntime = rt;
-      // T6.3：runs 注册表变更 → 推送子代理状态快照给渲染层面板。
-      subagentRunsUnsub?.();
-      const push = (): void => send(ENGINE_CHANNELS.subagentRuns, mapSubagentRuns(rt.runs.list()));
-      try {
-        subagentRunsUnsub = rt.runs.subscribe(push);
-        push();
-      } catch {
-        subagentRunsUnsub = undefined;
-      }
-    },
-    // T6.5：child 会话原始事件 → 归一后按 runId 推给渲染层只读子会话视图。
-    pushChildEvent: (runId, event) => {
-      try {
-        const normalized = normalizeEngineEvent(event, () => undefined);
-        send(ENGINE_CHANNELS.subagentEvent, { runId, event: normalized });
-      } catch {
-        /* 单条事件归一失败忽略 */
-      }
-    },
-  };
-  // 工具名校验：OpenAI 兼容端点（DeepSeek 等）要求 function.name 匹配 ^[a-zA-Z0-9_-]+$，
-  // 含「.」等字符会让整轮请求 400、助手回复静默为空（曾踩坑）。启动即失败，避免线上「消息无回复」。
-  const customTools = [...browserCustomTools(), ...memoryCustomTools()];
-  for (const t of customTools) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(t.name)) {
-      throw new Error(`非法工具名 "${t.name}"：须匹配 ^[a-zA-Z0-9_-]+$（不能用「.」，如 memory_save）`);
+      map.set(t.name, t);
     }
+    hostTools = map;
   }
-  await next.start({
-    projectDir,
-    uiBridge: uiBridge(),
-    customTools,
-    inlineExtensions: [
-      permissionGateExtension(
-        () => getPolicy(),
-        (title, message, tool) => confirmViaRenderer(title, message, tool),
-        () => isAutoAcceptForSession(next),
-      ),
-    ],
-    ...(subagentEnabled ? { additionalExtensionPaths: [subagentEntryPath] } : {}),
-  });
-  const snapshots = new SnapshotService(projectDir, (m) => console.warn(m));
-  activeSnapshots = snapshots;
-  next.subscribe((event) => {
-    send(ENGINE_CHANNELS.event, event);
-    // T7.9：采集本轮助手正文 / 中断标记，settled 后触发一次会话辅助
-    if (event.type === "message_update") {
-      const a = (event as { assistantMessageEvent?: { type?: string; delta?: unknown } }).assistantMessageEvent;
-      if (a?.type === "text_delta" && typeof a.delta === "string") assistTextBuf += a.delta;
-    } else if (event.type === "turn_end") {
-      const stopReason = (event as { message?: { stopReason?: string } }).message?.stopReason;
-      if (stopReason === "aborted") assistAborted = true;
-    } else if (event.type === "agent_settled") {
-      const text = assistTextBuf;
-      if (!assistAborted && text.trim()) {
-        void generateAssist(assistUserText, text)
-          .then((result) => {
-            if (result) send(ENGINE_CHANNELS.assistResult, result);
-          })
-          .catch(() => undefined);
+  return hostTools;
+}
+
+/** 按项目取快照服务（后台对话的 edit/write 不能污染当时前台项目的 diff 面板） */
+function snapshotsFor(projectDir: string): SnapshotService {
+  let s = snapshotsByProject.get(projectDir);
+  if (!s) {
+    s = new SnapshotService(projectDir, (m) => console.warn(m));
+    snapshotsByProject.set(projectDir, s);
+  }
+  return s;
+}
+
+/**
+ * 子代理入口路径（ESM-only 的第一方扩展，交 child 侧 SDK 的 jiti 管线加载，不打进主进程 bundle）。
+ * T8.P：产物是 ESM，用 import.meta.url 推导。
+ * ⚠ packaged 下该相对路径落 asar 内不存在——已知遗留（T8.0/P1-d 同一口径），本轮只换基准不改语义。
+ */
+function subagentEntryPath(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), "../../electron/main/subagent/pi-wood-subagent-entry.ts");
+}
+
+/** 当前 active 对话（引擎在子进程后，「取哪个 handle」的唯一入口） */
+function activeConversation() {
+  const id = getActiveConversationId();
+  return id ? getConversation(id) : undefined;
+}
+
+/** 把注册表注入宿主能力（只做一次；注册表不 import 本模块，避免循环依赖） */
+function installCapabilitiesOnce(): void {
+  if (capabilitiesInstalled) return;
+  capabilitiesInstalled = true;
+  configureCapabilities({
+    hostToolNames: () => ALL_HOST_TOOL_SPECS.map((s) => s.name),
+    additionalExtensionPaths: () => {
+      const p = subagentEntryPath();
+      return existsSync(p) ? [p] : [];
+    },
+    executeHostTool: async (p: HostToolExecuteParams) => {
+      const tool = hostToolMap().get(p.name);
+      if (!tool) throw new Error(`宿主工具不存在：${p.name}`);
+      const r = await tool.execute(
+        p.toolCallId ?? "",
+        (p.params ?? {}) as Record<string, unknown>,
+        undefined, // signal：跨进程中断尚未接（子进程 abort 会中止整轮，工具本身跑完即弃）
+        undefined, // onUpdate：宿主工具目前都不做增量回传
+        undefined,
+      );
+      return { content: r.content as unknown[], details: r.details };
+    },
+    requestUi: async (p: HostUiParams) => {
+      switch (p.op) {
+        case "notify":
+          send("ui:notify", { message: p.message, type: p.type ?? "info" });
+          return undefined;
+        case "select":
+          return requestUi("select", p.title, { options: p.options });
+        case "confirm":
+          return Boolean(await requestUi("confirm", p.title, { message: p.message }));
+        case "input":
+          return requestUi("input", p.title, { placeholder: p.placeholder });
+        default:
+          return undefined;
       }
-      // T7.5：目标模式 tick —— 每轮 settled 都走，runtime 内部判有无 active goal / aborted→暂停
-      void onGoalSettled(
-        {
-          sessionId: next.getSessionId() ?? "",
-          prompt: (t) => next.prompt({ text: t }),
-          stats: async () => {
-            const ri = await next.getRuntimeInfo();
-            return { totalTokens: ri.stats?.tokens?.total ?? 0, costUsd: ri.stats?.cost ?? 0 };
-          },
-        },
-        text,
-        { aborted: assistAborted },
-      ).catch(() => undefined);
-      // T7.12：记一次会话累计用量到当前 provider/model（按快照求差，见 UsageTracker）
-      void (async () => {
-        try {
-          const ri = await next.getRuntimeInfo();
-          const model = ri.model;
-          const sep = model ? model.indexOf("/") : -1;
-          if (model && sep > 0 && ri.stats) {
-            getUsageTracker()?.recordUsage(next.getSessionId() ?? "", model.slice(0, sep), model.slice(sep + 1), {
-              ...ri.stats.tokens,
-              cost: ri.stats.cost,
-            });
-          }
-        } catch {
-          /* 用量非关键路径 */
+    },
+    decideApproval: async (ctx, p: HostApprovalParams) => {
+      const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
+      const decision = decide(getPolicy(), p.toolName, p.input, override);
+      if (decision === "allow") return { allow: true };
+      if (decision === "deny") {
+        return {
+          allow: false,
+          reason:
+            override?.[p.toolName] === "deny"
+              ? `已由子代理「${p.agentName}」的 per-tool 权限拒绝（${p.toolName}: deny）`
+              : "已由安全策略拦截（path-guard / denyAll）",
+        };
+      }
+      // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
+      const conv = getConversation(ctx.conversationId);
+      const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
+      if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true };
+      const { title, message } = describeApprovalCall(p.toolName, p.input);
+      const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
+      return ok ? { allow: true } : { allow: false, reason: "用户拒绝该操作" };
+    },
+    onSubagent: (ctx, p: HostSubagentParams) => {
+      switch (p.op) {
+        case "runs": {
+          const runs = p.runs as PiWoodSubagentRunView[];
+          subagentMirror.set(ctx.conversationId, runs);
+          // 本批仍只给 active 对话推渲染层事件（按对话路由 = T8.2）
+          if (ctx.conversationId === getActiveConversationId()) send(ENGINE_CHANNELS.subagentRuns, mapSubagentRuns(runs));
+          return undefined;
         }
-      })();
-    }
-    // T2.2：edit/write 前后快照 → diff 推送右栏（含相对路径解析）
-    // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测
-    if (event.type === "tool_execution_start") {
-      snapshots.snapshot(String(event.toolName ?? ""), event.args);
-    }
-    if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
-      for (const d of snapshots.collectChanges()) send(ENGINE_CHANNELS.diff, d);
-    }
+        case "child-event": {
+          if (ctx.conversationId !== getActiveConversationId()) return undefined;
+          try {
+            send(ENGINE_CHANNELS.subagentEvent, { runId: p.runId, event: normalizeEngineEvent(p.event, () => undefined) });
+          } catch {
+            /* 单条事件归一失败忽略 */
+          }
+          return undefined;
+        }
+        case "guard-tool": {
+          // 子代理孙会话的工具守卫：与父审批门同源（decide + ApprovalCard），child 无本地放行路径
+          const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
+          const decision = decide(getPolicy(), p.toolName, p.input, override);
+          if (decision === "allow") return { reason: undefined };
+          if (decision === "deny") {
+            return {
+              reason:
+                override?.[p.toolName] === "deny"
+                  ? `已由子代理「${p.agentName}」的 per-tool 权限拒绝（${p.toolName}: deny）`
+                  : "已由安全策略拦截（path-guard / denyAll）",
+            };
+          }
+          const { title, message } = describeApprovalCall(p.toolName, p.input);
+          return confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName).then(
+            (ok) => ({ reason: ok ? undefined : "用户拒绝该操作" }),
+          );
+        }
+        default:
+          return undefined;
+      }
+    },
+    onEngineEvent: (ctx, event) => {
+      const isActive = ctx.conversationId === getActiveConversationId();
+      const snapshots = snapshotsFor(ctx.projectDir);
+      // T2.2：edit/write 前后快照 → diff 推送右栏（按项目分桶，后台对话不串台）
+      // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测
+      if (event.type === "tool_execution_start") snapshots.snapshot(String(event.toolName ?? ""), event.args);
+      if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
+        for (const d of snapshots.collectChanges()) if (isActive) send(ENGINE_CHANNELS.diff, d);
+      }
+      if (!isActive) return; // 后台对话：只维护快照/镜像，事件不进当前渲染契约（T8.2 起按 envelope 路由）
+      send(ENGINE_CHANNELS.event, event);
+      // T7.9：采集本轮助手正文 / 中断标记，settled 后触发一次会话辅助
+      if (event.type === "message_update") {
+        const a = (event as { assistantMessageEvent?: { type?: string; delta?: unknown } }).assistantMessageEvent;
+        if (a?.type === "text_delta" && typeof a.delta === "string") assistTextBuf += a.delta;
+      } else if (event.type === "turn_end") {
+        const stopReason = (event as { message?: { stopReason?: string } }).message?.stopReason;
+        if (stopReason === "aborted") assistAborted = true;
+      } else if (event.type === "agent_settled") {
+        const text = assistTextBuf;
+        if (!assistAborted && text.trim()) {
+          void generateAssist(assistUserText, text)
+            .then((result) => {
+              if (result) send(ENGINE_CHANNELS.assistResult, result);
+            })
+            .catch(() => undefined);
+        }
+        const conv = activeConversation();
+        const adapter = conv?.adapter;
+        if (!conv || !adapter) return;
+        // T7.5：目标模式 headless tick —— 每轮 settled 都走，runtime 内部判有无 active goal / aborted→暂停
+        void onGoalSettled(
+          {
+            sessionId: adapter.getSessionId() ?? "",
+            prompt: (t) => adapter.prompt({ text: t }),
+            stats: async () => {
+              const ri = await adapter.getRuntimeInfo();
+              return { totalTokens: ri.stats?.tokens?.total ?? 0, costUsd: ri.stats?.cost ?? 0 };
+            },
+          },
+          text,
+          { aborted: assistAborted },
+        ).catch(() => undefined);
+        // T7.12：记一次会话累计用量到当前 provider/model（按快照求差，见 UsageTracker）
+        void (async () => {
+          try {
+            const ri = await adapter.getRuntimeInfo();
+            const model = ri.model;
+            const sep = model ? model.indexOf("/") : -1;
+            if (model && sep > 0 && ri.stats) {
+              getUsageTracker()?.recordUsage(adapter.getSessionId() ?? "", model.slice(0, sep), model.slice(sep + 1), {
+                ...ri.stats.tokens,
+                cost: ri.stats.cost,
+              });
+            }
+          } catch {
+            /* 用量非关键路径 */
+          }
+        })();
+      }
+    },
+    notify: (message, type) => send("ui:notify", { message, type: type ?? "info" }),
+    onConversationReady: ({ conversationId, projectDir, boot }) =>
+      ensureDefaultModelForConversation(conversationId, projectDir, boot.pid),
+    maxLiveEngines: () => (loadSettings() as { engineMaxLive?: number }).engineMaxLive ?? 3,
+    maxRestarts: () => 3,
   });
-  // 默认模型：settings.model 优先，否则 chat 优先、v4 兜底（目录随在线刷新变化，见 §8）
+}
+
+/** 默认模型初始化的幂等键 = 对话 id + child pid（崩溃重启复用 id，但那是个全新会话） */
+const modelInitDone = new Set<string>();
+/** 用户为某对话显式选过的模型/思考档位（child 重建后按此重放，见 T8.1 验收「唤醒后档位完整恢复」） */
+const perConversationPrefs = new Map<string, { provider?: string; modelId?: string; thinkingLevel?: string }>();
+
+function rememberPref(conversationId: string, patch: { provider?: string; modelId?: string; thinkingLevel?: string }): void {
+  const prev = perConversationPrefs.get(conversationId) ?? {};
+  perConversationPrefs.set(conversationId, { ...prev, ...patch });
+}
+
+/**
+ * 默认模型：settings.model 优先，否则 chat 优先、v4 兜底（目录随在线刷新变化，见 §8）。
+ * T8.1 挂在注册表的 per-child 钩子上（首建 + 唤醒 + 崩溃重启都会走），
+ * 因为模型是**子进程里那个会话**的状态，不是主进程的全局状态。
+ * 用户显式选过模型/思考档位时以选择为准（重放），未选过才走默认策略。
+ */
+async function ensureDefaultModelForConversation(conversationId: string, projectDir: string, pid: number): Promise<void> {
+  const key = `${conversationId}:${pid}`;
+  if (modelInitDone.has(key)) return;
+  modelInitDone.add(key);
+  const conv = getConversation(conversationId);
+  if (!conv) return;
+  const pref = perConversationPrefs.get(conversationId) ?? {};
   try {
-    const models = await next.getAvailableModels();
-    const preferred = loadSettings().model as { provider?: string; id?: string } | undefined;
+    const models = await conv.adapter.getAvailableModels();
     let picked: { provider: string; id: string } | undefined;
-    if (preferred?.provider && preferred.id && models.some((m) => m.provider === preferred.provider && m.id === preferred.id)) {
-      picked = { provider: preferred.provider, id: preferred.id };
+    if (pref.provider && pref.modelId && models.some((m) => m.provider === pref.provider && m.id === pref.modelId)) {
+      picked = { provider: pref.provider, id: pref.modelId };
+    } else if (preferredModelAvailable(models)) {
+      const p = loadSettings().model as { provider?: string; id?: string };
+      picked = { provider: p.provider as string, id: p.id as string };
     } else {
       const candidates: Array<[string, string]> = [
         ["deepseek", "deepseek-chat"],
@@ -359,29 +469,67 @@ async function ensureEngineUnlocked(projectDir: string): Promise<SdkAdapter> {
       picked = picked ?? models[0];
     }
     if (picked) {
-      await next.setModel(picked.provider, picked.id);
-      send(ENGINE_CHANNELS.event, { type: "model_changed", ...picked });
+      await conv.adapter.setModel(picked.provider, picked.id);
+      // 只有 active 对话才推 model_changed：后台对话就绪时推过去会把用户正看着的档位改掉
+      if (conversationId === getActiveConversationId()) {
+        send(ENGINE_CHANNELS.event, { type: "model_changed", ...picked });
+      }
+      // 重放思考档位（模型换了以后档位是新会话的状态，不重放就退回「未设置」）
+      if (pref.thinkingLevel) {
+        const allowed = await conv.adapter.getAvailableThinkingLevels();
+        if (allowed.includes(pref.thinkingLevel)) {
+          await conv.adapter.setThinkingLevel(pref.thinkingLevel);
+          if (conversationId === getActiveConversationId()) {
+            send(ENGINE_CHANNELS.event, { type: "thinking_level_changed", thinkingLevel: pref.thinkingLevel });
+          }
+        } else if (allowed.length > 0) {
+          await conv.adapter.setThinkingLevel(allowed[0]);
+          send("ui:notify", {
+            message: `该对话恢复时模型 ${picked.provider}/${picked.id} 不支持思考档位 ${pref.thinkingLevel}，已切到 ${allowed[0]}`,
+            type: "warning",
+          });
+        }
+      }
     }
   } catch (err) {
     send("ui:notify", { message: `默认模型选择失败: ${String(err)}`, type: "warning" });
+    modelInitDone.delete(key); // 失败不占位，下次激活还能重试
   }
-  adapter = next;
-  activeProject = projectDir;
-  return next;
 }
 
-export async function ensureEngine(projectDir: string): Promise<SdkAdapter> {
-  let result: SdkAdapter | undefined;
+function preferredModelAvailable(models: Array<{ provider: string; id: string }>): boolean {
+  const p = loadSettings().model as { provider?: string; id?: string } | undefined;
+  return Boolean(p?.provider && p.id && models.some((m) => m.provider === p.provider && m.id === p.id));
+}
+
+/**
+ * 取当前项目的对话引擎（T8.1 起 = 惰性 fork 一个 utilityProcess 并装配引擎）。
+ * 换项目不再关停旧引擎：它留在注册表里被 LRU/上限管着（这正是 D 方案要的「切回去不用重新冷启动」）。
+ */
+export async function ensureEngine(projectDir: string): Promise<EngineAdapter> {
+  let result: EngineAdapter | undefined;
   engineTransition = engineTransition.catch(() => undefined).then(async () => {
-    result = await ensureEngineUnlocked(projectDir);
+    installCapabilitiesOnce();
+    const previousProject = activeProject;
+    // T3.2：钥匙串密钥 → 环境变量。必须在 fork 之前（child 直接继承 env，密钥不落 child 磁盘）。
+    reinjectProviderEnv();
+    result = await ensureConversation(projectDir);
+    activeProject = projectDir;
+    snapshotsFor(projectDir);
+    if (previousProject && previousProject !== projectDir) await closeBtw(); // 侧边问答绑旧项目 cwd，换项目即释放
   });
   await engineTransition;
   if (!result) throw new Error("引擎启动失败");
   return result;
 }
 
-export function getActiveAdapter(): SdkAdapter | undefined {
-  return adapter;
+export function getActiveAdapter(): EngineAdapter | undefined {
+  return activeConversation()?.adapter;
+}
+
+/** active 对话的装配回执（面板/探针读 pid、工具集、装配耗时、RSS） */
+export function getActiveEngineBoot(): EngineStartInfo | undefined {
+  return activeConversation()?.boot;
 }
 
 export function getActiveProjectDir(): string {
@@ -393,9 +541,16 @@ export function getActiveProjectDirSafe(): string | undefined {
   return activeProject || undefined;
 }
 
-async function requireAdapter(): Promise<SdkAdapter> {
-  if (!adapter) throw new Error("引擎未启动：请先选择项目");
-  return adapter;
+async function requireAdapter(): Promise<EngineAdapter> {
+  const a = getActiveAdapter();
+  if (!a) throw new Error("引擎未启动：请先选择项目");
+  return a;
+}
+
+async function requireActiveConversationId(): Promise<string> {
+  const id = getActiveConversationId();
+  if (!id) throw new Error("引擎未启动：请先选择项目");
+  return id;
 }
 
 /** T7.6：合成 system-reminder——侧边问答只回答本问题，绝不继续主会话中正在进行的任务/计划。 */
@@ -471,34 +626,18 @@ function mapSubagentRuns(
   }));
 }
 
-/** T6.2：回收当前项目由 ESM 扩展经桥回传的子代理运行时（关 child 会话 + 清投递）。best-effort。 */
-async function disposeSubagent(): Promise<void> {
-  globalThis.__piwoodSubagentBridge = undefined;
-  subagentRunsUnsub?.();
-  subagentRunsUnsub = undefined;
-  const rt = subagentRuntime;
-  subagentRuntime = undefined;
-  if (!rt) return;
-  try {
-    await rt.subagents.shutdown();
-  } catch {
-    /* ignore */
-  }
-  try {
-    rt.delivery.shutdown();
-  } catch {
-    /* ignore */
-  }
-}
-
 /** T2.2：diff 快照逻辑已迁至 workbench/snapshot-service.ts */
 
 export function initEngineIpc(): void {
   // T4.1：审批决策回传（渲染层 ApprovalCard → 主进程 resolve）
   ipcMain.handle("approval:decide", (_e, raw: unknown) => {
     const { id, allow } = z.object({ id: z.number(), allow: z.boolean() }).parse(raw);
-    pendingApprovals.get(id)?.(allow);
-    pendingApprovals.delete(id);
+    const entry = pendingApprovals.get(id);
+    if (entry) {
+      pendingApprovals.delete(id);
+      noteApprovalPending(entry.conv, -1);
+      entry.resolve(allow);
+    }
     return true;
   });
 
@@ -513,11 +652,15 @@ export function initEngineIpc(): void {
   });
 
   // T7.2：开启 per-session 自动接受时，立即放行当前所有在飞的审批/确认（select/input 不动）。
+  // T8.1：只放行 **active 对话** 的在飞审批——跨对话放行等于替用户点头别的项目的写盘操作。
   ipcMain.handle("approval:acceptAll", () => {
+    const activeId = getActiveConversationId();
     let accepted = 0;
-    for (const [id, resolve] of pendingApprovals) {
-      resolve(true);
+    for (const [id, entry] of pendingApprovals) {
+      if (!activeId || entry.conv !== activeId) continue;
       pendingApprovals.delete(id);
+      noteApprovalPending(entry.conv, -1);
+      entry.resolve(true);
       accepted += 1;
     }
     for (const [id, entry] of pendingUiRequests) {
@@ -546,15 +689,19 @@ export function initEngineIpc(): void {
   });
 
   // T6.3：子代理面板挂载时拉一次 runs 快照初值（后续增量走 subagentRuns 推送）。
-  ipcMain.handle(ENGINE_CHANNELS.subagentList, () =>
-    subagentRuntime ? mapSubagentRuns(subagentRuntime.runs.list()) : [],
-  );
+  // T8.1：runs 归属各自的引擎子进程，主进程只保留镜像 → 面板看到的永远是 active 对话的。
+  ipcMain.handle(ENGINE_CHANNELS.subagentList, () => {
+    const id = getActiveConversationId();
+    const runs = id ? subagentMirror.get(id) : undefined;
+    return runs ? mapSubagentRuns(runs) : [];
+  });
 
   ipcMain.handle("engine:diffRevert", (_e, raw: unknown) => {
     const { changeId } = z.object({ changeId: z.string().min(1) }).parse(raw);
-    if (!activeSnapshots) throw new Error("引擎未启动：没有可回滚的变更");
+    const snapshots = activeProject ? snapshotsByProject.get(activeProject) : undefined;
+    if (!snapshots) throw new Error("引擎未启动：没有可回滚的变更");
     try {
-      const result = activeSnapshots.revert(changeId);
+      const result = snapshots.revert(changeId);
       send("ui:notify", { message: `已还原 ${result.file}`, type: "success" });
       return result;
     } catch (err) {
@@ -596,17 +743,25 @@ export function initEngineIpc(): void {
   ipcMain.removeHandler(ENGINE_CHANNELS.prompt);
   ipcMain.handle(ENGINE_CHANNELS.prompt, async (_e, raw: unknown) => {
     const cmd = PromptCommandSchema.parse(raw);
+    const convId = await requireActiveConversationId();
     const a = await requireAdapter();
     const prepared = prepareAttachments(cmd.attachments ?? []);
     // T7.9：本轮辅助采集边界
     assistUserText = cmd.text;
     assistTextBuf = "";
     assistAborted = false;
-    await a.prompt({
-      text: prepared.text ? `${cmd.text}\n\n${prepared.text}` : cmd.text,
-      images: [...(cmd.images ?? []), ...prepared.images],
-      streamingBehavior: cmd.streamingBehavior,
-    });
+    // 在飞标记：事件流（agent_start/agent_settled）是主判据，这里补一个确定边界——
+    // child 崩溃或在飞 RPC 无应答时 settled 事件可能永不到来，只靠事件清标记会把对话卡成「不可休眠」。
+    markPromptInFlight(convId, true);
+    try {
+      await a.prompt({
+        text: prepared.text ? `${cmd.text}\n\n${prepared.text}` : cmd.text,
+        images: [...(cmd.images ?? []), ...prepared.images],
+        streamingBehavior: cmd.streamingBehavior,
+      });
+    } finally {
+      markPromptInFlight(convId, false);
+    }
   });
 
   ipcMain.handle("engine:steer", async (_e, raw: unknown) => {
@@ -625,22 +780,27 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:setModel", async (_e, raw: unknown) => {
     const { provider, modelId } = SetModelArgSchema.parse(raw);
+    const convId = await requireActiveConversationId();
     const current = await requireAdapter();
     await current.setModel(provider, modelId);
+    rememberPref(convId, { provider, modelId }); // child 重建后按对话重放
     send(ENGINE_CHANNELS.event, { type: "model_changed", provider, id: modelId });
   });
 
   ipcMain.handle(ENGINE_CHANNELS.setThinking, async (_e, raw: unknown) => {
     const { level } = SetThinkingArgSchema.parse(raw);
+    const convId = await requireActiveConversationId();
     const current = await requireAdapter();
-    const allowed = current.getAvailableThinkingLevels();
+    const allowed = await current.getAvailableThinkingLevels();
     if (!allowed.includes(level)) throw new Error(`当前模型不支持思考级别 ${level}`);
     await current.setThinkingLevel(level);
+    rememberPref(convId, { thinkingLevel: level });
     send(ENGINE_CHANNELS.event, { type: "thinking_level_changed", thinkingLevel: level });
   });
 
   ipcMain.handle("engine:getThinkingLevels", async () => {
-    return adapter ? adapter.getAvailableThinkingLevels() : [];
+    const a = getActiveAdapter();
+    return a ? a.getAvailableThinkingLevels() : [];
   });
 
   ipcMain.handle(ENGINE_CHANNELS.compact, async () => {
@@ -649,12 +809,14 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:getAvailableModels", async () => {
     // 只读查询：引擎未启动时降级为空（§8 状态不变量：渲染层仍应以 engineReady 门禁）
-    return adapter ? adapter.getAvailableModels() : [];
+    const a = getActiveAdapter();
+    return a ? a.getAvailableModels() : [];
   });
 
-  ipcMain.handle(ENGINE_CHANNELS.listCommands, () => {
+  ipcMain.handle(ENGINE_CHANNELS.listCommands, async () => {
     // T5.1 只读聚合：引擎未启动时降级为空（渲染层另以 resources:list 兜底 skill/prompt）
-    return adapter ? adapter.listCommands() : [];
+    const a = getActiveAdapter();
+    return a ? a.listCommands() : [];
   });
 
   ipcMain.handle(ENGINE_CHANNELS.getPiTheme, (): EnginePiTheme | null => {
@@ -677,16 +839,20 @@ export function initEngineIpc(): void {
   });
 
   ipcMain.handle("engine:getState", async () => {
-    return adapter ? adapter.getState() : {};
+    const a = getActiveAdapter();
+    return a ? a.getState() : {};
   });
 
   ipcMain.handle(ENGINE_CHANNELS.getRuntimeInfo, async (): Promise<RuntimeInfo> => {
+    const a = getActiveAdapter();
+    const conv = a ? activeConversation() : undefined;
     const [pi, gitInfo] = await Promise.all([
-      adapter ? adapter.getRuntimeInfo() : Promise.resolve({}),
+      a ? a.getRuntimeInfo() : Promise.resolve({}),
       collectGitInfo(),
     ]);
-    // T6.6：把当前项目子代理运行注册表的 token/费用汇总进 RuntimeInfo（无子代理 → undefined）
-    const subagentUsage = aggregateRunUsage(subagentRuntime ? subagentRuntime.runs.list() : []);
+    // T6.6：把当前对话子代理运行注册表的 token/费用汇总进 RuntimeInfo（无子代理 → undefined）
+    const runs = conv ? subagentMirror.get(conv.id) : undefined;
+    const subagentUsage = aggregateRunUsage(runs ?? []);
     return {
       cwd: activeProject,
       platform: `${process.platform} ${process.arch}`,
@@ -694,6 +860,17 @@ export function initEngineIpc(): void {
       ...pi,
       subagentUsage,
       git: gitInfo,
+      // T8.1：引擎在子进程后面板要能指出「跑在哪个 pid、装配花了多久、占多少 RSS」
+      engineProcess: conv?.boot
+        ? {
+            pid: conv.boot.pid,
+            conversationId: conv.id,
+            status: conv.record.status,
+            bootMs: conv.boot.timings?.totalMs,
+            memRssMB: conv.boot.memRssMB,
+            droppedEvents: conv.record.droppedEvents,
+          }
+        : undefined,
     };
   });
 
@@ -704,6 +881,30 @@ export function initEngineIpc(): void {
   ipcMain.handle("engine:reload", async () => {
     await (await requireAdapter()).reload();
     return true;
+  });
+
+  // T8.1 步骤 10：此前 ENGINE_CHANNELS.fork 只有通道声明、没有 handler。
+  // 语义先定为「在当前对话里从某条消息分出一个新会话」（SDK runtime.fork），
+  // 「另开一条自带独立 worktree 的新对话」等 T8.6 落地后再改，避免同项目两对话互踩。
+  ipcMain.handle(ENGINE_CHANNELS.fork, async (_e, raw: unknown) => {
+    const { entryId, position } = z
+      .object({ entryId: z.string().min(1), position: z.enum(["before", "at"]) })
+      .parse(raw);
+    await (await requireAdapter()).fork(entryId, position);
+    return true;
+  });
+
+  // ---- T8.1 对话注册表面（渲染层接线在 T8.2/T8.3，先打通给并发探针与面板读取）----
+  ipcMain.handle("engine:listConversations", () => listConversations());
+
+  ipcMain.handle("engine:suspendConversation", async (_e, raw: unknown) => {
+    const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
+    return suspendConversation(conversationId);
+  });
+
+  ipcMain.handle("engine:closeConversation", async (_e, raw: unknown) => {
+    const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
+    return closeConversation(conversationId);
   });
 
   ipcMain.handle("project:pickDialog", async () => {

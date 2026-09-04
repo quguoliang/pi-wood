@@ -11,7 +11,9 @@ import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
 import { initEngineIpc, getActiveProjectDir, getActiveProjectDirSafe } from "./engine/engine-manager";
+import { shutdownAllConversations } from "./engine/conversation-registry"; // T8.1：退出前广播 shutdown 给所有引擎子进程
 import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine-process-probe";
+import { isConversationProbeMode, runConversationProbe } from "./engine/conversation-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc } from "./workbench/browser-service";
@@ -142,7 +144,9 @@ function createWindow(): void {
 
 // T8.0 P1 探针：无窗、自检后 app.exit。必须**跳过单例锁**——探针可与用户开着的 dev 实例并存
 const PROBE_ENGINE = isEngineProcessProbeMode();
-const gotLock = PROBE_ENGINE || app.requestSingleInstanceLock();
+// T8.1 多对话探针同理：无窗、跳锁、跑完 app.exit(0|1)
+const PROBE_CONVERSATION = isConversationProbeMode();
+const gotLock = PROBE_ENGINE || PROBE_CONVERSATION || app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
@@ -179,6 +183,11 @@ if (!gotLock) {
       await runEngineProcessProbe();
       return;
     }
+    // T8.1 多对话探针：真 fork 多个引擎子进程，断言并存/超限休眠/崩溃隔离/零残留后 app.exit(0|1)
+    if (PROBE_CONVERSATION) {
+      await runConversationProbe();
+      return;
+    }
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
@@ -213,9 +222,12 @@ if (!gotLock) {
     stopAllPlugins();
     killAllTerminals();
     if (process.platform !== "darwin") {
-      // Pi SDK 静态加载残留句柄可能挂起 quit（§8）；给 1.5s 后强制退出
+      // T8.1：引擎跑在 utilityProcess 里，退出前给每个 child 广播 shutdown
+      // （child 内走 runtime.dispose → 先广播 session_shutdown 再 dispose，MCP/子代理才不会被留成孤儿）。
+      // 仍保留硬闸：Pi SDK 静态加载的残留句柄可能挂起 quit（§8），收敛完就走，最迟 4s 强制退出。
       app.quit();
-      setTimeout(() => app.exit(0), 1500);
+      void shutdownAllConversations().finally(() => app.exit(0));
+      setTimeout(() => app.exit(0), 4000);
     }
   });
 }
