@@ -180,7 +180,7 @@ const api = {
     ipcRenderer.invoke("fs:write", { path, content }),
   fsSearch: (query: string): Promise<unknown> => ipcRenderer.invoke("fs:search", { query }),
   // T2.3 终端 / T2.4 浏览器
-  termCreate: (opts: { cwd: string; shell?: string }): Promise<string> =>
+  termCreate: (opts: { cwd: string; conversationId?: string; shell?: string }): Promise<string> =>
     ipcRenderer.invoke("term:create", opts),
   termWrite: (id: string, data: string): Promise<boolean> =>
     ipcRenderer.invoke("term:write", { id, data }),

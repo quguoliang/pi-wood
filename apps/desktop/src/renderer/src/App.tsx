@@ -35,6 +35,12 @@ export default function App() {
   const handleEvent = useSessionStore((s) => s.handleEvent);
   const trackRuntimeEvent = useRuntimeStore((s) => s.trackEvent);
   const addDiff = useWorkbenchStore((s) => s.addDiff);
+  const activeConversationId = useSessionStore((s) => s.activeConversationId);
+
+  // T8.7：工作台（标签/差异/请求文件）随对话切换——切片常驻内存，切回来原样恢复
+  useEffect(() => {
+    useWorkbenchStore.getState().switchConversation(activeConversationId);
+  }, [activeConversationId]);
 
   useEffect(() => {
     // 主题（T3.3）：先应用 settings.theme.fallback（内置 light/dark/system），
@@ -163,8 +169,11 @@ export default function App() {
       useAssistStore.getState().set({ recap: data.recap, suggestions: data.suggestions, session: c.currentSessionId ?? "", forItemsLen: c.items.length });
     });
     const offDiff = window.pi.onDiff((data) => {
-      addDiff(data);
-      openWorkbench("diff");
+      // T8.7：diff 按产生它的对话落各自工作台切片（后台对话的 edit/write 不串台）；
+      // 只有当前对话的差异才自动打开 diff 面板（后台的差异静默入切片，切过去可见）
+      const cid = (data as { conversationId?: string | null }).conversationId ?? null;
+      addDiff(data, cid);
+      if (!cid || cid === useSessionStore.getState().activeConversationId) openWorkbench("diff");
     });
     // T5.2 插件系统：状态/面板/状态栏推送落 store；openFile 走工作台。
     const offPluginStatus = window.pi.onPluginStatus((list) => usePluginStore.getState().setList(list));

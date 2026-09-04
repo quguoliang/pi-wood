@@ -63,3 +63,19 @@ export function isManagedWorktree(absPath: string, branch: string | undefined, p
   const base = `${norm(projectDir)}${projectDir.includes("\\") ? "\\" : "/"}${WORKTREE_DIRNAME}`.replace(/[\\/]+$/, "");
   return norm(absPath).startsWith(base);
 }
+
+/**
+ * T8.7 记忆/项目级资源 scope 归一：worktree 路径归到主项目根。
+ * `<proj>/.pi-wood/worktrees/<id>` → `<proj>`；非管辖路径原样返回。
+ * 否则每个对话各写一份 `<worktree>/.pi-wood/memory/project.json`，记忆被切碎（T7.10 偏差 b）。
+ */
+export function mainProjectRootOf(dir: string): string {
+  if (!dir) return dir;
+  const norm = dir.replace(/[\\/]+$/, "");
+  // 统一分隔符后再匹配（Windows 反斜杠路径同样归一；\→/ 一对一替换，索引不漂移）
+  const unified = norm.replace(/\\/g, "/");
+  const marker = "/.pi-wood/worktrees/";
+  const idx = unified.toLowerCase().indexOf(marker);
+  if (idx <= 0) return dir;
+  return norm.slice(0, idx);
+}

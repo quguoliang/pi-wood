@@ -19,6 +19,8 @@ let seq = 0;
 
 const CreateArgSchema = z.object({
   cwd: z.string().min(1),
+  /** T8.7：per-对话终端——传对话 id 时 cwd 由主进程解析为该对话的 worktree（降级主项目目录） */
+  conversationId: z.string().optional(),
   shell: z.enum(["powershell", "cmd", "git-bash"]).optional(),
   cols: z.number().int().min(10).max(500).optional(),
   rows: z.number().int().min(5).max(200).optional(),
@@ -38,7 +40,14 @@ function resolveShell(preferred?: string): { file: string; args: string[] } {
 
 export function initTerminalIpc(send: (channel: string, data: unknown) => void): void {
   ipcMain.handle("term:create", async (_e, raw: unknown) => {
-    const { cwd, shell, cols = 100, rows = 30 } = CreateArgSchema.parse(raw ?? {});
+    const { cwd: requestedCwd, conversationId, shell, cols = 100, rows = 30 } = CreateArgSchema.parse(raw ?? {});
+    // T8.7：对话的终端 cwd = 该对话的 worktree（会话按 cwd 归集，树内起 shell 即在树上）
+    let cwd = requestedCwd;
+    if (conversationId) {
+      const { getConversation } = await import("../engine/conversation-registry");
+      const wt = getConversation(conversationId)?.worktreePath;
+      if (wt) cwd = wt;
+    }
     const pty = await import("@lydell/node-pty");
     const { file, args } = resolveShell(shell);
     const id = `term-${++seq}`;

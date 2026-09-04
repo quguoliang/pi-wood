@@ -1,6 +1,6 @@
 import { BrowserWindow, app, ipcMain } from "electron";
 import { PLUGIN_CHANNELS } from "@pi-wood/ipc-schema";
-import { getActiveProjectDirSafe, uiBridge } from "../engine/engine-manager.ts";
+import { getActiveWorkspaceDir, uiBridge } from "../engine/engine-manager.ts";
 import { browserNavigate, browserScreenshot } from "../workbench/browser-service.ts";
 import { getSettings, updateSettings } from "../settings-service.ts";
 import { PluginHost, type PluginHostServices } from "./plugin-host.ts";
@@ -16,7 +16,8 @@ function buildServices(sendToRenderer: (channel: string, data: unknown) => void)
   return {
     appPath: app.getAppPath(),
     sendToRenderer,
-    getProjectDir: () => getActiveProjectDirSafe(),
+    // T8.7：插件的活动项目语义 = 当前对话的 worktree（插件宿主无对话上下文，取 active 对话；语义在此写明）
+    getProjectDir: () => getActiveWorkspaceDir(),
     ui: {
       notify: (message, type) => bridge.notify(message, type),
       confirm: (title, message) => bridge.confirm(title, message),

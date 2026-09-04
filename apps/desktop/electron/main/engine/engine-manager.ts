@@ -707,7 +707,8 @@ function installCapabilitiesOnce(): void {
       // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测
       if (event.type === "tool_execution_start") snapshots.snapshot(String(event.toolName ?? ""), event.args);
       if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
-        for (const d of snapshots.collectChanges()) if (isActive) send(ENGINE_CHANNELS.diff, d, ctx.conversationId);
+        // T8.7：diff 载荷带归属对话（渲染层按归属落各自工作台切片，后台对话不串台）
+        for (const d of snapshots.collectChanges()) if (isActive) send(ENGINE_CHANNELS.diff, { ...d, conversationId: ctx.conversationId }, ctx.conversationId);
       }
       // T8.2：**每条对话的事件都推**（带 envelope），由渲染层按 conversationId 决定进哪个切片/是否只更摘要。
       // 主进程不再替渲染层做「后台对话事件直接丢」的决定——那正是 T8.3 可见性节流要量化的对象。
@@ -894,6 +895,19 @@ export function getActiveProjectDir(): string {
 
 export function getActiveProjectDirSafe(): string | undefined {
   return activeProject || undefined;
+}
+
+/**
+ * T8.7 工作区作用域唯一入口：fs/git/快照/审查/插件等活动项目语义一律按
+ * 「当前对话的 worktree（独占树）→ 降级主项目目录」解析。注入侧换这个函数即可全链路生效。
+ */
+export function getActiveWorkspaceDir(): string | undefined {
+  return activeConversation()?.worktreePath ?? getActiveProjectDirSafe();
+}
+
+/** T8.7：当前对话 id（浏览器等按对话归属的服务注入用） */
+export function getActiveConversationIdSafe(): string | undefined {
+  return getActiveConversationId();
 }
 
 async function requireAdapter(): Promise<EngineAdapter> {

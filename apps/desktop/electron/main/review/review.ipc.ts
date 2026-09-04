@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ipcMain } from "electron";
 import { REVIEW_CHANNELS, type ReviewResult } from "@pi-wood/ipc-schema";
-import { getActiveProjectDirSafe } from "../engine/engine-manager.ts";
+import { getActiveWorkspaceDir } from "../engine/engine-manager.ts";
 import { runReview } from "./review-service.ts";
 import { hasChanges } from "./parse-findings.ts";
 
@@ -20,7 +20,7 @@ async function gitDiffHead(cwd: string): Promise<string> {
  */
 export function initReviewIpc(): void {
   ipcMain.handle(REVIEW_CHANNELS.run, async (): Promise<ReviewResult> => {
-    const dir = getActiveProjectDirSafe();
+    const dir = getActiveWorkspaceDir(); // T8.7：审查 diff 按当前对话的树，不读主树
     if (!dir) return { findings: [], diffChars: 0, empty: true, error: "先在左栏选择一个项目" };
     let diff = "";
     try {

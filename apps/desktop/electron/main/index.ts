@@ -10,13 +10,13 @@ import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
-import { initEngineIpc, getActiveProjectDir, getActiveProjectDirSafe } from "./engine/engine-manager";
+import { initEngineIpc, getActiveWorkspaceDir, getActiveConversationIdSafe } from "./engine/engine-manager";
 import { shutdownAllConversations } from "./engine/conversation-registry"; // T8.1：退出前广播 shutdown 给所有引擎子进程
 import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine-process-probe";
 import { isConversationProbeMode, runConversationProbe } from "./engine/conversation-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
-import { initBrowserIpc } from "./workbench/browser-service";
+import { initBrowserIpc, configureBrowserScope } from "./workbench/browser-service";
 import { initDevServerIpc } from "./workbench/dev-server-detector";
 import { initProviderIpc } from "./provider/provider-manager";
 import { initPluginsIpc, stopAllPlugins } from "./plugins/plugins.ipc";
@@ -200,12 +200,17 @@ if (!gotLock) {
     // 保留动态写法以维持「先取 agentDir、再注册依赖它的数据域 IPC」的注册时序，改动面最小。
     const { getAgentDir } = await import("@earendil-works/pi-coding-agent");
     const agentDir = getAgentDir();
-    initDataIpc(agentDir, getActiveProjectDirSafe);
+    initDataIpc(agentDir, getActiveWorkspaceDir); // T8.7：会话/项目数据按当前对话的树解析
     initSubagentPermissionsIpc(join(agentDir, "agents")); // T6.7 子代理 per-tool 权限
     initUsageTracking(); // T7.12 用量追踪（须在引擎首轮 settle 前配置好单例）
     initEngineIpc();
-    initFileIpc(getActiveProjectDir);
+    initFileIpc(() => {
+      const d = getActiveWorkspaceDir();
+      if (!d) throw new Error("引擎未启动：请先选择项目");
+      return d;
+    }); // T8.7：fs:* 按当前对话的树解析
     initTerminalIpc(sendToRenderer);
+    configureBrowserScope(() => getActiveConversationIdSafe() ?? null); // T8.7：浏览器 page 按当前对话归属（上限 2 LRU 挂起）
     initBrowserIpc();
     initDevServerIpc();
     initPluginsIpc(sendToRenderer);

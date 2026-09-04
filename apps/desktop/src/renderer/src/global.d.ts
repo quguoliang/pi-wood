@@ -106,7 +106,7 @@ declare global {
       packagesUpdate(spec?: string): Promise<{ ok: boolean; output: string }>;
       packagesSearch(query: string): Promise<{ ok: boolean; items: PiMarketItem[]; error?: string }>;
       engineSetModel(provider: string, modelId: string): Promise<void>;
-      termCreate(opts: { cwd: string; shell?: string; cols?: number; rows?: number }): Promise<string>;
+      termCreate(opts: { cwd: string; conversationId?: string; shell?: string; cols?: number; rows?: number }): Promise<string>;
       termWrite(id: string, data: string): Promise<boolean>;
       termResize(id: string, cols: number, rows: number): Promise<boolean>;
       termKill(id: string): Promise<boolean>;

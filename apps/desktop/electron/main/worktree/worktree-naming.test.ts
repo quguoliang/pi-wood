@@ -6,6 +6,7 @@ import {
   conversationShortId,
   isManagedWorktree,
   isPathLengthOk,
+  mainProjectRootOf,
   sanitizeSegment,
   worktreePathFor,
 } from "./worktree-naming.ts";
@@ -67,5 +68,23 @@ describe("isManagedWorktree（孤儿对账判据：只管自己建的树）", ()
   });
   it("用户自建的树不管", () => {
     assert.equal(isManagedWorktree("/repo/other-wt", "feature/x", "/repo"), false);
+  });
+});
+
+describe("mainProjectRootOf（T8.7 记忆/项目 scope 归一到主项目根）", () => {
+  it("worktree 路径归到主项目根", () => {
+    assert.equal(mainProjectRootOf("/repo/proj/.pi-wood/worktrees/abc123"), "/repo/proj");
+    assert.equal(mainProjectRootOf("/repo/proj/.pi-wood/worktrees/abc123/nested/deep"), "/repo/proj");
+  });
+  it("Windows 分隔符同样归一", () => {
+    assert.equal(mainProjectRootOf("C:\\repo\\proj\\.pi-wood\\worktrees\\abc"), "C:\\repo\\proj");
+  });
+  it("非管辖路径原样返回（含主项目根本身）", () => {
+    assert.equal(mainProjectRootOf("/repo/proj"), "/repo/proj");
+    assert.equal(mainProjectRootOf("/repo/other/.pi-wood/memory"), "/repo/other/.pi-wood/memory");
+    assert.equal(mainProjectRootOf(""), "");
+  });
+  it("大小写不敏感匹配 .PI-WOOD/WORKTREES", () => {
+    assert.equal(mainProjectRootOf("/repo/proj/.PI-WOOD/WORKTREES/abc"), "/repo/proj");
   });
 });

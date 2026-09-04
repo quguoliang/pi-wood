@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { ipcMain } from "electron";
+import { fileWriteQueue } from "./workbench/write-queue.ts";
 
 // 与 project-manager.ts 的 DEFAULT_APP_DATA_DIR 保持一致（~/.pi-wood）
 const APP_DATA_DIR = join(process.env["USERPROFILE"] ?? process.env["HOME"] ?? ".", ".pi-wood");
@@ -125,6 +126,7 @@ export function replaceSection<K extends keyof PiWoodSettings>(
 export function initSettingsIpc(): PiWoodSettings {
   const initial = ensureLoaded();
   ipcMain.handle("settings:get", () => ensureLoaded());
-  ipcMain.handle("settings:set", (_e, patch: unknown) => updateSettings(patch));
+  // T8.7 写并发保护：settings:set 走 per-file 串行临界区（多对话/多来源并发 patch 不丢更新）
+  ipcMain.handle("settings:set", (_e, patch: unknown) => fileWriteQueue.withLock("settings.json", () => updateSettings(patch)));
   return initial;
 }
