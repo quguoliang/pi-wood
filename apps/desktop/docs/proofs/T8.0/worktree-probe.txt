@@ -1,29 +1,29 @@
-=== T8.0 P2 worktree 探针（git git version 2.54.0.windows.1，tmp=C:\Users\1\AppData\Local\Temp\piwood-t80-QJSef9）===
-基线仓库就绪 @0eae3ec（node_modules 未跟踪，2MB）
-✓ P2-a worktree add 成功 — A=68ms B=75ms
+=== T8.0 P2 worktree 探针（git git version 2.54.0.windows.1，tmp=C:\Users\1\AppData\Local\Temp\piwood-t80-iJXPSC）===
+基线仓库就绪 @35d3c23（node_modules 未跟踪，2MB）
+✓ P2-a worktree add 成功 — A=76ms B=64ms
 ✓ P2-a 工作树不复制未跟踪依赖（node_modules 缺席） — wt-a 大小=0.00MB（主树 node_modules 含 2MB 假依赖）
 ✓ P2-a .git 是文件而非目录（共享 object 库） — worktree 天然共享 objects，不复制历史
 ✓ P2-a 两工作树 diff 互不污染 — A diff 85 行 / B diff 85 行
-✓ P2-a 两份改动先后回流进主工作树（内容判据） — A=33ms(ok=true) B=35ms(ok=false)，两者均在主树=true
-  ⚠ 发现：git apply --3way 对含空行上下文的补丁非零退出但内容已落（apply.whitespace=未设（默认 warn））：C:/Users/1/AppData/Local/Temp/piwood-t80-QJSef9/b.patch:46: trailing whitespace.
+✓ P2-a 两份改动先后回流进主工作树（内容判据） — A=43ms(ok=true) B=35ms(ok=false)，两者均在主树=true
+  ⚠ 发现：git apply --3way 对含空行上下文的补丁非零退出但内容已落（apply.whitespace=未设（默认 warn））：C:/Users/1/AppData/Local/Temp/piwood-t80-iJXPSC/b.patch:46: trailing whitespace.
 ✓ P2-a 缓解方案有效：--ignore-whitespace 下退出码 0 且内容落盘 — ok=true 含A=true err="" → T8.6 回流固定用 --3way --ignore-whitespace，并以内容/diff 复核而非只看退出码
-✓ P2-a 同行冲突不自动合（第二份 apply 失败且原因可读） — 主树还原=true，C=true，D=被拒：C:/Users/1/AppData/Local/Temp/piwood-t80-QJSef9/d.patch:46: trailing whitespace.
+✓ P2-a 同行冲突不自动合（第二份 apply 失败且原因可读） — 主树还原=true，C=true，D=被拒：C:/Users/1/AppData/Local/Temp/piwood-t80-iJXPSC/d.patch:46: trailing whitespace.
 ✓ P2-a 清理彻底（worktree 列表回到 1 条、.git/worktrees 空、分支已删） — 剩 1 个工作树，残留登记 0
 ✓ P2-a 清理后主工作树干净（跟踪文件） — 无改动
 
-真实仓库（C:/Users/1/Desktop/pi-wood，node_modules 6 项）worktree add：165ms，工作树体积 3.3MB，含 node_modules=false
-✓ 真实仓库 worktree add 可用且 <10s — 165ms
-✓ 真实仓库 worktree 不复制 node_modules（体积远小于主树、目录缺席） — 3.3MB
-  worktree remove：59ms（ok=true）
+真实仓库（C:/Users/1/Desktop/pi-wood，node_modules 6 项）worktree add：171ms，工作树体积 3.4MB，含 node_modules=false
+✓ 真实仓库 worktree add 可用且 <10s — 171ms
+✓ 真实仓库 worktree 不复制 node_modules（体积远小于主树、目录缺席） — 3.4MB
+  worktree remove：63ms（ok=true）
 
 --- P2-b Pi 会话目录按 cwd 编码（worktree 化会令会话分家） ---
-  默认 sessionDir 主项目：C:\Users\1\.pi\agent\sessions\--C--Users-1-AppData-Local-Temp-piwood-t80-QJSef9-main--
-  默认 sessionDir 工作树：C:\Users\1\.pi\agent\sessions\--C--Users-1-AppData-Local-Temp-piwood-t80-QJSef9-wt-s--
+  默认 sessionDir 主项目：C:\Users\1\.pi\agent\sessions\--C--Users-1-AppData-Local-Temp-piwood-t80-iJXPSC-main--
+  默认 sessionDir 工作树：C:\Users\1\.pi\agent\sessions\--C--Users-1-AppData-Local-Temp-piwood-t80-iJXPSC-wt-s--
 ✓ P2-b 会话目录按 cwd 编码为互不相同的子目录（worktree 化必分家） — 不同=true
 ✓ P2-b 两者都走默认目录（即真跑到用户机器上会各存一处） — main=true wt=true
   真实仓库：主项目会话 0 条；其新工作树 0 条
-  ○ 真实仓库无历史会话可取样，列表可见性不硬判（目录编码已证不同：--C--Users-1-Desktop-pi-wood-- vs --C--Users-1-AppData-Local-Temp-piwood-t80-QJSef9-wt-real--）
-✓ P2-b 两者会话目录不同（CLI --resume 在主项目也看不到工作树会话） — --C--Users-1-Desktop-pi-wood-- vs --C--Users-1-AppData-Local-Temp-piwood-t80-QJSef9-wt-real--
+  ○ 真实仓库无历史会话可取样，列表可见性不硬判（目录编码已证不同：--C--Users-1-Desktop-pi-wood-- vs --C--Users-1-AppData-Local-Temp-piwood-t80-iJXPSC-wt-real--）
+✓ P2-b 两者会话目录不同（CLI --resume 在主项目也看不到工作树会话） — --C--Users-1-Desktop-pi-wood-- vs --C--Users-1-AppData-Local-Temp-piwood-t80-iJXPSC-wt-real--
   → 结论：worktree 化后左栏须聚合「主项目 + 其全部 worktree」的会话（写进 T8.7）
 
 --- P2-c 降级路径（每类都必须给出显式文案，不许静默） ---
