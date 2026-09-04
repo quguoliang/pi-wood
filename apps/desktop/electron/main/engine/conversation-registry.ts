@@ -361,6 +361,17 @@ export function markPromptInFlight(id: string, inFlight: boolean): void {
   if (inFlight && h.record.status === "idle") setStatus(h, "streaming");
 }
 
+/** T8.5 prompt 闸门：超限入队时标「排队中」；拿到槽位后撤标（inFlight 接管状态） */
+export function markPromptQueued(id: string, queued: boolean): void {
+  const h = handles.get(id);
+  if (!h) return;
+  if (queued) {
+    if (h.record.status === "idle" || h.record.status === "streaming") setStatus(h, "queued");
+  } else if (h.record.status === "queued") {
+    setStatus(h, h.record.inFlightPrompt ? "streaming" : "idle");
+  }
+}
+
 /** 休眠：只留 sessionFile（+ T8.6 的 worktreePath），进程优雅退出 */
 export async function suspendConversation(id: string): Promise<boolean> {
   const h = handles.get(id);

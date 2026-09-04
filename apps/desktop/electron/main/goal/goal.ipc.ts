@@ -33,7 +33,7 @@ export function initGoalIpc(sendToRenderer: (channel: string, data: unknown) => 
   });
 
   ipcMain.handle(GOAL_CHANNELS.set, async (_e, raw: unknown): Promise<GoalState | null> => {
-    const arg = (raw ?? {}) as { sessionId?: unknown; objective?: unknown; tokenBudget?: unknown; maxTurns?: unknown };
+    const arg = (raw ?? {}) as { sessionId?: unknown; objective?: unknown; tokenBudget?: unknown; maxTurns?: unknown; force?: unknown };
     const adapter = getActiveAdapter();
     const sessionId = str(arg.sessionId) || (adapter?.getSessionId?.() ?? "");
     const objective = str(arg.objective).trim();
@@ -48,12 +48,22 @@ export function initGoalIpc(sendToRenderer: (channel: string, data: unknown) => 
     } catch {
       /* 读不到按 0 */
     }
-    const { state, kickoff } = beginGoal(sessionId, objective, {
-      tokenBudget: numOr(arg.tokenBudget, 0) || undefined,
-      maxTurns: numOr(arg.maxTurns, 0) || undefined,
-      initialTotalTokens,
-      initialCostUsd,
-    });
+    let state: GoalState;
+    let kickoff: string;
+    try {
+      ({ state, kickoff } = beginGoal(sessionId, objective, {
+        tokenBudget: numOr(arg.tokenBudget, 0) || undefined,
+        maxTurns: numOr(arg.maxTurns, 0) || undefined,
+        initialTotalTokens,
+        initialCostUsd,
+        force: arg.force === true,
+      }));
+    } catch (err) {
+      // T8.5 goal 互斥冲突：渲染层不 catch invoke 拒绝 → toast 告知 + 返回当前状态（正式冲突 UI 随 T8.8）
+      const { uiBridge } = await import("../engine/engine-manager.ts");
+      uiBridge().notify(err instanceof Error ? err.message : String(err), "warning");
+      return sessionId ? getGoalState(sessionId) : null;
+    }
     try {
       await adapter?.prompt({ text: kickoff });
     } catch {
@@ -63,7 +73,18 @@ export function initGoalIpc(sendToRenderer: (channel: string, data: unknown) => 
   });
 
   ipcMain.handle(GOAL_CHANNELS.pause, (_e, raw: unknown): GoalState | null => pauseGoal(str((raw as { sessionId?: unknown })?.sessionId)));
-  ipcMain.handle(GOAL_CHANNELS.resume, (_e, raw: unknown): GoalState | null => resumeGoal(str((raw as { sessionId?: unknown })?.sessionId)));
+  ipcMain.handle(GOAL_CHANNELS.resume, (_e, raw: unknown): GoalState | null => {
+    const arg = (raw ?? {}) as { sessionId?: unknown; force?: unknown };
+    try {
+      return resumeGoal(str(arg.sessionId), { force: arg.force === true });
+    } catch (err) {
+      // T8.5：resume 同受互斥约束；冲突 → toast（与 set 同一套规则）
+      void import("../engine/engine-manager.ts").then(({ uiBridge }) =>
+        uiBridge().notify(err instanceof Error ? err.message : String(err), "warning"),
+      );
+      return getGoalState(str(arg.sessionId));
+    }
+  });
   ipcMain.handle(GOAL_CHANNELS.clear, (_e, raw: unknown): null => {
     clearGoalFor(str((raw as { sessionId?: unknown })?.sessionId));
     return null;

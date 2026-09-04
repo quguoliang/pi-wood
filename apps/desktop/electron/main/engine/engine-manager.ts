@@ -54,10 +54,25 @@ import {
   getConversation,
   listConversations,
   markPromptInFlight,
+  markPromptQueued,
   noteApprovalPending,
   setActiveConversation,
   suspendConversation,
 } from "./conversation-registry";
+import {
+  SlotGate,
+  applyRunsSnapshot,
+  clampLimit,
+  dropChildRunState,
+  effectivePromptLimit,
+  newChildRunGateState,
+  normalizeQuotaAction,
+  planChildRunAdmit,
+  quotaGuardEffect,
+  releaseChildRunReservation,
+  reserveChildRun,
+  type ChildRunGateState,
+} from "./concurrency-gates";
 import {
   acceptAllScope,
   canRespond,
@@ -128,13 +143,61 @@ const snapshotsByProject = new Map<string, SnapshotService>();
 let hostTools: Map<string, ReturnType<typeof browserCustomTools>[number]> | undefined;
 /** 子代理 runs 的跨进程快照镜像（child 每对话一份，主进程只留最新快照供面板/成本汇总） */
 const subagentMirror = new Map<string, PiWoodSubagentRunView[]>();
-// T7.6：与主会话完全隔离的「侧边问答」第二运行时（独立 session/事件流，绝不影响主 adapter）
-let btwAdapter: SdkAdapter | undefined;
-let btwUnsub: (() => void) | undefined;
-// T7.9：会话辅助——采集每轮 用户输入 / 助手正文，settled 后触发一次辅助生成
-let assistUserText = "";
-let assistTextBuf = "";
-let assistAborted = false;
+// T8.5：与主会话完全隔离的「侧边问答」第二运行时（独立 session/事件流，绝不影响主 adapter）。
+// per-对话化：此前全局单槽，多对话下 B 的 /btw 会拿到 A 的 cwd 上下文（隐性串台）。
+const btwByConversation = new Map<string, { adapter: SdkAdapter; unsub: (() => void) | undefined }>();
+// T8.5：会话辅助采集改 per-对话（后台对话也采集；settled 后 active 立即生成、后台暂存待切回补生成）
+const assistBufs = new Map<string, { userText: string; text: string; aborted: boolean }>();
+const pendingAssist = new Map<string, { userText: string; text: string }>();
+
+// ---- T8.5 并发闸门（判定在 concurrency-gates.ts，纯函数可穷举） ----
+/** prompt 全局闸：在飞 ≤ min(设置上限, 活跃引擎数)；限流退避/throttle 档临时降 1 */
+const promptGate = new SlotGate(3);
+/** 子代理全局闸状态：agent_start 接缝「预约-快照对账」排队而非 spawn（不改 vendored ADR 0001，闸在宿主侧） */
+const childRunGate: ChildRunGateState = newChildRunGateState();
+const childRunWaiters = new Set<() => void>();
+
+function childRunLimits(): { perConversation: number; global: number } {
+  const s = loadSettings() as { subagentMaxPerConversation?: unknown; subagentMaxTotal?: unknown };
+  return {
+    perConversation: clampLimit(s.subagentMaxPerConversation, 4, 1, 8),
+    global: clampLimit(s.subagentMaxTotal, 6, 1, 12),
+  };
+}
+
+function wakeChildRunWaiters(): void {
+  for (const w of [...childRunWaiters]) w();
+}
+
+async function waitForChildRunSlot(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const w = (): void => {
+      childRunWaiters.delete(w);
+      resolve();
+    };
+    childRunWaiters.add(w);
+  });
+}
+
+/** 成本护栏（步骤 7）：月配额是否超限（usage-tracker 的 quotaWarnings） */
+function quotaOverLimit(): boolean {
+  try {
+    return (getUsageTracker()?.readUsage().warnings.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** 配额超限动作（settings.quotaOverLimitAction：warn 缺省 / throttle / block） */
+function quotaEffect(): { throttle: boolean; blockNewConversation: boolean } {
+  const s = loadSettings() as { quotaOverLimitAction?: unknown };
+  return quotaGuardEffect(normalizeQuotaAction(s.quotaOverLimitAction), quotaOverLimit());
+}
+
+function maxLiveEnginesValue(): number {
+  return (loadSettings() as { engineMaxLive?: number }).engineMaxLive ?? 3;
+}
+
 let engineTransition: Promise<void> = Promise.resolve();
 
 // ---- T8.4 审批 / ctx.ui 的对话归属 ----
@@ -546,7 +609,6 @@ function installCapabilitiesOnce(): void {
       if (p.ticket) consumedApprovalTickets.add(p.ticket);
       const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
       const decision = decide(getPolicy(), p.toolName, p.input, override);
-      if (decision === "allow") return { allow: true };
       if (decision === "deny") {
         return {
           allow: false,
@@ -556,19 +618,45 @@ function installCapabilitiesOnce(): void {
               : "已由安全策略拦截（path-guard / denyAll）",
         };
       }
-      // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
-      const conv = getConversation(ctx.conversationId);
-      const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
-      if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true };
-      const { title, message } = describeApprovalCall(p.toolName, p.input);
-      const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
-      return ok ? { allow: true } : { allow: false, reason: "用户拒绝该操作" };
+      // T8.5 子代理全局闸：agent_start 接缝**排队而非 spawn**（每 agent_start 恰好产 1 个 run，
+      // vendored 事实）。不改 vendored 内核、不违反其 ADR 0001「无上限」设计——闸门在宿主侧。
+      // 预约-快照对账：放行前 reserved++；run 在 runs 快照转 running 时按差值折算；审批被拒显式退还。
+      let reservedRun = false;
+      if (p.toolName === "agent_start") {
+        for (;;) {
+          const plan = planChildRunAdmit(childRunGate, ctx.conversationId, childRunLimits());
+          if (plan.action === "admit") break;
+          console.info(`[engine] agent_start 排队：${plan.reason}（对话 ${ctx.conversationId}）`);
+          await waitForChildRunSlot();
+        }
+        reserveChildRun(childRunGate, ctx.conversationId);
+        reservedRun = true;
+      }
+      try {
+        // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
+        const conv = getConversation(ctx.conversationId);
+        const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
+        if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true };
+        const { title, message } = describeApprovalCall(p.toolName, p.input);
+        const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
+        if (!ok) {
+          if (reservedRun) releaseChildRunReservation(childRunGate, ctx.conversationId);
+          return { allow: false, reason: "用户拒绝该操作" };
+        }
+        return { allow: true };
+      } catch (err) {
+        if (reservedRun) releaseChildRunReservation(childRunGate, ctx.conversationId);
+        throw err;
+      }
     },
     onSubagent: (ctx, p: HostSubagentParams) => {
       switch (p.op) {
         case "runs": {
           const runs = p.runs as PiWoodSubagentRunView[];
           subagentMirror.set(ctx.conversationId, runs);
+          // T8.5：快照对账 → 把已启动的 run 从预约折算为占用，并唤醒排队中的 agent_start
+          applyRunsSnapshot(childRunGate, ctx.conversationId, runs.filter((r) => r.status === "running").length);
+          wakeChildRunWaiters();
           // 载荷形状暂不改（数组 → {conversationId, runs} 的改造随 T8.3 多对话标签条一起做）
           if (ctx.conversationId === getActiveConversationId()) send(ENGINE_CHANNELS.subagentRuns, mapSubagentRuns(runs), ctx.conversationId);
           return undefined;
@@ -619,23 +707,32 @@ function installCapabilitiesOnce(): void {
       // T8.2：**每条对话的事件都推**（带 envelope），由渲染层按 conversationId 决定进哪个切片/是否只更摘要。
       // 主进程不再替渲染层做「后台对话事件直接丢」的决定——那正是 T8.3 可见性节流要量化的对象。
       pushEngineEvent(ctx.conversationId, ctx.projectDir, event, ctx.seq);
-      if (!isActive) return; // 本轮采集器（assist/goal/usage）是单槽位，只对 active 对话跑；按对话分片属 T8.7
-      // T7.9：采集本轮助手正文 / 中断标记，settled 后触发一次会话辅助
+      // T8.5：辅助采集改 per-对话（后台对话也采集；settled 后 active 立即生成、后台暂存待切回补生成——
+      // 默认只为 active 生成，避免 N 对话 × 每轮一次辅助 = 成本乘积）
+      const buf = assistBufs.get(ctx.conversationId) ?? { userText: "", text: "", aborted: false };
+      assistBufs.set(ctx.conversationId, buf);
       if (event.type === "message_update") {
         const a = (event as { assistantMessageEvent?: { type?: string; delta?: unknown } }).assistantMessageEvent;
-        if (a?.type === "text_delta" && typeof a.delta === "string") assistTextBuf += a.delta;
+        if (a?.type === "text_delta" && typeof a.delta === "string") buf.text += a.delta;
       } else if (event.type === "turn_end") {
         const stopReason = (event as { message?: { stopReason?: string } }).message?.stopReason;
-        if (stopReason === "aborted") assistAborted = true;
+        if (stopReason === "aborted") buf.aborted = true;
       } else if (event.type === "agent_settled") {
-        const text = assistTextBuf;
-        if (!assistAborted && text.trim()) {
-          void generateAssist(assistUserText, text)
-            .then((result) => {
-              if (result) pushForConversation(ENGINE_CHANNELS.assistResult, ctx, result as unknown as Record<string, unknown>);
-            })
-            .catch(() => undefined);
+        if (!buf.aborted && buf.text.trim()) {
+          if (isActive) {
+            void generateAssist(ctx.conversationId, buf.userText, buf.text)
+              .then((result) => {
+                if (result) pushForConversation(ENGINE_CHANNELS.assistResult, ctx, result as unknown as Record<string, unknown>);
+              })
+              .catch(() => undefined);
+          } else {
+            pendingAssist.set(ctx.conversationId, { userText: buf.userText, text: buf.text });
+          }
         }
+        assistBufs.delete(ctx.conversationId);
+      }
+      if (!isActive) return; // goal / usage 仍只对 active 对话跑（按对话分片属 T8.7）
+      if (event.type === "agent_settled") {
         const conv = activeConversation();
         const adapter = conv?.adapter;
         if (!conv || !adapter) return;
@@ -649,8 +746,8 @@ function installCapabilitiesOnce(): void {
               return { totalTokens: ri.stats?.tokens?.total ?? 0, costUsd: ri.stats?.cost ?? 0 };
             },
           },
-          text,
-          { aborted: assistAborted },
+          buf.text,
+          { aborted: buf.aborted },
         ).catch(() => undefined);
         // T7.12：记一次会话累计用量到当前 provider/model（按快照求差，见 UsageTracker）
         void (async () => {
@@ -761,13 +858,12 @@ export async function ensureEngine(projectDir: string): Promise<EngineAdapter> {
   let result: EngineAdapter | undefined;
   engineTransition = engineTransition.catch(() => undefined).then(async () => {
     installCapabilitiesOnce();
-    const previousProject = activeProject;
     // T3.2：钥匙串密钥 → 环境变量。必须在 fork 之前（child 直接继承 env，密钥不落 child 磁盘）。
     reinjectProviderEnv();
     result = await ensureConversation(projectDir);
     activeProject = projectDir;
     snapshotsFor(projectDir);
-    if (previousProject && previousProject !== projectDir) await closeBtw(); // 侧边问答绑旧项目 cwd，换项目即释放
+    // T8.5：btw 已 per-对话化、随对话 close 释放；换项目不再统一关停（旧单槽语义作废）
   });
   await engineTransition;
   if (!result) throw new Error("引擎启动失败");
@@ -816,7 +912,10 @@ function buildBtwPromptText(question: string, context?: string): string {
 }
 
 async function ensureBtwAdapter(): Promise<SdkAdapter> {
-  if (btwAdapter) return btwAdapter;
+  const convId = getActiveConversationId();
+  if (!convId) throw new Error("引擎未启动：请先选择项目");
+  const existing = btwByConversation.get(convId);
+  if (existing) return existing.adapter;
   const projectDir = getActiveProjectDir(); // 侧边问答需引擎就绪
   reinjectProviderEnv();
   const next = new SdkAdapter();
@@ -840,16 +939,22 @@ async function ensureBtwAdapter(): Promise<SdkAdapter> {
   } catch {
     /* 忽略：交给 SDK 默认模型 */
   }
-  btwUnsub = next.subscribe((event) => send(ENGINE_CHANNELS.btwEvent, event));
-  btwAdapter = next;
+  const entry: { adapter: SdkAdapter; unsub: (() => void) | undefined } = { adapter: next, unsub: undefined };
+  entry.unsub = next.subscribe((event) => send(ENGINE_CHANNELS.btwEvent, event));
+  btwByConversation.set(convId, entry);
   return next;
 }
 
-async function closeBtw(): Promise<void> {
-  btwUnsub?.();
-  btwUnsub = undefined;
-  await btwAdapter?.stop();
-  btwAdapter = undefined;
+/** 关掉某对话的 btw（缺省 = 当前 active 对话）；随对话 close 一起释放（T8.5 步骤 5） */
+async function closeBtw(conversationId?: string): Promise<void> {
+  const convId = conversationId ?? getActiveConversationId();
+  if (!convId) return;
+  const entry = btwByConversation.get(convId);
+  if (!entry) return;
+  btwByConversation.delete(convId);
+  entry.unsub?.();
+  entry.unsub = undefined;
+  await entry.adapter?.stop();
 }
 
 /** T6.3：把 vendored runs 视图映射成渲染层子代理面板用的 SubagentRunInfo[]。 */
@@ -974,7 +1079,9 @@ export function initEngineIpc(): void {
     return true;
   });
   ipcMain.handle(ENGINE_CHANNELS.btwAbort, async () => {
-    await btwAdapter?.abort();
+    const convId = getActiveConversationId();
+    const entry = convId ? btwByConversation.get(convId) : undefined;
+    await entry?.adapter?.abort();
     return true;
   });
   ipcMain.handle(ENGINE_CHANNELS.btwClose, async () => {
@@ -1047,10 +1154,29 @@ export function initEngineIpc(): void {
     const convId = await requireActiveConversationId();
     const a = await requireAdapter();
     const prepared = prepareAttachments(cmd.attachments ?? []);
-    // T7.9：本轮辅助采集边界
-    assistUserText = cmd.text;
-    assistTextBuf = "";
-    assistAborted = false;
+    // T8.5：per-对话辅助采集边界（新 prompt 取代上一轮暂存的后台辅助）
+    assistBufs.set(convId, { userText: cmd.text, text: "", aborted: false });
+    pendingAssist.delete(convId);
+    // T8.5 prompt 闸门：全局在飞 ≤ min(设置上限, 活跃引擎数)（进程数=资源上限，prompt 闸=成本/限流闸）。
+    // 超限 → 该对话入队：状态「排队中」+ queue_update 事件；拿到槽位后撤标，prompt 继续执行不丢。
+    promptGate.setLimit(
+      effectivePromptLimit(
+        (loadSettings() as { engineMaxPrompts?: unknown }).engineMaxPrompts,
+        maxLiveEnginesValue(),
+        { rateLimited: quotaEffect().throttle },
+      ),
+    );
+    let wasQueued = false;
+    if (promptGate.wouldQueue()) {
+      wasQueued = true;
+      markPromptQueued(convId, true);
+      pushEngineEvent(convId, getConversation(convId)?.projectDir ?? "", {
+        type: "queue_update",
+        depth: promptGate.stats().queued + 1,
+      });
+    }
+    await promptGate.acquire();
+    if (wasQueued) markPromptQueued(convId, false);
     // 在飞标记：事件流（agent_start/agent_settled）是主判据，这里补一个确定边界——
     // child 崩溃或在飞 RPC 无应答时 settled 事件可能永不到来，只靠事件清标记会把对话卡成「不可休眠」。
     markPromptInFlight(convId, true);
@@ -1062,6 +1188,7 @@ export function initEngineIpc(): void {
       });
     } finally {
       markPromptInFlight(convId, false);
+      promptGate.release();
     }
   });
 
@@ -1210,6 +1337,11 @@ export function initEngineIpc(): void {
     const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
     const dropped = dropPendingFor(conversationId);
     if (dropped > 0) console.warn(`[engine] 对话 ${conversationId} 关闭，连带回收 ${dropped} 条未应答的审批/ctx.ui 请求`);
+    // T8.5：对话关停连带回收——btw 侧边问答（第二运行时）、子代理闸占用、辅助暂存
+    void closeBtw(conversationId);
+    dropChildRunState(childRunGate, conversationId);
+    pendingAssist.delete(conversationId);
+    assistBufs.delete(conversationId);
     return closeConversation(conversationId);
   });
 
@@ -1227,12 +1359,28 @@ export function initEngineIpc(): void {
     if (ok) flushOutbound(conversationId); // 切回来立刻看到尾巴，不等下一个 200ms 节流窗口
     // T8.4 超时分档：切到该对话后，其未计时的审批/ctx.ui pending 恢复 120s 计时
     armPendingTimeoutsFor(conversationId);
+    // T8.5：切回对话时补生成一次后台暂存的会话辅助（后台 settled 不即时烧辅助成本）
+    const pa = pendingAssist.get(conversationId);
+    if (pa) {
+      pendingAssist.delete(conversationId);
+      void generateAssist(conversationId, pa.userText, pa.text)
+        .then((result) => {
+          if (result) {
+            pushForConversation(ENGINE_CHANNELS.assistResult, { conversationId, projectDir: h.projectDir }, result as unknown as Record<string, unknown>);
+          }
+        })
+        .catch(() => undefined);
+    }
     return { ok, projectDir: h.projectDir, status: h.record.status, droppedEvents: h.record.droppedEvents };
   });
 
   /** 显式新建/唤醒某项目的对话（同项目多对话等 T8.6 worktree 才真正放开，现在等价于「切过去」） */
   ipcMain.handle(ENGINE_CHANNELS.createConversation, async (_e, raw: unknown) => {
     const { projectDir } = StartArgSchema.parse(raw);
+    // T8.5 成本护栏：月配额超限且设置 action=block → 阻止新建对话（warn/throttle 不拦）
+    if (quotaEffect().blockNewConversation) {
+      throw new Error("本月用量已超配额，已按设置阻止新建对话（可在用量页调整超限动作）");
+    }
     const adapter = await ensureEngine(projectDir);
     const convId = getActiveConversationId() ?? "";
     targetByConversation.set(convId, _e.sender);

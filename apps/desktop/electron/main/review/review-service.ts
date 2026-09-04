@@ -6,6 +6,7 @@ import { reinjectProviderEnv } from "../provider/provider-manager";
 import { pickAuxModel } from "../provider/model-pick";
 import { loadSettings } from "../settings-service";
 import { permissionGateExtension } from "../security/approval-gate";
+import { SlotGate } from "../engine/concurrency-gates";
 import type { Finding } from "@pi-wood/ipc-schema";
 import { buildReviewPrompt, parseFindings } from "./parse-findings.ts";
 
@@ -13,12 +14,15 @@ import { buildReviewPrompt, parseFindings } from "./parse-findings.ts";
  * T7.7 代码审查的一次性 LLM 调用：与主会话隔离的第二运行时（temp cwd、denyAll 门、空工具、纯文本），
  * 选模型优先小模型 smallModel（复用 pickAuxModel）。单次生成、超时兜底；失败/超时 → findings 空 + error。
  * 仿 T7.9/T7.5 的隔离运行时，各自独立单例避免相互打断。
+ * T8.5：全局单飞改「排队而非吞掉」（原单飞是「后到直接吞」——两对话各点一次审查只回一个）。
+ * ⚠ 计划写「全局并发 ≤2」，但底层 adapter/buf/resolveCurrent 是共享单槽，真实并发 2 会互相污染
+ * 缓冲 ⇒ 实取 1（≤2 的上界内）；要真开 2 须 per-call 会话隔离，随后续批一起做。
  */
 const REVIEW_TTL_MS = 60_000; // diff 审查可能较长
 
 let adapter: SdkAdapter | undefined;
 let starting: Promise<SdkAdapter> | undefined;
-let inFlight = false;
+const reviewQueue = new SlotGate(1);
 let buf = "";
 let resolveCurrent: ((raw: string) => void) | null = null;
 
@@ -81,10 +85,9 @@ export interface ReviewOutcome {
   error?: string;
 }
 
-/** 对 diff 文本跑一次审查。并发单飞（同刻仅一个审查）；忙时返回 busy。 */
+/** 对 diff 文本跑一次审查。T8.5：全局并发 ≤2，超限排队（不再「后到吞掉」），结果都返回。 */
 export async function runReview(diffText: string): Promise<ReviewOutcome> {
-  if (inFlight) return { findings: [], error: "已有一次审查在进行中，请稍候" };
-  inFlight = true;
+  await reviewQueue.acquire();
   try {
     const ad = await ensureAdapter();
     await ad.newSession();
@@ -102,6 +105,6 @@ export async function runReview(diffText: string): Promise<ReviewOutcome> {
   } catch (e) {
     return { findings: [], error: e instanceof Error ? e.message : String(e) };
   } finally {
-    inFlight = false;
+    reviewQueue.release();
   }
 }

@@ -8,6 +8,7 @@ import {
 import { advanceGoal, newGoalState } from "./goal-machine.ts";
 import { buildContinuationPrompt, buildKickoffPrompt, type AuditResult } from "./goal-prompt.ts";
 import { auditGoal } from "./goal-audit.ts";
+import { planGoalBegin } from "../engine/concurrency-gates.ts";
 import {
   clearGoal,
   goalsDir,
@@ -65,16 +66,35 @@ export function getGoalState(sessionId: string): GoalState | null {
   return load(sessionId);
 }
 
+/** T8.5 goal 互斥：当前处于 active 的 goal 会话列表（跨对话判定用） */
+export function listActiveGoalSessions(): string[] {
+  return [...cache.values()].filter((s) => s.status === "active").map((s) => s.sessionId);
+}
+
 export interface BeginOptions {
   tokenBudget?: number;
   maxTurns?: number;
   /** 目标开启时会话已消耗的累计 token（作 baseline，避免把历史算进目标预算）。 */
   initialTotalTokens?: number;
   initialCostUsd?: number;
+  /**
+   * T8.5 互斥：同时只允许一个对话 goal active（目标模式每轮自动续跑 ×N 对话 = 成本乘积失控）。
+   * 冲突时不带 force → 抛错（调用方转用户提示）；force=true → 强制接管（自动暂停前者）。
+   */
+  force?: boolean;
 }
 
 /** 设目标：写正文文件 + 建 active 状态；返回 kickoff prompt 供调用方发到主会话开跑。 */
 export function beginGoal(sessionId: string, objective: string, opts: BeginOptions = {}): { state: GoalState; kickoff: string } {
+  const mutex = planGoalBegin(listActiveGoalSessions(), sessionId);
+  if (!mutex.ok) {
+    if (!opts.force) {
+      throw new Error(
+        `已有另一对话的目标正在自动续跑。同时跑多个 goal 会让 token 成本失控——请先暂停它，或用「强制接管」（前者将自动暂停）。`,
+      );
+    }
+    pauseGoal(mutex.conflictSessionId);
+  }
   const state = newGoalState(
     sessionId,
     objective.length,
@@ -96,10 +116,15 @@ export function pauseGoal(sessionId: string): GoalState | null {
   return next;
 }
 
-/** 恢复：从 paused / 各终态回到 active，清受阻与审计失败计数。 */
-export function resumeGoal(sessionId: string): GoalState | null {
+/** 恢复：从 paused / 各终态回到 active，清受阻与审计失败计数。T8.5：同样受 goal 互斥约束（force 可接管）。 */
+export function resumeGoal(sessionId: string, opts: { force?: boolean } = {}): GoalState | null {
   const s = load(sessionId);
   if (!s || s.status === "active") return s;
+  const mutex = planGoalBegin(listActiveGoalSessions(), sessionId);
+  if (!mutex.ok && !opts.force) {
+    throw new Error("另一对话的目标正在自动续跑；恢复本目标请先暂停它，或强制接管。");
+  }
+  if (!mutex.ok) pauseGoal(mutex.conflictSessionId);
   const next: GoalState = {
     ...s,
     status: "active",
