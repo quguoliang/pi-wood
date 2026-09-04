@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir, homedir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, type EnginePiTheme, type GitInfo, type HostApprovalParams, type HostSubagentParams, type HostToolExecuteParams, type HostUiParams, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
+import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, makeEngineEnvelope, type EnginePiTheme, type GitInfo, type HostApprovalParams, type HostSubagentParams, type HostToolExecuteParams, type HostUiParams, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge, EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
 import { normalizeEngineEvent } from "@pi-wood/engine";
@@ -32,6 +32,7 @@ import {
   listConversations,
   markPromptInFlight,
   noteApprovalPending,
+  setActiveConversation,
   suspendConversation,
 } from "./conversation-registry";
 
@@ -150,14 +151,62 @@ async function collectGitInfo(): Promise<GitInfo | undefined> {
   }
 }
 
-function send(channel: string, data: unknown): void {
-  const win = BrowserWindow.getAllWindows()[0];
-  if (!win || win.isDestroyed()) return; // 关窗/退出竞态：挡掉已销毁窗口，防 "Object has been destroyed"
-  try {
-    win.webContents.send(channel, data);
-  } catch {
-    /* webContents 已销毁，静默丢弃 */
+/**
+ * 渲染层投递出口（T8.2）。
+ *
+ * 两条硬规矩：
+ * 1. **丢事件不许静默**——无窗口/已销毁/发送抛错都计入 `sendDrops`，每 200 条汇总 warn 一次
+ *    （关窗竞态本就短暂，但持续掉事件说明路由表错了）。
+ * 2. 路由表按 `conversationId → webContents` 预留（现状仍是单窗口单实例锁），
+ *    将来多窗口时只改这一处，业务侧 `pushEngineEvent` 的调用点不动。
+ */
+const targetByConversation = new Map<string, Electron.WebContents>();
+let sendDrops = 0;
+
+function deliver(wc: Electron.WebContents | undefined, channel: string, data: unknown): boolean {
+  if (!wc || wc.isDestroyed()) {
+    sendDrops += 1;
+  } else {
+    try {
+      wc.send(channel, data);
+      return true;
+    } catch {
+      sendDrops += 1; // webContents 已销毁：挡掉 "Object has been destroyed"
+    }
   }
+  if (sendDrops === 1 || sendDrops % 200 === 0) {
+    console.warn(`[engine] 渲染层推送累计丢弃 ${sendDrops} 条（窗口未就绪/已销毁？通道 ${channel}）`);
+  }
+  return false;
+}
+
+function send(channel: string, data: unknown, conversationId?: string): void {
+  const routed = conversationId ? targetByConversation.get(conversationId) : undefined;
+  if (routed) {
+    deliver(routed, channel, data);
+    return;
+  }
+  // 兜底：单窗口现状（保留 getAllWindows()[0]，但不再假设它一定活着）
+  deliver(BrowserWindow.getAllWindows()[0]?.webContents, channel, data);
+}
+
+/** 事件域唯一出口：一律包 envelope（渲染层按 conversationId 路由，不串台） */
+function pushEngineEvent(conversationId: string, projectDir: string, event: unknown, seq?: number): void {
+  const active = conversationId === getActiveConversationId();
+  send(ENGINE_CHANNELS.event, makeEngineEnvelope(conversationId, projectDir, event, { seq, active }), conversationId);
+}
+
+/**
+ * 非事件域（assist / 子代理事件）：载荷形状**保持不变**、只追加 `conversationId` 字段——
+ * 渲染层现有消费者读不到新字段也照常工作（多出来的字段被忽略），等 T8.3 的多对话标签条
+ * 真正把「按对话取数」接起来时再统一换成 envelope（含 `subagentRuns` 那条数组载荷）。
+ */
+function pushForConversation(
+  channel: string,
+  ctx: { conversationId: string; projectDir: string },
+  payload: Record<string, unknown>,
+): void {
+  send(channel, { ...payload, conversationId: ctx.conversationId, projectDir: ctx.projectDir }, ctx.conversationId);
 }
 
 /** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise）。T8.1 起带归属对话 */
@@ -319,14 +368,14 @@ function installCapabilitiesOnce(): void {
         case "runs": {
           const runs = p.runs as PiWoodSubagentRunView[];
           subagentMirror.set(ctx.conversationId, runs);
-          // 本批仍只给 active 对话推渲染层事件（按对话路由 = T8.2）
-          if (ctx.conversationId === getActiveConversationId()) send(ENGINE_CHANNELS.subagentRuns, mapSubagentRuns(runs));
+          // 载荷形状暂不改（数组 → {conversationId, runs} 的改造随 T8.3 多对话标签条一起做）
+          if (ctx.conversationId === getActiveConversationId()) send(ENGINE_CHANNELS.subagentRuns, mapSubagentRuns(runs), ctx.conversationId);
           return undefined;
         }
         case "child-event": {
           if (ctx.conversationId !== getActiveConversationId()) return undefined;
           try {
-            send(ENGINE_CHANNELS.subagentEvent, { runId: p.runId, event: normalizeEngineEvent(p.event, () => undefined) });
+            pushForConversation(ENGINE_CHANNELS.subagentEvent, ctx, { runId: p.runId, event: normalizeEngineEvent(p.event, () => undefined) });
           } catch {
             /* 单条事件归一失败忽略 */
           }
@@ -361,10 +410,12 @@ function installCapabilitiesOnce(): void {
       // 注意：SDK 的 tool_execution_start 入参字段是 args（非 input），§8 实测
       if (event.type === "tool_execution_start") snapshots.snapshot(String(event.toolName ?? ""), event.args);
       if (event.type === "tool_execution_end" && (event.toolName === "edit" || event.toolName === "write")) {
-        for (const d of snapshots.collectChanges()) if (isActive) send(ENGINE_CHANNELS.diff, d);
+        for (const d of snapshots.collectChanges()) if (isActive) send(ENGINE_CHANNELS.diff, d, ctx.conversationId);
       }
-      if (!isActive) return; // 后台对话：只维护快照/镜像，事件不进当前渲染契约（T8.2 起按 envelope 路由）
-      send(ENGINE_CHANNELS.event, event);
+      // T8.2：**每条对话的事件都推**（带 envelope），由渲染层按 conversationId 决定进哪个切片/是否只更摘要。
+      // 主进程不再替渲染层做「后台对话事件直接丢」的决定——那正是 T8.3 可见性节流要量化的对象。
+      pushEngineEvent(ctx.conversationId, ctx.projectDir, event, ctx.seq);
+      if (!isActive) return; // 本轮采集器（assist/goal/usage）是单槽位，只对 active 对话跑；按对话分片属 T8.7
       // T7.9：采集本轮助手正文 / 中断标记，settled 后触发一次会话辅助
       if (event.type === "message_update") {
         const a = (event as { assistantMessageEvent?: { type?: string; delta?: unknown } }).assistantMessageEvent;
@@ -377,7 +428,7 @@ function installCapabilitiesOnce(): void {
         if (!assistAborted && text.trim()) {
           void generateAssist(assistUserText, text)
             .then((result) => {
-              if (result) send(ENGINE_CHANNELS.assistResult, result);
+              if (result) pushForConversation(ENGINE_CHANNELS.assistResult, ctx, result as unknown as Record<string, unknown>);
             })
             .catch(() => undefined);
         }
@@ -470,18 +521,14 @@ async function ensureDefaultModelForConversation(conversationId: string, project
     }
     if (picked) {
       await conv.adapter.setModel(picked.provider, picked.id);
-      // 只有 active 对话才推 model_changed：后台对话就绪时推过去会把用户正看着的档位改掉
-      if (conversationId === getActiveConversationId()) {
-        send(ENGINE_CHANNELS.event, { type: "model_changed", ...picked });
-      }
+      // T8.2：有了 envelope 归属，后台对话也照推（渲染层按 conversationId 落各自切片，不会再串台）
+      pushEngineEvent(conversationId, projectDir, { type: "model_changed", ...picked });
       // 重放思考档位（模型换了以后档位是新会话的状态，不重放就退回「未设置」）
       if (pref.thinkingLevel) {
         const allowed = await conv.adapter.getAvailableThinkingLevels();
         if (allowed.includes(pref.thinkingLevel)) {
           await conv.adapter.setThinkingLevel(pref.thinkingLevel);
-          if (conversationId === getActiveConversationId()) {
-            send(ENGINE_CHANNELS.event, { type: "thinking_level_changed", thinkingLevel: pref.thinkingLevel });
-          }
+          pushEngineEvent(conversationId, projectDir, { type: "thinking_level_changed", thinkingLevel: pref.thinkingLevel });
         } else if (allowed.length > 0) {
           await conv.adapter.setThinkingLevel(allowed[0]);
           send("ui:notify", {
@@ -718,8 +765,13 @@ export function initEngineIpc(): void {
   // ---- T1.3 压测钩子：注入 N 条消息事件验证虚拟列表（保留为 dev 工具）----
   ipcMain.handle("debug:stress", async (_e, raw: unknown) => {
     const { count } = z.object({ count: z.number().int().min(1).max(50000) }).parse(raw);
+    const convId = getActiveConversationId();
+    const dir = convId ? getConversation(convId)?.projectDir ?? "" : "";
     for (let i = 0; i < count; i++) {
-      send(ENGINE_CHANNELS.event, { type: "user_message", text: `压测消息 #${i + 1}` });
+      const fake = { type: "user_message", text: `压测消息 #${i + 1}` };
+      // 引擎未起时（纯前端虚拟化压测）也要有归属：用 stress 作为合成对话 id，渲染层按 active 兜底照收
+      if (convId) pushEngineEvent(convId, dir, fake);
+      else send(ENGINE_CHANNELS.event, makeEngineEnvelope("stress", "", fake, { active: true }));
     }
     return count;
   });
@@ -737,6 +789,8 @@ export function initEngineIpc(): void {
   ipcMain.handle("engine:start", async (_e, raw: unknown) => {
     const { projectDir } = StartArgSchema.parse(raw);
     await ensureEngine(projectDir);
+    const convId = getActiveConversationId();
+    if (convId) targetByConversation.set(convId, _e.sender); // 选项目即绑定推送目标；未绑定的仍走单窗口兜底
     return true;
   });
 
@@ -784,7 +838,7 @@ export function initEngineIpc(): void {
     const current = await requireAdapter();
     await current.setModel(provider, modelId);
     rememberPref(convId, { provider, modelId }); // child 重建后按对话重放
-    send(ENGINE_CHANNELS.event, { type: "model_changed", provider, id: modelId });
+    pushEngineEvent(convId, getActiveProjectDir(), { type: "model_changed", provider, id: modelId });
   });
 
   ipcMain.handle(ENGINE_CHANNELS.setThinking, async (_e, raw: unknown) => {
@@ -795,7 +849,7 @@ export function initEngineIpc(): void {
     if (!allowed.includes(level)) throw new Error(`当前模型不支持思考级别 ${level}`);
     await current.setThinkingLevel(level);
     rememberPref(convId, { thinkingLevel: level });
-    send(ENGINE_CHANNELS.event, { type: "thinking_level_changed", thinkingLevel: level });
+    pushEngineEvent(convId, getActiveProjectDir(), { type: "thinking_level_changed", thinkingLevel: level });
   });
 
   ipcMain.handle("engine:getThinkingLevels", async () => {
@@ -894,17 +948,40 @@ export function initEngineIpc(): void {
     return true;
   });
 
-  // ---- T8.1 对话注册表面（渲染层接线在 T8.2/T8.3，先打通给并发探针与面板读取）----
-  ipcMain.handle("engine:listConversations", () => listConversations());
+  // ---- T8.2 对话域（渲染层接线在 T8.3 的多对话标签条）----
+  ipcMain.handle(ENGINE_CHANNELS.listConversations, () => listConversations());
 
-  ipcMain.handle("engine:suspendConversation", async (_e, raw: unknown) => {
+  ipcMain.handle(ENGINE_CHANNELS.suspendConversation, async (_e, raw: unknown) => {
     const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
     return suspendConversation(conversationId);
   });
 
-  ipcMain.handle("engine:closeConversation", async (_e, raw: unknown) => {
+  ipcMain.handle(ENGINE_CHANNELS.closeConversation, async (_e, raw: unknown) => {
     const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
     return closeConversation(conversationId);
+  });
+
+  /**
+   * 渲染层告知「用户正在看这条对话」。顺带完成两件事：
+   * ① 登记 conversationId → webContents 路由表（多窗口时事件只回给问它的那个窗口）；
+   * ② 返回该对话快照，渲染层据此决定要不要重新装载历史。
+   */
+  ipcMain.handle(ENGINE_CHANNELS.setActiveConversation, async (_e, raw: unknown) => {
+    const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
+    const h = getConversation(conversationId);
+    if (!h) return { ok: false as const, reason: "对话不存在（可能已被回收）" };
+    targetByConversation.set(conversationId, _e.sender);
+    const ok = setActiveConversation(conversationId);
+    return { ok, projectDir: h.projectDir, status: h.record.status, droppedEvents: h.record.droppedEvents };
+  });
+
+  /** 显式新建/唤醒某项目的对话（同项目多对话等 T8.6 worktree 才真正放开，现在等价于「切过去」） */
+  ipcMain.handle(ENGINE_CHANNELS.createConversation, async (_e, raw: unknown) => {
+    const { projectDir } = StartArgSchema.parse(raw);
+    const adapter = await ensureEngine(projectDir);
+    const convId = getActiveConversationId() ?? "";
+    targetByConversation.set(convId, _e.sender);
+    return { conversationId: convId, cwd: projectDir, booted: Boolean(adapter) };
   });
 
   ipcMain.handle("project:pickDialog", async () => {

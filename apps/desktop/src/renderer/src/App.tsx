@@ -12,6 +12,7 @@ import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
 import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
+import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
 import { useSessionStore } from "./stores/session-store";
 import { useRuntimeStore } from "./stores/runtime-store";
 import { useBtwStore } from "./stores/btw-store";
@@ -111,7 +112,24 @@ export default function App() {
     };
 
     const offNotify = window.pi.onUiNotify((d) => pushToast(d.message, d.type));
-    const offEvt = window.pi.onEngineEvent((event) => {
+    const offEvt = window.pi.onEngineEvent((event, meta) => {
+      // T8.2 路由：多对话后 main 把每条对话的事件都推来（envelope 归属），渲染层必须按对话分流——
+      // 别家对话的事件只进 foreignEventCount 计数（丢事件不许静默），不进当前转录本/运行时状态。
+      useSessionStore.getState().noteEventOwnership(meta);
+      const envelope: ConversationEventEnvelope | null =
+        meta.legacy || !meta.conversationId
+          ? null // 旧裸事件：无归属信息，routeForConversation 按 apply 处理（与 T8.1 行为一致）
+          : {
+              conversationId: meta.conversationId,
+              projectDir: meta.projectDir ?? "",
+              ...(meta.seq !== undefined ? { seq: meta.seq } : {}),
+              ...(meta.active !== undefined ? { active: meta.active } : {}),
+              event: event as ConversationEventEnvelope["event"],
+            };
+      if (routeForConversation(envelope, useSessionStore.getState().activeConversationId) === "foreign") {
+        useSessionStore.setState((st) => ({ foreignEventCount: st.foreignEventCount + 1 }));
+        return;
+      }
       handleEvent(event);
       trackRuntimeEvent(event);
       if (event.type === "tool_execution_start") {

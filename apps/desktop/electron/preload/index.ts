@@ -1,5 +1,48 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+// ---------- T8.2 对话事件 envelope（preload 侧归一化） ----------
+
+/** onEngineEvent 回调第二参：从 envelope 解出的归属 meta（legacy 裸事件时两个 id 字段为 null） */
+interface EngineEventMetaLite {
+  conversationId: string | null;
+  projectDir: string | null;
+  seq?: number;
+  active?: boolean;
+  legacy: boolean;
+}
+
+/**
+ * `unwrapEnginePayload`（@pi-wood/ipc-schema）的复制版——**有意为之，不是疏忽**：
+ * preload 构建走 externalizeDepsPlugin()（无 exclude），workspace 包 import 会被外置成
+ * 沙箱 preload 里的运行时 require，打包后直接加载失败。权威口径在
+ * packages/ipc-schema/src/engine.ts，那边改 envelope 判定必须同步这里。
+ * 判据：带 `event` 对象字段 + 字符串 `conversationId` → envelope；有字符串 `type` → 旧裸事件；其余 malformed。
+ */
+const unwrapEnginePayloadLite = (
+  raw: unknown,
+): { event: Record<string, unknown> | null; meta: EngineEventMetaLite | null; reason?: string } => {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { event: null, meta: null, reason: "载荷不是对象" };
+  }
+  const r = raw as Record<string, unknown>;
+  if (typeof r.conversationId === "string" && typeof r.event === "object" && r.event !== null && !Array.isArray(r.event)) {
+    const meta: EngineEventMetaLite = {
+      conversationId: r.conversationId,
+      projectDir: typeof r.projectDir === "string" ? r.projectDir : null,
+      ...(typeof r.seq === "number" ? { seq: r.seq } : {}),
+      ...(typeof r.active === "boolean" ? { active: r.active } : {}),
+      legacy: false,
+    };
+    return { event: r.event as Record<string, unknown>, meta };
+  }
+  if (typeof r.type === "string") {
+    return { event: r, meta: { conversationId: null, projectDir: null, legacy: true } };
+  }
+  return { event: null, meta: null, reason: "既不是 envelope 也不是裸事件" };
+};
+
+let engineEventDropped = 0;
+
 const api = {
   ping: (): Promise<{ pong: boolean; electron: string; node: string }> =>
     ipcRenderer.invoke("app:ping"),
@@ -32,9 +75,25 @@ const api = {
     ipcRenderer.on("probe:log", handler);
     return () => ipcRenderer.removeListener("probe:log", handler);
   },
-  // T0.6 E2E 通道（T1.1 正式化）
-  onEngineEvent: (cb: (event: Record<string, unknown>) => void): (() => void) => {
-    const handler = (_e: unknown, event: Record<string, unknown>): void => cb(event);
+  // T0.6 E2E 通道 → T8.2：main 推的是 envelope（每条对话都推），这里归一成 cb(event, meta)
+  onEngineEvent: (
+    cb: (event: Record<string, unknown>, meta: EngineEventMetaLite) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, raw: unknown): void => {
+      const { event, meta, reason } = unwrapEnginePayloadLite(raw);
+      if (!event || !meta) {
+        // 丢事件不许静默：首条与之后每 200 条 warn 一次，带原因与累计数
+        engineEventDropped += 1;
+        if (engineEventDropped === 1 || engineEventDropped % 200 === 0) {
+          console.warn(
+            `[preload] engine:event 载荷非法已丢弃（原因：${reason}，累计 ${engineEventDropped} 条）`,
+            raw,
+          );
+        }
+        return;
+      }
+      cb(event, meta);
+    };
     ipcRenderer.on("engine:event", handler);
     return () => ipcRenderer.removeListener("engine:event", handler);
   },

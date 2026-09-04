@@ -2,6 +2,18 @@
 import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult, MemoryItem, MemoryListResult, UsageView } from "@pi-wood/ipc-schema";
 export {};
 
+/**
+ * T8.2 engine:event 归属 meta：preload 把 envelope 归一化后随事件一起回调。
+ * legacy=true = 旧裸事件（无归属信息），两个 id 字段为 null，渲染层按当前对话处理。
+ */
+export interface EngineEventMeta {
+  conversationId: string | null;
+  projectDir: string | null;
+  seq?: number;
+  active?: boolean;
+  legacy: boolean;
+}
+
 declare global {
   /** 插件市场条目（npm 上以包发布的 Pi 扩展）。 */
   interface PiMarketItem {
@@ -26,7 +38,8 @@ declare global {
       onUiRequest(cb: (data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }) => void): () => void;
       uiRespond(id: number, value?: string | boolean): Promise<boolean>;
       onProbeLog(cb: (line: string) => void): () => void;
-      onEngineEvent(cb: (event: Record<string, unknown>) => void): () => void;
+      // T8.2：main 推 envelope（所有对话都推），preload 归一化后按 (event, meta) 回调，渲染层按 meta 路由
+      onEngineEvent(cb: (event: Record<string, unknown>, meta: EngineEventMeta) => void): () => void;
       onBtwEvent(cb: (event: Record<string, unknown>) => void): () => void;
       onAssistResult(cb: (data: { recap: string; suggestions: string[] }) => void): () => void;
       onDiff(cb: (data: { id?: string; file: string; before?: string; after?: string; patch?: string }) => void): () => void;

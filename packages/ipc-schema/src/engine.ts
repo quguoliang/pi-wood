@@ -88,6 +88,10 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("summarization_retry_attempt_start") }).passthrough(),
   z.object({ type: z.literal("summarization_retry_finished") }).passthrough(),
   z.object({ type: z.literal("model_select") }).passthrough(),
+  // ⚠ 下面两条不是 Pi 事件，而是**宿主自造**并沿同一通道推的（T8.2 起要过 envelope 严格校验，故必须进契约）：
+  //   user_message = 压测钩子/本地回显（debug:stress）；model_changed = 选定模型后主进程主动通知渲染层换标签。
+  z.object({ type: z.literal("user_message") }).passthrough(),
+  z.object({ type: z.literal("model_changed") }).passthrough(),
   z.object({ type: z.literal("thinking_level_changed") }).passthrough(),
   // 审批门自定义事件（§10.3）
   z.object({ type: z.literal("approval_request"), request: z.unknown() }).passthrough(),
@@ -101,26 +105,114 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
 export type EngineEvent = z.infer<typeof EngineEventSchema>;
 export type AssistantMessageEvent = z.infer<typeof AssistantMessageEventSchema>;
 
+// ---------- T8.2 对话事件 envelope（main → renderer） ----------
+
+/**
+ * 多对话后事件必须可归属：`engine:event` 推的是这张信封，而不是裸事件。
+ *
+ * 为什么用 envelope 而不是给事件本身打标签：`EngineEventSchema` 各变体都是 `.passthrough()`，
+ * 加同名字段有与 Pi 原生字段撞名的风险，且校验面会扩大到每个变体；信封只加一层、校验一次。
+ *
+ * ⚠ 与 child→main 的 RPC 帧（`engine-rpc.ts`，带 seq）是**两层协议**：
+ *   会话归属由主进程按 handle 附加，child 自报的 conversationId 一律不信（deny-by-default 的前置）。
+ */
+export const ConversationEventEnvelopeSchema = z.object({
+  conversationId: z.string().min(1),
+  /** 该对话的工作目录（T8.6 起可能是 worktree），渲染层按「项目」维度展示/聚合 */
+  projectDir: z.string(),
+  /** child 侧事件帧序号（丢帧对账用；缺席 = 主进程自造事件，如 model_changed） */
+  seq: z.number().int().nonnegative().optional(),
+  /** 推送时该对话是否正被用户看着（渲染层据此决定逐 token 渲染 vs 只更摘要，T8.3） */
+  active: z.boolean().optional(),
+  event: EngineEventSchema,
+});
+export type ConversationEventEnvelope = z.infer<typeof ConversationEventEnvelopeSchema>;
+
+export function makeEngineEnvelope(
+  conversationId: string,
+  projectDir: string,
+  event: unknown,
+  extra?: { seq?: number; active?: boolean },
+): ConversationEventEnvelope {
+  return {
+    conversationId,
+    projectDir,
+    ...(extra?.seq !== undefined ? { seq: extra.seq } : {}),
+    ...(extra?.active !== undefined ? { active: extra.active } : {}),
+    event: event as ConversationEventEnvelope["event"],
+  };
+}
+
+export interface UnwrappedEnginePayload {
+  /** 归一后的事件载荷；null = 这条推送不可用（调用方必须计数 + warn，不许静默丢） */
+  event: Record<string, unknown> | null;
+  envelope: ConversationEventEnvelope | null;
+  /** 旧版裸事件（无信封）→ 渲染层按 active 处理，行为与 T8.1 逐位一致 */
+  legacy: boolean;
+  reason?: string;
+}
+
+/**
+ * 同时吃两种形状：`{conversationId, projectDir, event}`（新）与裸 `EngineEvent`（旧路径）。
+ * 存在的意义是让「漏包 envelope 的推送路径」退化成旧行为而不是丢事件——但退化必须被 `legacy` 看见。
+ */
+export function unwrapEnginePayload(raw: unknown): UnwrappedEnginePayload {
+  const env = ConversationEventEnvelopeSchema.safeParse(raw);
+  if (env.success) return { event: env.data.event as unknown as Record<string, unknown>, envelope: env.data, legacy: false };
+  if (typeof raw !== "object" || raw === null) {
+    return { event: null, envelope: null, legacy: false, reason: "载荷不是对象" };
+  }
+  if ("event" in (raw as Record<string, unknown>)) {
+    // 有 event 字段但信封字段不合格（缺 conversationId 等）：不能降级当裸事件，否则归属信息被静默吞掉
+    return { event: null, envelope: null, legacy: false, reason: "envelope 字段不合法" };
+  }
+  const ev = EngineEventSchema.safeParse(raw);
+  return ev.success
+    ? { event: raw as Record<string, unknown>, envelope: null, legacy: true }
+    : { event: null, envelope: null, legacy: false, reason: "既不是 envelope 也不是合法事件" };
+}
+
+/**
+ * 渲染层路由判定：这条事件进当前对话，还是别家的（不许串台）。
+ *
+ * 过渡口径（T8.2 → T8.3）：渲染层还没做 slice-per-conversation，只有「当前这一条」的视图，
+ * 因此 **`active === true` 一律照收**（含压测钩子等合成推送）；等 T8.3 分片后，
+ * 严格按 `conversationId` 落到各自切片，`active` 只用于节流档位（逐 token vs 摘要）。
+ */
+export function routeForConversation(
+  env: ConversationEventEnvelope | null,
+  activeConversationId: string | null,
+): "apply" | "foreign" {
+  if (!env || env.active === true) return "apply"; // 裸事件 / 主进程标记为正被观看
+  if (!activeConversationId) return "apply"; // 渲染层还没选定对话
+  return env.conversationId === activeConversationId ? "apply" : "foreign";
+}
+
 // ---------- 渲染层命令（renderer → main，invoke） ----------
+
+/** T8.2：所有引擎命令都可带 conversationId；缺省 = 当前 active 对话（旧调用零改动、行为逐位一致） */
+export const ConversationRefSchema = z.object({ conversationId: z.string().min(1).optional() });
 
 export const PromptCommandSchema = z.object({
   text: z.string().min(1),
   images: z.array(z.unknown()).optional(),
   attachments: z.array(z.string().min(1)).max(12).optional(),
   streamingBehavior: z.enum(["steer", "followUp"]).optional(),
+  conversationId: z.string().min(1).optional(),
 });
 export type PromptCommand = z.infer<typeof PromptCommandSchema>;
 
-export const TextCommandSchema = z.object({ text: z.string().min(1) });
+export const TextCommandSchema = z.object({ text: z.string().min(1), conversationId: z.string().min(1).optional() });
 
-export const SetModelCommandSchema = z.object({ provider: z.string(), modelId: z.string() });
+export const SetModelCommandSchema = z.object({ provider: z.string(), modelId: z.string(), conversationId: z.string().min(1).optional() });
 export type SetModelCommand = z.infer<typeof SetModelCommandSchema>;
 
-export const SetThinkingCommandSchema = z.object({ level: z.string() });
+export const SetThinkingCommandSchema = z.object({ level: z.string(), conversationId: z.string().min(1).optional() });
 
 export const ForkCommandSchema = z.object({
   entryId: z.string(),
   position: z.enum(["before", "at"]),
+  conversationId: z.string().min(1).optional(),
 });
 
 export const SessionStateSchema = z.object({
@@ -300,4 +392,14 @@ export const ENGINE_CHANNELS = {
   getPiTheme: "engine:getPiTheme",
   // T7.12：读取月度用量/配额视图（renderer→main 拉取）
   getUsage: "engine:getUsage",
+  // ---- T8.2 对话域（渲染层接线在 T8.3 的多对话标签条）----
+  /** 拉注册表快照（含 status / droppedEvents / pendingApprovals） */
+  listConversations: "engine:listConversations",
+  /** 显式新建一条对话（同项目多对话等 T8.6 worktree 落地才真正放开） */
+  createConversation: "engine:createConversation",
+  /** 手动休眠 / 关闭某条对话（释放引擎进程，保留会话文件） */
+  suspendConversation: "engine:suspendConversation",
+  closeConversation: "engine:closeConversation",
+  /** 渲染层告知「用户正在看这条」：主进程据此做可见性节流（T8.3）与命令缺省归属 */
+  setActiveConversation: "engine:setActiveConversation",
 } as const;

@@ -1,0 +1,15 @@
+apps/desktop/docs/proofs/T8.2/t82-ui-chat.png
+apps/desktop/electron/main/engine/conversation-registry.ts
+apps/desktop/electron/main/engine/engine-manager.ts
+apps/desktop/electron/preload/index.ts
+apps/desktop/src/renderer/src/App.tsx
+apps/desktop/src/renderer/src/global.d.ts
+apps/desktop/src/renderer/src/stores/session-store.ts
+packages/ipc-schema/package.json
+packages/ipc-schema/src/engine-envelope.test.ts
+packages/ipc-schema/src/engine.ts
+pi-wood-执行计划.md
+scripts/t82-commit-msg.txt
+scripts/t82-commit.ps1
+scripts/t82-gate.ps1
+scripts/t82-pathspec.txt

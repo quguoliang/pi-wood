@@ -70,8 +70,17 @@ interface SessionState extends LiveState {
   engineReady: boolean;
   /** T7.2：当前引擎会话 id（供 per-session 自动接受按会话取状态）。 */
   currentSessionId: string | undefined;
+  /**
+   * T8.2：渲染层认定的「用户正在看」的对话 id。唯一写入口是 noteEventOwnership
+   * （主进程在 envelope 上打 active===true 的权威信号）；slice-per-conversation 落地在 T8.3。
+   */
+  activeConversationId: string | null;
+  /** T8.2：被判给其它对话、未进当前转录本的事件计数——丢事件不许静默，计数必须可见。 */
+  foreignEventCount: number;
   queue: { steering: string[]; followUp: string[] };
   handleEvent(e: Record<string, unknown>): void;
+  /** T8.2：从 preload 归一化的 meta 记录对话归属。纯状态更新，不做路由判定（路由在调用方）。 */
+  noteEventOwnership(meta: { conversationId: string | null; active?: boolean; legacy: boolean }): void;
   addUserMessage(text: string): void;
   loadMessages(items: HistoryMessageItem[]): void;
   reset(): void;
@@ -170,6 +179,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
     activeProject: undefined,
     engineReady: false,
     currentSessionId: undefined,
+    activeConversationId: null,
+    foreignEventCount: 0,
     queue: { steering: [], followUp: [] },
 
     handleEvent(e) {
@@ -307,6 +318,14 @@ export const useSessionStore = create<SessionState>((set, get) => {
           return;
         default:
           return;
+      }
+    },
+
+    noteEventOwnership(meta) {
+      // active===true 是主进程推送时盖的「用户正看着这条对话」权威信号：与已存 id 不同就采纳。
+      // legacy 裸事件无归属信息：维持 null 行为（不采纳也不清空），与 T8.2 之前逐位一致。
+      if (meta.active === true && meta.conversationId && meta.conversationId !== get().activeConversationId) {
+        set({ activeConversationId: meta.conversationId });
       }
     },
 

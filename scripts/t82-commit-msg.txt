@@ -1,0 +1,25 @@
+T8.2 IPC 契约加 conversationId + 事件按对话路由（envelope）→ 门禁全绿
+
+契约 packages/ipc-schema/src/engine.ts
+- ConversationEventEnvelopeSchema {conversationId, projectDir, seq?, active?, event} + makeEngineEnvelope / unwrapEnginePayload（同时吃新信封与旧裸事件，旧路径标 legacy 而非丢）/ routeForConversation
+- prompt/steer/followUp/setModel/setThinking/fork 等命令 schema 统一加可选 conversationId（缺省=active，旧调用零改动）
+- 新增对话域通道常量 listConversations / createConversation / suspendConversation / closeConversation / setActiveConversation
+- 补两条一直漏在契约外的宿主自造事件：user_message（debug:stress 回显）、model_changed（选模型通知）——envelope 严格校验一上就把它们判非法，属既有契约缺口
+
+主进程
+- send(channel, data, conversationId?) 改走 conversationId → webContents 路由表（engine:start / setActiveConversation 用 event.sender 登记，保留单窗口兜底）
+- 新增 pushEngineEvent 作为事件域唯一出口并盖 active 标记；主进程不再替渲染层丢后台事件（分片与节流是 T8.3 的活）
+- model_changed / thinking_level_changed 也包信封，撤掉 T8.1「只给 active 推」的补丁；subagentEvent / assistResult 追加归属字段
+- 注册表补 setActiveConversation（只接受存在且未死的对话，切换即刷 lastActiveAt ⇒ LRU 挑不中正在被看的）与 activeProjectDir
+
+preload / 渲染层
+- onEngineEvent 归一为 cb(event, meta)；preload 内联 lite 判定（externalizeDepsPlugin 无 exclude ⇒ 不能 import workspace 包，注释写明同步义务）
+- session-store 加 activeConversationId / foreignEventCount / noteEventOwnership（唯一写入口=主进程 active 权威信号）；App.tsx 订阅点变路由器，foreign 只计数不进当前转录本；不做分片（T8.3）
+- 三层「丢事件不许静默」计数：主进程 sendDrops、preload engineEventDropped（带 reason）、渲染层 foreignEventCount，各自首条 + 每 200 条 warn
+
+验证
+- engine-envelope.test.ts 7 例（归一/退化/路由/宿主自造事件回归）
+- 主机门禁 scripts/t82-gate.ps1：pnpm -r typecheck EXIT=0、pnpm -r test EXIT=0、build EXIT=0、probe:conversation 17/17 EXIT=0（T8.1 回归不破）、--ui-chat 真机对话 EXIT=0（docs/proofs/T8.2/t82-ui-chat.png 全渲染）
+- 偏差：subagentRuns 数组载荷暂不改形状（会破现有消费者），随 T8.3 标签条一起换 envelope；两路真模型同时流式的端到端串台断言随 T8.3/T8.8，本批以契约单测 + 主进程归属唯一性覆盖，验收项标 [~]
+
+计划：§7.9 T8.2 勾结 + 验收逐条落账 + §8 决策日志新增

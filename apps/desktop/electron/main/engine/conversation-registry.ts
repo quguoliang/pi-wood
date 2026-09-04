@@ -50,7 +50,7 @@ export interface ConversationCapabilities {
   /** 审批裁决：策略判定 + 弹卡都在这条链里，child 没有本地放行路径 */
   decideApproval(ctx: { conversationId: string; projectDir: string }, p: HostApprovalParams): Promise<HostApprovalResult>;
   /** 可回传值：guard-tool 的拦截原因必须回到 child（deny-by-default 依赖这条回执） */
-  onSubagent(ctx: { conversationId: string }, p: HostSubagentParams): unknown;
+  onSubagent(ctx: { conversationId: string; projectDir: string }, p: HostSubagentParams): unknown;
   /** 每对话一条归一化事件（注册表已按 seq 对账；manager 据此推渲染层 + 跑 assist/goal/usage） */
   onEngineEvent(ctx: { conversationId: string; projectDir: string; seq: number }, event: EngineEvent): void;
   /**
@@ -114,6 +114,22 @@ export function listConversations() {
 
 export function getActiveConversationId(): string | undefined {
   return activeConversationId;
+}
+
+/**
+ * T8.2：渲染层告知「用户正在看这条对话」。
+ * 只接受存在且未死的对话；切换即刷新 lastActiveAt —— LRU 因此永远挑不中正在被看的那条。
+ */
+export function setActiveConversation(id: string): boolean {
+  const h = handles.get(id);
+  if (!h || h.record.status === "dead") return false;
+  activeConversationId = id;
+  touch(h);
+  return true;
+}
+
+export function activeProjectDir(): string | undefined {
+  return activeConversationId ? handles.get(activeConversationId)?.projectDir : undefined;
 }
 
 export function getConversation(id: string): ConversationHandle | undefined {
@@ -222,7 +238,7 @@ async function spawnHandle(
     executeHostTool: (p) => c.executeHostTool(p),
     requestUi: (p) => c.requestUi(p),
     decideApproval: (p) => c.decideApproval({ conversationId: id, projectDir }, p),
-    onSubagent: (p) => c.onSubagent({ conversationId: id }, p),
+    onSubagent: (p) => c.onSubagent({ conversationId: id, projectDir }, p),
     onEvent: (event, seq) => {
       const h = handles.get(id);
       if (!h) return;
