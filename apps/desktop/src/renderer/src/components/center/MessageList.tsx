@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, Check, Copy, OctagonX, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Markdown, ThinkingCard, ToolCard } from "@pi-wood/ui-kit";
-import { useSessionStore, type ConversationItem } from "../../stores/session-store";
+import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { groupToolRows, isToolGroup, type DisplayRow } from "../../lib/tool-groups";
 import { ToolGroup } from "./ToolGroup";
@@ -85,7 +85,7 @@ const ThinkingRow = memo(function ThinkingRow({ item }: { item: Extract<Conversa
 const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extract<ConversationItem, { kind: "assistant" }>; isLast: boolean }) {
   const [copied, setCopied] = useState(false);
   const retry = useCallback(() => {
-    const { items } = useSessionStore.getState();
+    const items = activeSlice().items;
     const idx = items.findIndex((m) => m.id === item.id);
     const lastUser = [...items.slice(0, idx)].reverse().find((m) => m.kind === "user");
     if (lastUser && lastUser.kind === "user") void window.pi.engineFollowUp(lastUser.text);
@@ -127,17 +127,18 @@ function ConversationRow({ item, isLast }: { item: DisplayRow; isLast: boolean }
 /* ------------------------------ 列表容器 ------------------------------ */
 
 export function MessageList(): React.JSX.Element | null {
-  const items = useSessionStore((s) => s.items);
-  const liveText = useSessionStore((s) => s.liveText);
-  const liveThinking = useSessionStore((s) => s.liveThinking);
-  const streaming = useSessionStore((s) => s.streaming);
+  const items = useActiveConversation((c) => c.items);
+  const liveText = useActiveConversation((c) => c.liveText);
+  const liveThinking = useActiveConversation((c) => c.liveThinking);
+  const streaming = useActiveConversation((c) => c.streaming);
+  const activeConversationId = useSessionStore((s) => s.activeConversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
+  const renderedConvRef = useRef(activeConversationId);
   const [atBottom, setAtBottom] = useState(true);
   const toolGroupsEnabled = useSettingsStore((s) => s.settings.ui.toolGroupsEnabled);
   const displayRows = useMemo(() => groupToolRows(items, toolGroupsEnabled), [items, toolGroupsEnabled]);
   const lastRowId = displayRows.length > 0 ? displayRows[displayRows.length - 1].id : undefined;
-  const firstId = items[0]?.id;
 
   const virtualizer = useVirtualizer({
     count: displayRows.length,
@@ -153,6 +154,10 @@ export function MessageList(): React.JSX.Element | null {
     const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     atBottomRef.current = bottom;
     setAtBottom(bottom);
+    // T8.3：滚动位置与「跟底」按对话各自记住
+    const s = useSessionStore.getState();
+    s.setScrollTop(el.scrollTop);
+    s.setFollowBottom(bottom);
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -165,18 +170,27 @@ export function MessageList(): React.JSX.Element | null {
 
   // 新内容/流式增长时若在底部则跟随（live 尾块在 DOM 流末尾，滚到 scrollHeight 即可）
   useLayoutEffect(() => {
+    if (renderedConvRef.current !== activeConversationId) return; // 切对话那一帧交给下面的恢复逻辑定位
     const el = scrollRef.current;
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [items.length, liveText, liveThinking, streaming]);
+  }, [items.length, liveText, liveThinking, streaming, activeConversationId]);
 
-  // 会话切换：立即跳到底部
+  // T8.3：切换可见对话 → 恢复该对话自己的滚动位置，只有它记住「跟底」时才贴底
   useEffect(() => {
+    renderedConvRef.current = activeConversationId;
     const el = scrollRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-      atBottomRef.current = true;
-    }
-  }, [firstId]);
+    if (!el) return;
+    const { scrollTop, followBottom } = useSessionStore.getState().sliceOf(activeConversationId);
+    atBottomRef.current = followBottom;
+    setAtBottom(followBottom);
+    const target = followBottom ? el.scrollHeight : scrollTop;
+    el.scrollTop = target;
+    // 虚拟列表首帧还没测完行高，下一帧按同一目标补一次
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = target;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeConversationId]);
 
   const empty = items.length === 0 && !liveText && !liveThinking && !streaming;
   const rows = virtualizer.getVirtualItems();

@@ -8,7 +8,7 @@ import {
   CommandList,
   CommandShortcut,
 } from "@/components/ui/command";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation } from "../../stores/session-store";
 
 /**
  * T5.1 命令面板：Ctrl/Cmd+Shift+P 唤起；聚合 应用命令 + Pi/扩展/Skill/模板命令 + 模型 + 项目 + 文件。
@@ -44,7 +44,7 @@ export function CommandPalette({
   const [engineCommands, setEngineCommands] = useState<EngineCommand[]>([]);
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<Array<{ path: string; type: "dir" | "file" }>>([]);
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const engineReady = useActiveConversation((c) => c.engineReady);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {

@@ -128,6 +128,16 @@ const api = {
   // T1.3/T1.4 引擎与数据域
   engineStart: (projectDir: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:start", { projectDir }),
+  // T8.3 对话域：切可见对话（主进程据此做可见性节流）+ 注册表面板
+  setActiveConversation: (conversationId: string): Promise<unknown> =>
+    ipcRenderer.invoke("engine:setActiveConversation", { conversationId }),
+  listConversations: (): Promise<unknown[]> => ipcRenderer.invoke("engine:listConversations"),
+  createConversation: (projectDir: string): Promise<unknown> =>
+    ipcRenderer.invoke("engine:createConversation", { projectDir }),
+  suspendConversation: (conversationId: string): Promise<boolean> =>
+    ipcRenderer.invoke("engine:suspendConversation", { conversationId }),
+  closeConversation: (conversationId: string): Promise<boolean> =>
+    ipcRenderer.invoke("engine:closeConversation", { conversationId }),
   engineSteer: (text: string): Promise<void> => ipcRenderer.invoke("engine:steer", { text }),
   engineFollowUp: (text: string): Promise<void> => ipcRenderer.invoke("engine:followUp", { text }),
   engineAbort: (): Promise<void> => ipcRenderer.invoke("engine:abort"),

@@ -3,7 +3,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useWorkbenchStore } from "../../stores/workbench-store";
 
 interface FileEntry {
@@ -24,7 +24,7 @@ function isJsLike(path: string): boolean {
 
 export function FilesPanel(): React.JSX.Element {
   const activeProject = useSessionStore((s) => s.activeProject);
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const engineReady = useActiveConversation((c) => c.engineReady);
   const requestedFile = useWorkbenchStore((s) => s.requestedFile);
   const clearRequestedFile = useWorkbenchStore((s) => s.clearRequestedFile);
   const [expanded, setExpanded] = useState<Map<string, FileEntry[]>>(new Map());

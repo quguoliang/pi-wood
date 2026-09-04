@@ -1,0 +1,33 @@
+T8.3 渲染层 store 按对话分片 + 可见性驱动节流 → 后台 IPC 5 帧/秒（红线 ≤6）
+
+纯归约层（新增）
+- src/renderer/src/stores/conversation-slice.ts：(slice, event, ctx{now,nextId,visible,seq}) => {slice, changed, milestone}
+  原先那段 switch 长在 zustand 闭包里（依赖 set/get/Date.now/模块级 seq），没法喂事件序列做穷举；thinkingStartedAt 从模块级变量搬进切片
+- 切片字段：items/liveText/liveThinking/streaming/queue/engineReady/currentSessionId/unreadCount/hasPendingApproval/scrollTop/followBottom/historyLoaded/lastSeq/droppedEvents/toolCallCount/runningToolCount/lastMilestone/headTrimmed
+- mergeHistory：历史整读与已收增量按 kind+文本/工具调用号对账去重（不双份、不缺前段）
+- conversation-slice.test.ts 17 例：交错两路互不污染、工具生命周期、未知 toolCallId 整条忽略、unread 只数里程碑、seq 倒退/断号、合帧顺序、纯性（不改入参）
+
+store 改造
+- session-store.ts → slices: Record<convId, ConversationSlice> + useActiveConversation(sel) / useConversationSlice(id, sel) / activeSlice()
+- handleEvent(e, meta) 自带归属采纳 + changed:false 完全不 set（空转不触发渲染）；内存护栏 MAX_SLICE_ITEMS=2000 裁尾并计 headTrimmed
+- setActiveConversation 清未读 + 通知主进程（typeof window 守卫，否则 store 没法在 node --test 下测）
+- session-store.test.ts 7 例：后台 100 条事件让前台选择器订阅者 0 次回调（验收 4），前台自己 1 条新条目恰好 1 次；未读清零；滚动位置按对话独立
+
+消费侧迁移（15 个文件，计划写 16，TerminalPanel 只读项目级字段不需改）
+- 对话级字段一律走 useActiveConversation；useSidebarProjects 的裸 useSessionStore() 全量订阅改稳定 action 选择器；loadMessages → loadHistory
+- MessageList 滚动写回 setScrollTop/setFollowBottom，切换时按该对话 followBottom 决定是否跟底
+- App.tsx：foreign 事件仍进它自己的切片（只计数不丢弃）；trackRuntimeEvent/右栏面板联动严格限可见事件，否则后台对话会抢走用户右栏
+
+出站节流（新增 packages/ipc-schema/src/engine-throttle.ts + 8 例单测）
+- active 完全旁路逐 token；后台只合增量（text/thinking 不互合、不同 toolCallId 不互合、text_start/end 边界不合），200ms 或 32KB 到点出帧
+- 顺序不变量：里程碑出帧前先把该对话缓冲按原顺序冲净（否则渲染层先看到「工具结束」再看到它的 token）
+- 计划原写 4KB 实测不成立：text_delta ≈90B、1000 token/秒 ⇒ 每 200ms 窗口 ≈18KB，4KB 会在窗口内反复提前出帧（≈22 帧/秒，破 ≤6 条/秒红线）⇒ 字节阈值只当突发大输出兜底
+- engine-manager：每对话一个节流器 + 统一 ticker；切换可见对话立即 flush；统计随 listConversations 上报
+- preload/global.d.ts 补对话域五个桥方法
+
+验证（scripts/t83-gate.ps1 + t83-probe.ps1）
+- --conversation-probe 22/22 EXIT=0（新增 C8 五断言：后台 1 秒 1000 token → 5 帧、内容不丢不改序、里程碑即时、active 200/200 旁路、IPC 降幅 ≈99%）
+- pnpm -r typecheck / -r test / build 全 EXIT=0；--ui-chat 真机对话 + --capture 空态截图绿（迁移后 UI 无回归）
+- 未做（如实标注）：三路真流并发的掉帧/CPU 体感归 T8.8 stub 探针；首次激活整读 jsonl 与增量对账的真接线归 T8.6/T8.8（纯函数与单测已就位）
+
+计划：§7.9 T8.3 勾结 + 验收逐条落账 + §8 决策日志新增

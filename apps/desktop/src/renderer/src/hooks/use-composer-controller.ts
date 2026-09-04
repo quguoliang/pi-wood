@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { RuntimeInfo } from "@pi-wood/ipc-schema";
-import { useSessionStore } from "../stores/session-store";
+import { activeSlice, useActiveConversation, useSessionStore } from "../stores/session-store";
 import { useBtwStore, buildContextBlock } from "../stores/btw-store";
 import { useGoalStore } from "../stores/goal-store";
 import { useWorkbenchStore } from "../stores/workbench-store";
@@ -45,12 +45,12 @@ export function useComposerController() {
   const prevSessionRef = useRef<string | undefined>(undefined);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const streaming = useSessionStore((s) => s.streaming);
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const streaming = useActiveConversation((c) => c.streaming);
+  const engineReady = useActiveConversation((c) => c.engineReady);
   const activeProject = useSessionStore((s) => s.activeProject);
-  const items = useSessionStore((s) => s.items);
-  const liveText = useSessionStore((s) => s.liveText);
-  const currentSessionId = useSessionStore((s) => s.currentSessionId);
+  const items = useActiveConversation((c) => c.items);
+  const liveText = useActiveConversation((c) => c.liveText);
+  const currentSessionId = useActiveConversation((c) => c.currentSessionId);
   const hasConversation = items.length > 0 || Boolean(liveText) || streaming;
 
   const refreshRuntime = useCallback(async (): Promise<void> => {
@@ -164,7 +164,7 @@ export function useComposerController() {
         }
         setError("");
         setInput("");
-        const parentId = useSessionStore.getState().currentSessionId;
+        const parentId = activeSlice().currentSessionId;
         useWorkbenchStore.getState().openTab("btw");
         void useBtwStore.getState().ask(parentId ?? "", question, buildContextBlock(items));
         return;

@@ -13,7 +13,7 @@ import { ConversationHeader } from "./components/center/ConversationHeader";
 import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
-import { useSessionStore } from "./stores/session-store";
+import { activeSlice, useSessionStore } from "./stores/session-store";
 import { useRuntimeStore } from "./stores/runtime-store";
 import { useBtwStore } from "./stores/btw-store";
 import { useSubagentStore } from "./stores/subagent-store";
@@ -113,8 +113,9 @@ export default function App() {
 
     const offNotify = window.pi.onUiNotify((d) => pushToast(d.message, d.type));
     const offEvt = window.pi.onEngineEvent((event, meta) => {
-      // T8.2 路由：多对话后 main 把每条对话的事件都推来（envelope 归属），渲染层必须按对话分流——
-      // 别家对话的事件只进 foreignEventCount 计数（丢事件不许静默），不进当前转录本/运行时状态。
+      // T8.2/T8.3 路由：main 把每条对话的事件都推来（envelope 归属）。
+      // 别家对话的事件**照样进它自己的切片**（分片的目的就是后台继续累积而前台不重渲染），
+      // 这里只把它计成 foreignEventCount 作为可观测指标——丢事件才是被禁止的事。
       useSessionStore.getState().noteEventOwnership(meta);
       const envelope: ConversationEventEnvelope | null =
         meta.legacy || !meta.conversationId
@@ -126,11 +127,12 @@ export default function App() {
               ...(meta.active !== undefined ? { active: meta.active } : {}),
               event: event as ConversationEventEnvelope["event"],
             };
-      if (routeForConversation(envelope, useSessionStore.getState().activeConversationId) === "foreign") {
-        useSessionStore.setState((st) => ({ foreignEventCount: st.foreignEventCount + 1 }));
-        return;
-      }
-      handleEvent(event);
+      const visible = routeForConversation(envelope, useSessionStore.getState().activeConversationId) === "apply";
+      if (!visible) useSessionStore.setState((st) => ({ foreignEventCount: st.foreignEventCount + 1 }));
+      handleEvent(event, meta); // 带归属路由：事件只进它自己那条对话的切片
+      // 以下都是「用户看得见的外设副作用」，必须严格限可见事件：
+      // 否则后台对话会改写 runtime-store 的模型/用量视图、把右栏终端/浏览器面板抢过去。
+      if (!visible) return;
       trackRuntimeEvent(event);
       if (event.type === "tool_execution_start") {
         const tool = String(event.toolName ?? "");
@@ -157,8 +159,8 @@ export default function App() {
       useSubagentStore.getState().handleEvent(runId, event),
     );
     const offAssist = window.pi.onAssistResult((data) => {
-      const s = useSessionStore.getState();
-      useAssistStore.getState().set({ recap: data.recap, suggestions: data.suggestions, session: s.currentSessionId ?? "", forItemsLen: s.items.length });
+      const c = activeSlice();
+      useAssistStore.getState().set({ recap: data.recap, suggestions: data.suggestions, session: c.currentSessionId ?? "", forItemsLen: c.items.length });
     });
     const offDiff = window.pi.onDiff((data) => {
       addDiff(data);

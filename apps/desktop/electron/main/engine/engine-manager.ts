@@ -6,7 +6,24 @@ import { fileURLToPath } from "node:url";
 import { tmpdir, homedir } from "node:os";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { ENGINE_CHANNELS, PromptCommandSchema, BtwAskCommandSchema, makeEngineEnvelope, type EnginePiTheme, type GitInfo, type HostApprovalParams, type HostSubagentParams, type HostToolExecuteParams, type HostUiParams, type RuntimeInfo, type SubagentRunInfo } from "@pi-wood/ipc-schema";
+import {
+  ENGINE_CHANNELS,
+  PromptCommandSchema,
+  BtwAskCommandSchema,
+  DEFAULT_THROTTLE,
+  createOutboundThrottle,
+  makeEngineEnvelope,
+  type EnginePiTheme,
+  type GitInfo,
+  type HostApprovalParams,
+  type HostSubagentParams,
+  type HostToolExecuteParams,
+  type HostUiParams,
+  type OutboundThrottle,
+  type RuntimeInfo,
+  type SubagentRunInfo,
+  type ThrottledFrame,
+} from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge, EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
 import { normalizeEngineEvent } from "@pi-wood/engine";
@@ -192,8 +209,71 @@ function send(channel: string, data: unknown, conversationId?: string): void {
 
 /** 事件域唯一出口：一律包 envelope（渲染层按 conversationId 路由，不串台） */
 function pushEngineEvent(conversationId: string, projectDir: string, event: unknown, seq?: number): void {
-  const active = conversationId === getActiveConversationId();
-  send(ENGINE_CHANNELS.event, makeEngineEnvelope(conversationId, projectDir, event, { seq, active }), conversationId);
+  const visible = conversationId === getActiveConversationId();
+  const frames = throttleFor(conversationId).push(event as Record<string, unknown>, visible, seq);
+  ensureThrottleTicker();
+  for (const f of frames) sendFrame(conversationId, projectDir, f);
+}
+
+/* ---------- T8.3 出站节流（后台对话不逐 token 烧 IPC；active 完全旁路） ---------- */
+
+const outboundThrottles = new Map<string, OutboundThrottle>();
+let throttleTimer: NodeJS.Timeout | undefined;
+
+function throttleFor(conversationId: string): OutboundThrottle {
+  let t = outboundThrottles.get(conversationId);
+  if (!t) {
+    t = createOutboundThrottle();
+    outboundThrottles.set(conversationId, t);
+  }
+  return t;
+}
+
+function sendFrame(conversationId: string, projectDir: string, frame: ThrottledFrame): void {
+  send(
+    ENGINE_CHANNELS.event,
+    makeEngineEnvelope(conversationId, projectDir, frame.event, {
+      seq: frame.seq,
+      active: conversationId === getActiveConversationId(),
+    }),
+    conversationId,
+  );
+}
+
+function ensureThrottleTicker(): void {
+  if (throttleTimer) return;
+  throttleTimer = setInterval(() => {
+    for (const [id, t] of [...outboundThrottles.entries()]) {
+      const frames = t.tick();
+      if (frames.length === 0) {
+        // 对话被回收后节流器不再空转（stats 也从 listConversations 消失）
+        if (!getConversation(id)) outboundThrottles.delete(id);
+        continue;
+      }
+      const dir = getConversation(id)?.projectDir ?? "";
+      for (const f of frames) sendFrame(id, dir, f);
+    }
+    if (outboundThrottles.size === 0 && throttleTimer) {
+      clearInterval(throttleTimer);
+      throttleTimer = undefined;
+    }
+  }, DEFAULT_THROTTLE.maxWaitMs);
+  throttleTimer.unref?.(); // 节流定时器不许把进程留在后台
+}
+
+/** 切换可见对话：立刻把新 active 的缓冲冲出去（切回来干等 200ms 才见尾巴是不可接受的） */
+function flushOutbound(conversationId: string): void {
+  const t = outboundThrottles.get(conversationId);
+  if (!t) return;
+  const dir = getConversation(conversationId)?.projectDir ?? "";
+  for (const f of t.flush()) sendFrame(conversationId, dir, f);
+}
+
+/** 节流统计（探针/面板核对「事件流量」红线；被合掉的条数必须可见） */
+function outboundStatsSnapshot(): Record<string, { in: number; out: number; merged: number; pending: number }> {
+  const out: Record<string, { in: number; out: number; merged: number; pending: number }> = {};
+  for (const [id, t] of outboundThrottles) out[id] = t.stats();
+  return out;
 }
 
 /**
@@ -948,8 +1028,11 @@ export function initEngineIpc(): void {
     return true;
   });
 
-  // ---- T8.2 对话域（渲染层接线在 T8.3 的多对话标签条）----
-  ipcMain.handle(ENGINE_CHANNELS.listConversations, () => listConversations());
+  // ---- T8.2/T8.3 对话域（多对话标签条的 UI 接线在 T8.8）----
+  ipcMain.handle(ENGINE_CHANNELS.listConversations, () => {
+    const stats = outboundStatsSnapshot();
+    return listConversations().map((c) => ({ ...c, outbound: stats[c.id] }));
+  });
 
   ipcMain.handle(ENGINE_CHANNELS.suspendConversation, async (_e, raw: unknown) => {
     const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
@@ -972,6 +1055,7 @@ export function initEngineIpc(): void {
     if (!h) return { ok: false as const, reason: "对话不存在（可能已被回收）" };
     targetByConversation.set(conversationId, _e.sender);
     const ok = setActiveConversation(conversationId);
+    if (ok) flushOutbound(conversationId); // 切回来立刻看到尾巴，不等下一个 200ms 节流窗口
     return { ok, projectDir: h.projectDir, status: h.record.status, droppedEvents: h.record.droppedEvents };
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useRuntimeStore, type TodoItem } from "../../stores/runtime-store";
 import { GoalStatusBar } from "./GoalStatusBar";
 import { Icon, type IconName } from "../ui/Icon";
@@ -72,8 +72,8 @@ const fmtK = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(n >= 1000
 
 export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): React.JSX.Element {
   const activeProject = useSessionStore((s) => s.activeProject);
-  const streaming = useSessionStore((s) => s.streaming);
-  const queue = useSessionStore((s) => s.queue);
+  const streaming = useActiveConversation((c) => c.streaming);
+  const queue = useActiveConversation((c) => c.queue);
   const info = useRuntimeStore((s) => s.info);
   const tasks = useRuntimeStore((s) => s.tasks);
   const todos = useRuntimeStore((s) => s.todos);

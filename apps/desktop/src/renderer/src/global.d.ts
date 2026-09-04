@@ -49,6 +49,12 @@ declare global {
       settingsGet(): Promise<Record<string, unknown>>;
       settingsSet(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
       engineStart(projectDir: string): Promise<boolean>;
+      // T8.3 对话域（preload 已实装；声明成可选以免桥与消费者必须同刻改完）
+      setActiveConversation?(conversationId: string): Promise<unknown>;
+      listConversations?(): Promise<unknown[]>;
+      createConversation?(projectDir: string): Promise<unknown>;
+      suspendConversation?(conversationId: string): Promise<boolean>;
+      closeConversation?(conversationId: string): Promise<boolean>;
       engineSteer(text: string): Promise<void>;
       engineFollowUp(text: string): Promise<void>;
       engineAbort(): Promise<void>;

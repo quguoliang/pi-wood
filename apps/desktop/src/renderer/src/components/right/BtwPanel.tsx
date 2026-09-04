@@ -2,12 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "../ui/Icon";
 import { Markdown, ThinkingCard } from "@pi-wood/ui-kit";
 import { cn } from "@/lib/utils";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation } from "../../stores/session-store";
 import { useBtwStore } from "../../stores/btw-store";
 
 /** T7.6 侧边问答面板：只读展示当前父会话对应的临时问答（不影响主会话流）。 */
 export function BtwPanel(): React.JSX.Element {
-  const currentSessionId = useSessionStore((s) => s.currentSessionId);
+  const currentSessionId = useActiveConversation((c) => c.currentSessionId);
   const transcript = useBtwStore((s) => s.bySession[currentSessionId || "__none__"]);
   const abort = useBtwStore((s) => s.abort);
   const dispose = useBtwStore((s) => s.dispose);

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "../../stores/settings-store";
 import { cn } from "@/lib/utils";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation } from "../../stores/session-store";
 import { PluginsPanel } from "./PluginsPanel";
 import { SubagentPermissionsPanel } from "./SubagentPermissionsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
@@ -100,7 +100,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
     });
   }, []);
 
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const engineReady = useActiveConversation((c) => c.engineReady);
   useEffect(() => {
     // 默认模型列表依赖引擎；未就绪时不拉取（§8 状态不变量）
     if (engineReady) void window.pi.engineModels().then(setModels).catch(() => setModels([]));

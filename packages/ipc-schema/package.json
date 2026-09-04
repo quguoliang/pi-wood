@@ -7,7 +7,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/engine-rpc.test.ts src/engine-envelope.test.ts"
+    "test": "node --test src/engine-rpc.test.ts src/engine-envelope.test.ts src/engine-throttle.test.ts"
   },
   "dependencies": {
     "@pi-wood/plugin-api": "workspace:*",

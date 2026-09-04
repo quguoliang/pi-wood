@@ -1,379 +1,230 @@
 import { create } from "zustand";
+import {
+  applyEngineEvent,
+  emptySlice,
+  mergeHistory,
+  type ConversationItem,
+  type ConversationSlice,
+  type DiffStat,
+  type HistoryMessageItem,
+  type ToolStatus,
+} from "./conversation-slice.ts";
 
 /**
- * 会话 store（UI v3 重写，严格对齐 Pi SDK v0.84.4 真实事件字段）。
+ * 会话 store（T8.3：slice-per-conversation）
  *
- * 数据流要点（见执行计划 §8 调研）：
- * - assistant 流式：message_update.assistantMessageEvent 的 text_delta/thinking_delta
- *   写入独立 live buffer（避免每 token 对长列表做 O(n) 拷贝），块 *_end 或工具启动/
- *   回合结束时 flush 成 finalized item。
- * - 工具：tool_execution_start.args（非 input）、tool_execution_update.partialResult
- *   （非 output）、tool_execution_end.result.{content,details}。edit 的 result.details
- *   含结构化 patch/diff，直接内联渲染。
- * - 回合/状态：agent_start/end/settled、compaction_*、auto_retry_*、queue_update。
+ * 一条对话一份状态（`slices[conversationId]`），归约逻辑全在 `conversation-slice.ts` 的纯函数里
+ * （可穷举单测）。本文件只做三件事：**路由**（事件按 conversationId 进各自切片）、
+ * **可见性**（谁是 active、unread 何时清零、历史何时装载）、**投递**（zustand 只写入变化的切片）。
+ *
+ * 三条硬约束（都被 conversation-slice.test.ts / 门禁盯着）：
+ * 1. 后台对话的事件**不得**改动前台切片的任何字段 ⇒ 前台选择器不重渲染（T8.3 验收 4）。
+ * 2. 归约返回 `changed:false` 时完全不 `set` ⇒ 空转不触发渲染。
+ * 3. 丢事件不许静默：判给别家的计数（`foreignEventCount`）+ 断号计数（切片内 `droppedEvents`）都在状态里可观测。
  */
 
-export type ToolStatus = "running" | "ok" | "error";
+/** 还不知道 conversationId 时（legacy 裸事件 / 引擎未起）用的切片键 */
+export const FALLBACK_SLICE_KEY = "";
 
-export interface DiffStat {
-  added: number;
-  deleted: number;
+export type { ConversationItem, ConversationSlice, DiffStat, HistoryMessageItem, ToolStatus };
+
+export interface EventMeta {
+  conversationId: string | null;
+  active?: boolean;
+  legacy: boolean;
+  seq?: number;
 }
 
-export type ConversationItem =
-  | { id: string; kind: "user"; text: string }
-  | { id: string; kind: "assistant"; text: string }
-  | { id: string; kind: "thinking"; text: string; durationMs?: number }
-  | {
-      id: string;
-      kind: "tool";
-      toolCallId: string;
-      name: string;
-      args: Record<string, unknown>;
-      status: ToolStatus;
-      output?: string;
-      diff?: string;
-      diffStat?: DiffStat;
-      truncated?: boolean;
-      fullOutputPath?: string;
-      /** T5.6：工具开始时刻（epoch ms），用于分组总耗时聚合。 */
-      startedAt?: number;
-      /** T5.6：工具耗时（ms），tool_execution_end 时由 startedAt 推算。 */
-      durationMs?: number;
-    }
-  | {
-      id: string;
-      kind: "system";
-      text: string;
-      tone: "info" | "warn" | "error" | "success";
-      align?: "center" | "start";
-    };
-
-export interface HistoryMessageItem {
-  role: string;
-  text: string;
-  toolCallId?: string;
-  toolName?: string;
-  toolInput?: Record<string, unknown>;
-  isError?: boolean;
-}
-
-interface LiveState {
-  liveText: string;
-  liveThinking: string;
-}
-
-interface SessionState extends LiveState {
-  items: ConversationItem[];
-  streaming: boolean;
-  activeProject: string | undefined;
-  engineReady: boolean;
-  /** T7.2：当前引擎会话 id（供 per-session 自动接受按会话取状态）。 */
-  currentSessionId: string | undefined;
-  /**
-   * T8.2：渲染层认定的「用户正在看」的对话 id。唯一写入口是 noteEventOwnership
-   * （主进程在 envelope 上打 active===true 的权威信号）；slice-per-conversation 落地在 T8.3。
-   */
+interface SessionStoreState {
+  slices: Record<string, ConversationSlice>;
+  /** 用户正在看的对话；null = 尚未被告知（此时按 FALLBACK 切片工作，行为同 T8.2） */
   activeConversationId: string | null;
-  /** T8.2：被判给其它对话、未进当前转录本的事件计数——丢事件不许静默，计数必须可见。 */
+  /** 判给别家对话、未进当前视图的事件计数（丢事件不许静默） */
   foreignEventCount: number;
-  queue: { steering: string[]; followUp: string[] };
-  handleEvent(e: Record<string, unknown>): void;
-  /** T8.2：从 preload 归一化的 meta 记录对话归属。纯状态更新，不做路由判定（路由在调用方）。 */
-  noteEventOwnership(meta: { conversationId: string | null; active?: boolean; legacy: boolean }): void;
-  addUserMessage(text: string): void;
-  loadMessages(items: HistoryMessageItem[]): void;
-  reset(): void;
+  /** 当前项目（跨对话共享：左栏/右栏面板/终端都按项目取数） */
+  activeProject: string | undefined;
+
+  sliceOf(id?: string | null): ConversationSlice;
+  handleEvent(e: Record<string, unknown>, meta?: EventMeta): void;
+  /** T8.2 遗留入口：只记归属，不做路由（路由在 handleEvent 内） */
+  noteEventOwnership(meta: EventMeta): void;
+  /** 切换可见对话：清 unread、必要时整读历史并与已收增量对账 */
+  setActiveConversation(id: string | null): void;
+  addUserMessage(text: string, conversationId?: string | null): void;
+  loadHistory(items: HistoryMessageItem[], conversationId?: string | null): void;
+  markHistoryLoaded(conversationId?: string | null): void;
+  setScrollTop(top: number, conversationId?: string | null): void;
+  setFollowBottom(follow: boolean, conversationId?: string | null): void;
+  setApprovalPending(pending: boolean, conversationId?: string | null): void;
+  reset(conversationId?: string | null): void;
   setActiveProject(projectDir: string | undefined): void;
-  setEngineReady(ready: boolean): void;
-  refreshSessionId(): Promise<void>;
+  setEngineReady(ready: boolean, conversationId?: string | null): void;
+  refreshSessionId(conversationId?: string | null): Promise<void>;
 }
 
-let seq = 0;
-const nextId = (): string => `m${++seq}`;
+let itemSeq = 0;
+const nextItemId = (): string => `m${++itemSeq}`;
 
-const safeStringify = (value: unknown): string => {
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
-};
+/** 单对话最多在内存里留多少条 item（T8.3 步骤 6：N 路后台对话同时长跑不能吃穿堆） */
+export const MAX_SLICE_ITEMS = 2000;
 
-/** 把工具结果/部分内容（content 数组块或字符串）解成可读文本。 */
-const extractText = (result: unknown): string | undefined => {
-  if (result === undefined || result === null) return undefined;
-  if (typeof result === "string") return result;
-  const content = (result as { content?: unknown }).content;
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part) =>
-        part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
-          ? (part as { text: string }).text
-          : part && typeof part === "object" && (part as { type?: unknown }).type === "image"
-            ? "[图片]"
-            : "",
-      )
-      .filter(Boolean)
-      .join("\n");
-    if (text) return text;
-  }
-  if (typeof (result as { text?: unknown }).text === "string") return (result as { text: string }).text;
-  if (typeof (result as { message?: unknown }).message === "string") return (result as { message: string }).message;
-  return safeStringify(result);
-};
-
-/** 从 unified patch 统计 +/- 行数（排除 +++/--- 文件头）。 */
-const statPatch = (patch: string): DiffStat => {
-  let added = 0;
-  let deleted = 0;
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---")) continue;
-    if (line.startsWith("+")) added += 1;
-    else if (line.startsWith("-")) deleted += 1;
-  }
-  return { added, deleted };
-};
-
-const asArgs = (v: unknown): Record<string, unknown> =>
-  v !== null && typeof v === "object" && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : v === undefined
-      ? {}
-      : { value: v };
-
-let thinkingStartedAt = 0;
-
-export const useSessionStore = create<SessionState>((set, get) => {
-  /** 把当前 live thinking/text flush 成 finalized items（保证与后续工具的顺序）。 */
-  const flushLive = (): void => {
-    const { liveText, liveThinking, items } = get();
-    const additions: ConversationItem[] = [];
-    if (liveThinking.trim()) {
-      additions.push({
-        id: nextId(),
-        kind: "thinking",
-        text: liveThinking,
-        durationMs: thinkingStartedAt ? Date.now() - thinkingStartedAt : undefined,
-      });
-      thinkingStartedAt = 0;
-    }
-    if (liveText.trim()) additions.push({ id: nextId(), kind: "assistant", text: liveText });
-    if (additions.length) set({ items: [...items, ...additions], liveText: "", liveThinking: "" });
-    else if (liveText || liveThinking) set({ liveText: "", liveThinking: "" });
-  };
-
-  const pushItem = (item: ConversationItem): void => set({ items: [...get().items, item] });
-
-  const updateTool = (toolCallId: string, patch: Partial<Extract<ConversationItem, { kind: "tool" }>>): void => {
-    set({
-      items: get().items.map((m) => (m.kind === "tool" && m.toolCallId === toolCallId ? { ...m, ...patch } : m)),
-    });
-  };
-
+/**
+ * 内存护栏：超上限只保留尾部，并累计被裁掉的头部条数（列表顶部据此给「上滑加载更早」入口）。
+ * 放在 store 层而不是纯归约里——裁多少是渲染层策略，归约只管事件语义。
+ */
+function guardSliceMemory(slice: ConversationSlice): ConversationSlice {
+  if (slice.items.length <= MAX_SLICE_ITEMS) return slice;
+  const overflow = slice.items.length - MAX_SLICE_ITEMS;
+  const items = slice.items.slice(overflow);
   return {
-    items: [],
-    liveText: "",
-    liveThinking: "",
-    streaming: false,
-    activeProject: undefined,
-    engineReady: false,
-    currentSessionId: undefined,
-    activeConversationId: null,
-    foreignEventCount: 0,
-    queue: { steering: [], followUp: [] },
-
-    handleEvent(e) {
-      const type = e.type as string;
-      switch (type) {
-        case "user_message":
-          get().addUserMessage(String(e.text ?? ""));
-          return;
-        case "agent_start":
-          set({ streaming: true });
-          return;
-        case "agent_end":
-        case "agent_settled":
-          flushLive();
-          set({ streaming: false, queue: { steering: [], followUp: [] } });
-          return;
-        case "message_end":
-          flushLive();
-          return;
-        case "message_update": {
-          const a = e.assistantMessageEvent as { type?: string; delta?: unknown } | undefined;
-          if (!a) return;
-          switch (a.type) {
-            case "thinking_start":
-              thinkingStartedAt = Date.now();
-              set({ liveThinking: "" });
-              return;
-            case "thinking_delta":
-              set({ liveThinking: get().liveThinking + (typeof a.delta === "string" ? a.delta : "") });
-              return;
-            case "thinking_end":
-              flushLive();
-              return;
-            case "text_start":
-              set({ liveText: "" });
-              return;
-            case "text_delta":
-              set({ liveText: get().liveText + (typeof a.delta === "string" ? a.delta : "") });
-              return;
-            case "text_end":
-              flushLive();
-              return;
-            default:
-              return;
-          }
-        }
-        case "tool_execution_start": {
-          flushLive();
-          pushItem({
-            id: nextId(),
-            kind: "tool",
-            toolCallId: String(e.toolCallId ?? `t${Date.now()}`),
-            name: String(e.toolName ?? "tool"),
-            args: asArgs(e.args),
-            status: "running",
-            startedAt: Date.now(),
-          });
-          return;
-        }
-        case "tool_execution_update": {
-          const text = extractText(e.partialResult);
-          if (text !== undefined) updateTool(String(e.toolCallId ?? ""), { output: text });
-          return;
-        }
-        case "tool_execution_end": {
-          const callId = String(e.toolCallId ?? "");
-          const result = e.result as
-            | { content?: unknown; details?: { patch?: string; diff?: string; truncation?: unknown; fullOutputPath?: string } }
-            | undefined;
-          const details = result?.details;
-          const patch = details?.patch || details?.diff;
-          const patchUpdate: Partial<Extract<ConversationItem, { kind: "tool" }>> = {
-            status: e.isError ? "error" : "ok",
-          };
-          const running = get().items.find(
-            (m): m is Extract<ConversationItem, { kind: "tool" }> => m.kind === "tool" && m.toolCallId === callId,
-          );
-          const started = running?.startedAt;
-          if (started != null) patchUpdate.durationMs = Date.now() - started;
-          const out = extractText(result);
-          if (out !== undefined) patchUpdate.output = out;
-          if (patch) {
-            patchUpdate.diff = patch;
-            patchUpdate.diffStat = statPatch(patch);
-          }
-          if (details?.fullOutputPath) patchUpdate.fullOutputPath = details.fullOutputPath;
-          if (details?.truncation) patchUpdate.truncated = true;
-          updateTool(callId, patchUpdate);
-          return;
-        }
-        case "turn_end": {
-          flushLive();
-          // Pi agent-loop：用户中断时 turn 的最后一条 assistant message.stopReason === "aborted"
-          const stopReason = (e.message as { stopReason?: string } | undefined)?.stopReason;
-          if (stopReason === "aborted") {
-            pushItem({ id: nextId(), kind: "system", tone: "warn", align: "start", text: "对话已终止" });
-          }
-          return;
-        }
-        case "compaction_start":
-          flushLive();
-          pushItem({ id: nextId(), kind: "system", tone: "info", text: "正在压缩上下文…" });
-          return;
-        case "compaction_end":
-          pushItem({
-            id: nextId(),
-            kind: "system",
-            tone: e.aborted ? "warn" : "info",
-            text: e.aborted ? "上下文压缩已中止" : "上下文已压缩",
-          });
-          return;
-        case "auto_retry_start":
-          pushItem({
-            id: nextId(),
-            kind: "system",
-            tone: "warn",
-            text: `请求失败，自动重试（第 ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"} 次）…`,
-          });
-          return;
-        case "auto_retry_end":
-          pushItem({
-            id: nextId(),
-            kind: "system",
-            tone: e.success ? "success" : "error",
-            text: e.success ? "重试成功" : `重试失败${e.finalError ? `：${String(e.finalError)}` : ""}`,
-          });
-          return;
-        case "queue_update":
-          set({
-            queue: {
-              steering: Array.isArray(e.steering) ? (e.steering as string[]) : [],
-              followUp: Array.isArray(e.followUp) ? (e.followUp as string[]) : [],
-            },
-          });
-          return;
-        default:
-          return;
-      }
-    },
-
-    noteEventOwnership(meta) {
-      // active===true 是主进程推送时盖的「用户正看着这条对话」权威信号：与已存 id 不同就采纳。
-      // legacy 裸事件无归属信息：维持 null 行为（不采纳也不清空），与 T8.2 之前逐位一致。
-      if (meta.active === true && meta.conversationId && meta.conversationId !== get().activeConversationId) {
-        set({ activeConversationId: meta.conversationId });
-      }
-    },
-
-    addUserMessage(text) {
-      flushLive();
-      pushItem({ id: nextId(), kind: "user", text });
-      set({ liveText: "", liveThinking: "" });
-    },
-
-    loadMessages(list) {
-      set({
-        items: list.map((m): ConversationItem => {
-          if (m.role === "tool") {
-            return {
-              id: nextId(),
-              kind: "tool",
-              toolCallId: m.toolCallId ?? nextId(),
-              name: m.toolName ?? "tool",
-              args: m.toolInput ?? {},
-              status: m.isError ? "error" : "ok",
-              output: m.text || undefined,
-            };
-          }
-          if (m.role === "user") return { id: nextId(), kind: "user", text: m.text };
-          if (m.role === "assistant") return { id: nextId(), kind: "assistant", text: m.text };
-          return { id: nextId(), kind: "system", tone: "info", text: m.text };
-        }),
-        liveText: "",
-        liveThinking: "",
-        streaming: false,
-      });
-    },
-
-    reset() {
-      set({ items: [], liveText: "", liveThinking: "", streaming: false, currentSessionId: undefined, queue: { steering: [], followUp: [] } });
-    },
-
-    setActiveProject(projectDir) {
-      set({ activeProject: projectDir, currentSessionId: undefined });
-    },
-
-    setEngineReady(ready) {
-      set({ engineReady: ready });
-    },
-
-    async refreshSessionId() {
-      const state = await window.pi.engineState().catch(() => undefined);
-      set({ currentSessionId: state?.sessionId });
-    },
+    ...slice,
+    items,
+    headTrimmed: slice.headTrimmed + overflow,
+    runningToolCount: items.filter((i) => i.kind === "tool" && i.status === "running").length,
   };
-});
+}
+
+const targetKeyOf = (state: { activeConversationId: string | null }, id: string | null | undefined): string =>
+  id ?? state.activeConversationId ?? FALLBACK_SLICE_KEY;
+
+export const useSessionStore = create<SessionStoreState>((set, get) => ({
+  slices: { [FALLBACK_SLICE_KEY]: emptySlice() },
+  activeConversationId: null,
+  foreignEventCount: 0,
+  activeProject: undefined,
+
+  sliceOf(id) {
+    const key = targetKeyOf(get(), id);
+    return get().slices[key] ?? emptySlice();
+  },
+
+  handleEvent(e, meta) {
+    if (meta) get().noteEventOwnership(meta); // 先采纳归属再路由：漏调 noteEventOwnership 不该导致静默错路由
+    const state = get();
+    const key = targetKeyOf(state, meta?.conversationId);
+    // legacy 裸事件（无归属）与「主进程盖了 active」都算正被看着；其余按 activeConversationId 比
+    const visible = meta ? meta.active === true || meta.legacy || !meta.conversationId : true;
+    const current = state.slices[key] ?? emptySlice();
+    const result = applyEngineEvent(current, e, { now: Date.now(), nextId: nextItemId, visible, seq: meta?.seq });
+    if (!result.changed) return; // 空转不 set ⇒ 不触发任何重渲染
+    set({ slices: { ...state.slices, [key]: guardSliceMemory(result.slice) } });
+  },
+
+  noteEventOwnership(meta) {
+    if (meta.active === true && meta.conversationId && meta.conversationId !== get().activeConversationId) {
+      set({ activeConversationId: meta.conversationId });
+    }
+  },
+
+  setActiveConversation(id) {
+    const state = get();
+    if (state.activeConversationId === id) return;
+    const key = id ?? FALLBACK_SLICE_KEY;
+    const slice = state.slices[key] ?? emptySlice();
+    set({
+      activeConversationId: id,
+      // 切过去即清零未读（T8.3 验收：未读计数在切过去时清零）
+      slices: { ...state.slices, [key]: { ...slice, unreadCount: 0 } },
+    });
+    // 告知主进程（它据此做可见性节流 + 命令缺省归属）；失败不影响本地切换。
+    // typeof 守卫是必需的：store 的纯状态部分要在 node --test 下可测（那里没有 window）。
+    if (typeof window !== "undefined" && key) {
+      void window.pi.setActiveConversation?.(key).catch(() => undefined);
+    }
+  },
+
+  addUserMessage(text, conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    const result = applyEngineEvent(current, { type: "user_message", text }, { now: Date.now(), nextId: nextItemId, visible: true });
+    set({ slices: { ...state.slices, [key]: result.slice } });
+  },
+
+  loadHistory(items, conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    const { slice } = mergeHistory(current, items, { now: Date.now(), nextId: nextItemId });
+    set({ slices: { ...state.slices, [key]: slice } });
+  },
+
+  markHistoryLoaded(conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    set({ slices: { ...state.slices, [key]: { ...current, historyLoaded: true } } });
+  },
+
+  setScrollTop(top, conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    if (current.scrollTop === top) return;
+    set({ slices: { ...state.slices, [key]: { ...current, scrollTop: top } } });
+  },
+
+  setFollowBottom(follow, conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    if (current.followBottom === follow) return;
+    set({ slices: { ...state.slices, [key]: { ...current, followBottom: follow } } });
+  },
+
+  setApprovalPending(pending, conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    set({ slices: { ...state.slices, [key]: { ...current, hasPendingApproval: pending } } });
+  },
+
+  reset(conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    set({ slices: { ...state.slices, [key]: emptySlice() } });
+  },
+
+  setActiveProject(projectDir) {
+    // 只记「当前项目」：多对话并存后，某条对话的会话身份属于它自己那条切片，
+    // 在这里清 currentSessionId 会把别的项目的对话清懵（会话状态由事件流与 refreshSessionId 维护）。
+    set({ activeProject: projectDir });
+  },
+
+  setEngineReady(ready, conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key] ?? emptySlice();
+    if (current.engineReady === ready) return;
+    set({ slices: { ...state.slices, [key]: { ...current, engineReady: ready } } });
+  },
+
+  async refreshSessionId(conversationId) {
+    const state = await window.pi.engineState().catch(() => undefined);
+    const g = get();
+    const key = targetKeyOf(g, conversationId);
+    const current = g.slices[key] ?? emptySlice();
+    if (current.currentSessionId === state?.sessionId) return;
+    set({ slices: { ...g.slices, [key]: { ...current, currentSessionId: state?.sessionId } } });
+  },
+}));
+
+/**
+ * 取「当前可见对话」的切片视图（消费者一律走这两个 hook，不再直接读顶层字段）。
+ *
+ * 为什么用 selector 而不是把切片字段摊平到顶层：摊平后任何后台对话的事件都会改动顶层引用，
+ * 前台组件必然重渲染——那正是 T8.3 验收 4 要禁掉的事。
+ */
+export function useActiveConversation<T>(selector: (slice: ConversationSlice) => T): T {
+  return useSessionStore((state) => selector(state.slices[state.activeConversationId ?? FALLBACK_SLICE_KEY] ?? emptySlice()));
+}
+
+/** 取指定对话的切片（多对话标签条/后台摘要用；id 为 null 时退到 active） */
+export function useConversationSlice<T>(id: string | null | undefined, selector: (slice: ConversationSlice) => T): T {
+  return useSessionStore((state) => selector(state.slices[id ?? state.activeConversationId ?? FALLBACK_SLICE_KEY] ?? emptySlice()));
+}
+
+/** 非 hook 场景（事件回调里）读当前可见切片 */
+export function activeSlice(): ConversationSlice {
+  return useSessionStore.getState().sliceOf(null);
+}

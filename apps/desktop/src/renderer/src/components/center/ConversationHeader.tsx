@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { Icon } from "../ui/Icon";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { buildExportFilename, formatSessionAsMarkdown } from "../../lib/export-session";
 
@@ -26,14 +26,14 @@ export function ConversationHeader({
   environmentOpen: boolean;
   onEnvironmentToggle(): void;
 }): React.JSX.Element {
-  const title = useSessionStore((s) => {
-    const first = s.items.find((item) => item.kind === "user");
+  const title = useActiveConversation((c) => {
+    const first = c.items.find((item) => item.kind === "user");
     return first && first.kind === "user" ? first.text.replace(/\s+/g, " ").trim() : "";
   });
-  const items = useSessionStore((s) => s.items);
+  const items = useActiveConversation((c) => c.items);
   const activeProject = useSessionStore((s) => s.activeProject);
-  const currentSessionId = useSessionStore((s) => s.currentSessionId);
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const currentSessionId = useActiveConversation((c) => c.currentSessionId);
+  const engineReady = useActiveConversation((c) => c.engineReady);
   const rightCollapsed = useSettingsStore((s) => Boolean(s.settings.window.rightCollapsed));
   const autoAccept = useSettingsStore(
     (s) => Boolean(currentSessionId && s.settings.autoAcceptSessions?.[currentSessionId]),

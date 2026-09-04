@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useGoalStore } from "../../stores/goal-store";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation } from "../../stores/session-store";
 import { Icon } from "../ui/Icon";
 import { cn } from "@/lib/utils";
 import type { GoalStatus } from "@pi-wood/ipc-schema";
@@ -28,7 +28,7 @@ export function GoalStatusBar(): React.JSX.Element | null {
   const pause = useGoalStore((s) => s.pause);
   const resume = useGoalStore((s) => s.resume);
   const clear = useGoalStore((s) => s.clear);
-  const sessionId = useSessionStore((s) => s.currentSessionId);
+  const sessionId = useActiveConversation((c) => c.currentSessionId);
 
   useEffect(() => {
     if (sessionId) void load(sessionId);

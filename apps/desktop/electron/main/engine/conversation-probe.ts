@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { performance } from "node:perf_hooks";
 import { execFile } from "node:child_process";
-import type { EngineEvent, HostToolResult } from "@pi-wood/ipc-schema";
+import type { EngineEvent, HostToolResult, OutboundThrottle } from "@pi-wood/ipc-schema";
+import { createOutboundThrottle } from "@pi-wood/ipc-schema";
 import { ALL_HOST_TOOL_SPECS } from "../agent-tools/host-tool-specs";
 import { resolveEngineChildEntry } from "./engine-host";
 import {
@@ -196,6 +197,38 @@ async function runProbe(): Promise<void> {
   ok(survivors.length > 0 && survivors.every((x) => x === 1), "C3.2 其余对话不受牵连（崩溃隔离）", `alive=${survivors.join("")}/${others.length}`);
   const responsive = after ? await after.host.invoke("stats", {}).then(() => true).catch(() => false) : false;
   ok(responsive === true, "C3.3 主进程存活且帧管道可用（恢复后的对话能完成一次下行往返）");
+
+  // ---------- C8 出站节流（性能红线「事件流量」的机制判据） ----------
+  {
+    const t = createOutboundThrottle();
+    let frames = 0;
+    let joined = "";
+    const emit = (list: ReturnType<OutboundThrottle["push"]>) => {
+      for (const f of list) {
+        frames += 1;
+        joined += String((f.event.assistantMessageEvent as { delta?: string }).delta ?? "");
+      }
+    };
+    // 模拟 1 秒内 1000 个 token：每 200 条推进一次节流时钟（= 每 200ms 一个窗口）
+    for (let i = 0; i < 1000; i++) {
+      emit(t.push({ type: "message_update", messageId: "m", assistantMessageEvent: { type: "text_delta", delta: `${i} ` } }, false));
+      if (i % 200 === 199) emit(t.tick());
+    }
+    emit(t.flush());
+    const perSecond = frames;
+    // 里程碑必须把缓冲按原顺序带出来（否则渲染层会先看到「工具结束」再看到它的 token）
+    const milestoneFrames = t.push({ type: "tool_execution_start", toolCallId: "t1", toolName: "bash", args: {} }, false);
+    const stats = t.stats();
+    ok(perSecond <= 6, "C8.1 后台对话 1 秒 1000 token ≤6 帧/秒（红线）", `实际 ${perSecond} 帧，in=${stats.in} out=${stats.out} merged=${stats.merged}`);
+    ok(joined.startsWith("0 1 2 3 4 5 ") && joined.endsWith("999 "), "C8.2 合帧不丢内容、不改顺序", `${joined.slice(0, 10)}…${joined.slice(-8)}`);
+    ok(milestoneFrames[milestoneFrames.length - 1]?.event.type === "tool_execution_start", "C8.3 里程碑即时透传（不被合掉）");
+    ok(milestoneFrames.length === 1, "C8.4 缓冲已在前面的窗口/tick 中冲净（不出现 token 排在工具事件之后）", `${milestoneFrames.length} 帧`);
+    const tv = createOutboundThrottle();
+    let vf = 0;
+    for (let i = 0; i < 200; i++) vf += tv.push({ type: "message_update", messageId: "m", assistantMessageEvent: { type: "text_delta", delta: "x" } }, true).length;
+    ok(vf === 200, "C8.5 active 对话完全旁路合并（逐 token 体感优先）", `${vf}/200`);
+    info(`C8.6 节流统计：后台 1000 事件/秒 → ${perSecond} 帧（合掉 ${stats.merged} 条），IPC 降幅 ≈${Math.round((1 - perSecond / stats.in) * 100)}%`);
+  }
 
   // ---------- C4 全量关停 + 零残留 ----------
   for (const s of listConversations().filter((x) => x.status === "suspended")) await closeConversation(s.id);

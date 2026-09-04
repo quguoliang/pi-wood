@@ -32,7 +32,11 @@ export function useSidebarProjects() {
   const [activeSessionFile, setActiveSessionFile] = useState<string | undefined>();
   const projectsRef = useRef<ProjectRecord[]>([]);
   const activationSeq = useRef(0);
-  const { setActiveProject: setStoreProject, setEngineReady, reset, loadMessages } = useSessionStore();
+  // 只取动作引用（稳定不变）：整体 useSessionStore() 会在任一后台对话切片写入时重渲染左栏
+  const setStoreProject = useSessionStore((s) => s.setActiveProject);
+  const setEngineReady = useSessionStore((s) => s.setEngineReady);
+  const reset = useSessionStore((s) => s.reset);
+  const loadHistory = useSessionStore((s) => s.loadHistory);
   const refreshRuntime = useRuntimeStore((s) => s.refresh);
   const resetRuntime = useRuntimeStore((s) => s.reset);
 
@@ -96,11 +100,11 @@ export function useSidebarProjects() {
     if (activeProject !== project.path) await activateProject(project);
     setActiveSessionFile(session.file);
     const messages = (await window.pi.sessionsMessages(session.file)) as { role: string; text: string }[];
-    loadMessages(messages);
+    loadHistory(messages);
     await window.pi.engineSwitchSession(session.file);
     void refreshRuntime();
     void useSessionStore.getState().refreshSessionId();
-  }, [activeProject, activateProject, loadMessages, refreshRuntime]);
+  }, [activeProject, activateProject, loadHistory, refreshRuntime]);
 
   const createSession = useCallback(async (project: ProjectRecord) => {
     setExpandedProjects((current) => new Set(current).add(project.path));

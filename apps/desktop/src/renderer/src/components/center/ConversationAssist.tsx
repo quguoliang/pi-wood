@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { Icon } from "../ui/Icon";
 import { useAssistStore } from "../../stores/assist-store";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation } from "../../stores/session-store";
 
 /** T7.9 会话辅助条：一轮结束后在主会话上方淡显回顾 + 可点击的追问建议；新消息/切会话/手动关闭即隐。 */
 export function ConversationAssist({ className }: { className?: string }): React.JSX.Element | null {
@@ -11,8 +11,8 @@ export function ConversationAssist({ className }: { className?: string }): React
   const forItemsLen = useAssistStore((s) => s.forItemsLen);
   const dismissed = useAssistStore((s) => s.dismissed);
   const dismiss = useAssistStore((s) => s.dismiss);
-  const currentSessionId = useSessionStore((s) => s.currentSessionId) ?? "";
-  const itemsLen = useSessionStore((s) => s.items.length);
+  const currentSessionId = useActiveConversation((c) => c.currentSessionId) ?? "";
+  const itemsLen = useActiveConversation((c) => c.items.length);
 
   // 关联失效：仅当仍属同一会话、且未出现更新的消息（items 长度未变）、且未手动关闭时展示
   const current = session === currentSessionId && itemsLen === forItemsLen;

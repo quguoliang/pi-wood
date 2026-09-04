@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { Icon } from "../ui/Icon";
 
 /**
@@ -19,7 +19,7 @@ export function TitleBar({
 }): React.JSX.Element {
   const isWindows = window.pi.platform === "win32";
   const [maximized, setMaximized] = useState(false);
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const engineReady = useActiveConversation((c) => c.engineReady);
   const activeProject = useSessionStore((s) => s.activeProject);
   const engineState = engineReady ? "Pi 引擎就绪" : activeProject ? "引擎未就绪" : "等待项目";
 

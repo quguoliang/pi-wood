@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "../ui/Icon";
 import { cn } from "@/lib/utils";
-import { useSessionStore } from "../../stores/session-store";
+import { useActiveConversation } from "../../stores/session-store";
 
 type Tab = "discover" | "installed";
 
@@ -70,7 +70,7 @@ export function PackageMarket({ onClose }: { onClose(): void }): React.JSX.Eleme
   const [searching, setSearching] = useState(false);
   const [installed, setInstalled] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const engineReady = useSessionStore((s) => s.engineReady);
+  const engineReady = useActiveConversation((c) => c.engineReady);
 
   // 已安装源 + 其裸名，用于双向匹配市场条目
   const installedKeys = useMemo(() => {
