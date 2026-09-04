@@ -127,7 +127,8 @@ export const HostToolResultSchema = z.object({
 });
 export type HostToolResult = z.infer<typeof HostToolResultSchema>;
 export const HostSubagentParamsSchema = z.discriminatedUnion("op", [
-  z.object({ op: z.literal("guard-tool"), toolName: z.string(), input: z.unknown().optional(), agentName: z.string().optional() }),
+  /** ticket：与 host:approval 同款一次性票据，主进程消费防重放（T8.4 收紧） */
+  z.object({ op: z.literal("guard-tool"), ticket: z.string().min(1).optional(), toolName: z.string(), input: z.unknown().optional(), agentName: z.string().optional() }),
   z.object({ op: z.literal("runs"), runs: z.array(z.unknown()) }),
   z.object({ op: z.literal("child-event"), runId: z.string(), event: z.unknown() }),
 ]);

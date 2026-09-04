@@ -162,7 +162,8 @@ function installSubagentBridge(): () => Promise<void> {
   const bridge: PiWoodSubagentBridge = {
     buildChildGate: () => remoteApprovalGate() as never,
     guardChildTool: async (toolName, input, agentName) => {
-      const r = (await rpc("host:subagent", { op: "guard-tool", toolName, input, agentName }, 150_000).catch(
+      // ticket：与 remoteApprovalGate 同款一次性票据，主进程消费防重放（T8.4）
+      const r = (await rpc("host:subagent", { op: "guard-tool", ticket: randomUUID(), toolName, input, agentName }, 150_000).catch(
         (err: unknown) => ({ reason: `宿主守卫通道异常：${frameErrorText(err)}` }),
       )) as { reason?: string };
       return r?.reason;

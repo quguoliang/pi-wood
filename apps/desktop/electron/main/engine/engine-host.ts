@@ -35,7 +35,8 @@ export interface EngineHostDeps {
   /** 子进程的工作目录（T8.6 起为该对话的 worktree） */
   cwd: string;
   executeHostTool(p: HostToolExecuteParams): Promise<HostToolResult>;
-  requestUi(p: HostUiParams): Promise<unknown>;
+  /** T8.4：ctx.ui 请求带发起对话归属（ctx 由本类按 deps 构造，child 不可自报） */
+  requestUi(ctx: { conversationId: string; projectDir: string }, p: HostUiParams): Promise<unknown>;
   decideApproval(p: HostApprovalParams): Promise<{ allow: boolean; reason?: string }>;
   /** 可回传值：guard-tool 的拦截原因必须回到 child（fire-and-forget 的 runs/child-event 返回 undefined） */
   onSubagent(p: HostSubagentParams): unknown;
@@ -259,7 +260,10 @@ export class EngineHost implements EngineTransport {
           reply(true, await this.deps.executeHostTool(frame.params as HostToolExecuteParams));
           return;
         case "host:ui":
-          reply(true, await this.deps.requestUi(frame.params as HostUiParams));
+          reply(true, await this.deps.requestUi(
+            { conversationId: this.deps.conversationId, projectDir: this.deps.cwd },
+            frame.params as HostUiParams,
+          ));
           return;
         case "host:approval":
           reply(true, await this.deps.decideApproval(frame.params as HostApprovalParams));

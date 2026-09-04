@@ -331,6 +331,54 @@ export const BtwAskCommandSchema = z.object({
 });
 export type BtwAskCommand = z.infer<typeof BtwAskCommandSchema>;
 
+// ---------- T8.4 审批 / ctx.ui 的对话归属契约（main ↔ renderer） ----------
+//
+// 多对话并发后，审批与 ctx.ui 往返必须带「发起对话」归属：
+// - request 载荷（main → renderer）：`conversationId` = 发起对话；`projectName` = 来源项目名（来源行展示）。
+//   `conversationId` 允许 null：插件宿主（T5.2）发起的 ui 请求不属于任何对话（全局项，任何对话可应答）。
+// - respond 载荷（renderer → main）：`conversationId` = 渲染层应答时所处的对话（应答者归属）。
+//   主进程据 `canRespond` 校验「应答者必须是发起对话」，跨对话误放行 = 安全旁路，一律拒绝。
+
+export const ApprovalRequestPayloadSchema = z.object({
+  id: z.number().int().nonnegative(),
+  /** 发起对话（null = 非对话域的全局请求，现状仅审批不会出现） */
+  conversationId: z.string().min(1).nullable(),
+  /** 来源项目名（basename），PromptTray 来源行展示用 */
+  projectName: z.string().optional(),
+  title: z.string(),
+  message: z.string(),
+  toolName: z.string().optional(),
+});
+export type ApprovalRequestPayload = z.infer<typeof ApprovalRequestPayloadSchema>;
+
+export const UiRequestPayloadSchema = z.object({
+  id: z.number().int().nonnegative(),
+  kind: z.enum(["select", "confirm", "input"]),
+  /** 发起对话（null = 插件宿主等全局请求） */
+  conversationId: z.string().min(1).nullable(),
+  projectName: z.string().optional(),
+  title: z.string(),
+  options: z.array(z.string()).optional(),
+  message: z.string().optional(),
+  placeholder: z.string().optional(),
+});
+export type UiRequestPayload = z.infer<typeof UiRequestPayloadSchema>;
+
+export const ApprovalRespondPayloadSchema = z.object({
+  id: z.number().int().nonnegative(),
+  /** 应答者所处的对话（须与发起对话一致，否则拒绝） */
+  conversationId: z.string().min(1).nullable().optional(),
+  allow: z.boolean(),
+});
+export type ApprovalRespondPayload = z.infer<typeof ApprovalRespondPayloadSchema>;
+
+export const UiRespondPayloadSchema = z.object({
+  id: z.number().int().nonnegative(),
+  conversationId: z.string().min(1).nullable().optional(),
+  value: z.union([z.string(), z.boolean()]).optional(),
+});
+export type UiRespondPayload = z.infer<typeof UiRespondPayloadSchema>;
+
 // ---------- T6.3 子代理运行时状态（vendored pi-subagent 的 runs 注册表快照） ----------
 
 export const SubagentRunInfoSchema = z.object({

@@ -46,7 +46,8 @@ export interface ConversationCapabilities {
   /** ESM-only 第一方扩展（如 vendored pi-subagent 入口）路径 */
   additionalExtensionPaths(): string[];
   executeHostTool(p: HostToolExecuteParams): Promise<HostToolResult>;
-  requestUi(p: HostUiParams): Promise<unknown>;
+  /** T8.4：ctx.ui 请求带发起对话归属（PromptTray 来源行 + 应答者校验靠它） */
+  requestUi(ctx: { conversationId: string; projectDir: string }, p: HostUiParams): Promise<unknown>;
   /** 审批裁决：策略判定 + 弹卡都在这条链里，child 没有本地放行路径 */
   decideApproval(ctx: { conversationId: string; projectDir: string }, p: HostApprovalParams): Promise<HostApprovalResult>;
   /** 可回传值：guard-tool 的拦截原因必须回到 child（deny-by-default 依赖这条回执） */
@@ -236,7 +237,7 @@ async function spawnHandle(
     conversationId: id,
     cwd: projectDir,
     executeHostTool: (p) => c.executeHostTool(p),
-    requestUi: (p) => c.requestUi(p),
+    requestUi: (ctx, p) => c.requestUi(ctx, p),
     decideApproval: (p) => c.decideApproval({ conversationId: id, projectDir }, p),
     onSubagent: (p) => c.onSubagent({ conversationId: id, projectDir }, p),
     onEvent: (event, seq) => {

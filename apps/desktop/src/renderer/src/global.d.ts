@@ -35,8 +35,9 @@ declare global {
       winIsMaximized(): Promise<boolean>;
       onWinMaximizeChanged(cb: (maximized: boolean) => void): () => void;
       onUiNotify(cb: (data: { message: string; type: string }) => void): () => void;
-      onUiRequest(cb: (data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }) => void): () => void;
-      uiRespond(id: number, value?: string | boolean): Promise<boolean>;
+      // T8.4：审批 / ctx.ui 带对话归属——conversationId=发起对话（null=插件等全局请求），projectName=来源项目名
+      onUiRequest(cb: (data: { id: number; kind: "select" | "confirm" | "input"; conversationId: string | null; projectName?: string; title: string; options?: string[]; message?: string; placeholder?: string }) => void): () => void;
+      uiRespond(id: number, value?: string | boolean, conversationId?: string | null): Promise<boolean>;
       onProbeLog(cb: (line: string) => void): () => void;
       // T8.2：main 推 envelope（所有对话都推），preload 归一化后按 (event, meta) 回调，渲染层按 meta 路由
       onEngineEvent(cb: (event: Record<string, unknown>, meta: EngineEventMeta) => void): () => void;
@@ -88,10 +89,13 @@ declare global {
       providerSetKey(provider: string, key: string): Promise<boolean>;
       providerRemoveKey(provider: string): Promise<boolean>;
       providerAddCustom(cfg: unknown): Promise<boolean>;
-      approvalDecide(id: number, allow: boolean): Promise<boolean>;
+      // T8.4：conversationId = 应答者所处的对话（主进程校验「应答者必须是发起对话」，跨对话一律拒绝）
+      approvalDecide(id: number, allow: boolean, conversationId?: string | null): Promise<boolean>;
       approvalAcceptAll(): Promise<number>;
+      /** T8.4：点来源行/徽章「去应答」→ 恢复该对话 pending 的 120s 计时，回执 {ok, pending 条数} */
+      approvalFocusRequested?(conversationId: string): Promise<{ ok: boolean; pending: number }>;
       onApprovalRequest(
-        cb: (d: { id: number; title: string; message: string; toolName?: string }) => void,
+        cb: (d: { id: number; conversationId: string | null; projectName?: string; title: string; message: string; toolName?: string }) => void,
       ): () => void;
       extensionsList(): Promise<unknown>;
       resourcesList(): Promise<unknown>;

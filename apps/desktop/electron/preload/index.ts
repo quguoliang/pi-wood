@@ -63,13 +63,14 @@ const api = {
     ipcRenderer.on("ui:notify", handler);
     return () => ipcRenderer.removeListener("ui:notify", handler);
   },
-  onUiRequest: (cb: (data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }) => void): (() => void) => {
-    const handler = (_e: unknown, data: { id: number; kind: "select" | "confirm" | "input"; title: string; options?: string[]; message?: string; placeholder?: string }): void => cb(data);
+  // T8.4：载荷带对话归属（conversationId/projectName），原样透传给渲染层 PromptTray
+  onUiRequest: (cb: (data: { id: number; kind: "select" | "confirm" | "input"; conversationId: string | null; projectName?: string; title: string; options?: string[]; message?: string; placeholder?: string }) => void): (() => void) => {
+    const handler = (_e: unknown, data: { id: number; kind: "select" | "confirm" | "input"; conversationId: string | null; projectName?: string; title: string; options?: string[]; message?: string; placeholder?: string }): void => cb(data);
     ipcRenderer.on("ui:request", handler);
     return () => ipcRenderer.removeListener("ui:request", handler);
   },
-  uiRespond: (id: number, value?: string | boolean): Promise<boolean> =>
-    ipcRenderer.invoke("ui:respond", { id, value }),
+  uiRespond: (id: number, value?: string | boolean, conversationId?: string | null): Promise<boolean> =>
+    ipcRenderer.invoke("ui:respond", { id, value, conversationId: conversationId ?? null }),
   onProbeLog: (cb: (line: string) => void): (() => void) => {
     const handler = (_e: unknown, line: string): void => cb(line);
     ipcRenderer.on("probe:log", handler);
@@ -231,13 +232,17 @@ const api = {
     ipcRenderer.invoke("provider:removeKey", { provider }),
   providerAddCustom: (cfg: unknown): Promise<boolean> =>
     ipcRenderer.invoke("provider:addCustom", cfg),
-  approvalDecide: (id: number, allow: boolean): Promise<boolean> =>
-    ipcRenderer.invoke("approval:decide", { id, allow }),
+  // T8.4：approval:decide 带「应答者所处对话」——主进程据此校验应答者必须是发起对话
+  approvalDecide: (id: number, allow: boolean, conversationId?: string | null): Promise<boolean> =>
+    ipcRenderer.invoke("approval:decide", { id, allow, conversationId: conversationId ?? null }),
   approvalAcceptAll: (): Promise<number> => ipcRenderer.invoke("approval:acceptAll"),
+  // T8.4：点来源行/徽章「去应答」→ 主进程恢复该对话 pending 的 120s 计时并回执条数
+  approvalFocusRequested: (conversationId: string): Promise<{ ok: boolean; pending: number }> =>
+    ipcRenderer.invoke("approval:focus-requested", { conversationId }),
   onApprovalRequest: (
-    cb: (d: { id: number; title: string; message: string; toolName?: string }) => void,
+    cb: (d: { id: number; conversationId: string | null; projectName?: string; title: string; message: string; toolName?: string }) => void,
   ): (() => void) => {
-    const h = (_e: unknown, d: { id: number; title: string; message: string; toolName?: string }): void => cb(d);
+    const h = (_e: unknown, d: { id: number; conversationId: string | null; projectName?: string; title: string; message: string; toolName?: string }): void => cb(d);
     ipcRenderer.on("approval:request", h);
     return () => ipcRenderer.removeListener("approval:request", h);
   },

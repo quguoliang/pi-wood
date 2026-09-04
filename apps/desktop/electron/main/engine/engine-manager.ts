@@ -13,6 +13,11 @@ import {
   DEFAULT_THROTTLE,
   createOutboundThrottle,
   makeEngineEnvelope,
+  ApprovalRequestPayloadSchema,
+  ApprovalRespondPayloadSchema,
+  UiRequestPayloadSchema,
+  UiRespondPayloadSchema,
+  type ApprovalRequestPayload,
   type EnginePiTheme,
   type GitInfo,
   type HostApprovalParams,
@@ -23,6 +28,7 @@ import {
   type RuntimeInfo,
   type SubagentRunInfo,
   type ThrottledFrame,
+  type UiRequestPayload,
 } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge, EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
@@ -52,6 +58,13 @@ import {
   setActiveConversation,
   suspendConversation,
 } from "./conversation-registry";
+import {
+  acceptAllScope,
+  canRespond,
+  checkApprovalTicket,
+  pendingKey,
+  shouldArmTimeout,
+} from "./approval-ownership";
 
 /**
  * 引擎管理器（T1.3 → T8.1）
@@ -123,13 +136,36 @@ let assistUserText = "";
 let assistTextBuf = "";
 let assistAborted = false;
 let engineTransition: Promise<void> = Promise.resolve();
+
+// ---- T8.4 审批 / ctx.ui 的对话归属 ----
+// key = `${conversationId}:${seq}`（无归属的全局请求落 global 桶），entry 记 owner；
+// 应答与 acceptAll 都按 owner 校验，跨对话放行 = 安全旁路，一律拒绝。
+// 判定逻辑在 approval-ownership.ts（纯函数，可穷举单测），这里只做「记录 + 调用」。
 let approvalSeq = 0;
-const pendingApprovals = new Map<number, { conv: string; resolve: (allow: boolean) => void }>();
+interface PendingApprovalEntry {
+  conversationId: string | null;
+  projectName?: string;
+  /** child 侧一次性票据（host:approval），消费后记录在 consumedApprovalTickets */
+  ticket?: string;
+  resolve: (allow: boolean) => void;
+  timer?: NodeJS.Timeout;
+  /** 120s 计时是否已起（非 active 对话的 pending 不计时，切过去再起表） */
+  armed: boolean;
+}
+const pendingApprovals = new Map<string, PendingApprovalEntry>();
 let uiRequestSeq = 0;
-const pendingUiRequests = new Map<
-  number,
-  { kind: "select" | "confirm" | "input"; resolve: (value: string | boolean | undefined) => void }
->();
+interface PendingUiEntry {
+  conversationId: string | null;
+  projectName?: string;
+  kind: "select" | "confirm" | "input";
+  resolve: (value: string | boolean | undefined) => void;
+  timer?: NodeJS.Timeout;
+  armed: boolean;
+}
+const pendingUiRequests = new Map<string, PendingUiEntry>();
+/** 已消费的 child 审批/守卫票据（一次性，防重放；child 崩溃重建后票据本就换新，无需清理） */
+const consumedApprovalTickets = new Set<string>();
+const APPROVAL_TIMEOUT_MS = 120_000;
 let capabilitiesInstalled = false;
 
 const execFileAsync = promisify(execFile);
@@ -289,20 +325,95 @@ function pushForConversation(
   send(channel, { ...payload, conversationId: ctx.conversationId, projectDir: ctx.projectDir }, ctx.conversationId);
 }
 
-/** 审批门 T4.1：confirm 经渲染层 ApprovalCard 往返（阻塞式 IPC Promise）。T8.1 起带归属对话 */
-function confirmViaRenderer(conversationId: string, title: string, message: string, toolName?: string): Promise<boolean> {
+/** 来源项目名（PromptTray 来源行展示用）：对话所属目录的 basename */
+function projectLabelFor(conversationId: string | null | undefined): string | undefined {
+  const dir = conversationId ? getConversation(conversationId)?.projectDir : activeProject;
+  if (!dir) return undefined;
+  const parts = dir.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? dir;
+}
+
+/** 起（且只起一次）某条审批的 120s 计时：超时默认拒绝（方案 §9） */
+function armApprovalTimeout(key: string): void {
+  const entry = pendingApprovals.get(key);
+  if (!entry || entry.armed) return;
+  entry.armed = true;
+  entry.timer = setTimeout(() => {
+    if (!pendingApprovals.has(key)) return;
+    pendingApprovals.delete(key);
+    if (entry.conversationId) noteApprovalPending(entry.conversationId, -1);
+    entry.resolve(false);
+  }, APPROVAL_TIMEOUT_MS);
+}
+
+/** 起（且只起一次）某条 ctx.ui 请求的 120s 计时 */
+function armUiTimeout(key: string): void {
+  const entry = pendingUiRequests.get(key);
+  if (!entry || entry.armed) return;
+  entry.armed = true;
+  entry.timer = setTimeout(() => {
+    if (!pendingUiRequests.has(key)) return;
+    pendingUiRequests.delete(key);
+    entry.resolve(entry.kind === "confirm" ? false : undefined);
+  }, APPROVAL_TIMEOUT_MS);
+}
+
+/**
+ * 某对话变为可见（setActiveConversation / approval:focus-requested）→
+ * 其「未计时」的 pending 恢复 120s 计时。后台对话的 pending 不因用户看不见而被静默判死（T8.4 验收项）。
+ */
+export function armPendingTimeoutsFor(conversationId: string): void {
+  for (const [key, e] of pendingApprovals) if (e.conversationId === conversationId) armApprovalTimeout(key);
+  for (const [key, e] of pendingUiRequests) if (e.conversationId === conversationId) armUiTimeout(key);
+}
+
+/**
+ * 对话被显式关闭时回收其 pending：未计时的项没有兜底定时器，不回收会永远占着
+ * tray 队列与一个永不 settle 的 Promise（child 已死，resolve 只是把出栈做完）。
+ */
+export function dropPendingFor(conversationId: string): number {
+  let dropped = 0;
+  for (const [key, e] of pendingApprovals) {
+    if (e.conversationId !== conversationId) continue;
+    if (e.timer) clearTimeout(e.timer);
+    pendingApprovals.delete(key);
+    e.resolve(false);
+    dropped += 1;
+  }
+  for (const [key, e] of pendingUiRequests) {
+    if (e.conversationId !== conversationId) continue;
+    if (e.timer) clearTimeout(e.timer);
+    pendingUiRequests.delete(key);
+    e.resolve(e.kind === "confirm" ? false : undefined);
+    dropped += 1;
+  }
+  return dropped;
+}
+
+/** 审批门 T4.1：confirm 经渲染层 PromptTray 往返（阻塞式 IPC Promise）。T8.4 起带对话归属与超时分档 */
+function confirmViaRenderer(conversationId: string, title: string, message: string, toolName?: string, ticket?: string): Promise<boolean> {
   const id = ++approvalSeq;
-  send("approval:request", { id, conversationId, title, message, toolName });
+  const payload: ApprovalRequestPayload = {
+    id,
+    conversationId,
+    projectName: projectLabelFor(conversationId),
+    title,
+    message,
+    toolName,
+  };
+  send("approval:request", ApprovalRequestPayloadSchema.parse(payload));
   noteApprovalPending(conversationId, +1);
+  const key = pendingKey(conversationId, id);
   return new Promise<boolean>((resolve) => {
-    pendingApprovals.set(id, { conv: conversationId, resolve });
-    setTimeout(() => {
-      if (pendingApprovals.has(id)) {
-        pendingApprovals.delete(id);
-        noteApprovalPending(conversationId, -1);
-        resolve(false); // 超时默认拒绝（方案 §9）
-      }
-    }, 120_000);
+    pendingApprovals.set(key, {
+      conversationId,
+      projectName: payload.projectName,
+      ticket,
+      resolve,
+      armed: false,
+    });
+    // 超时按可见性分档：只有发起对话正被看着才起 120s 表；后台对话的 pending 常驻待应答
+    if (shouldArmTimeout(conversationId, getActiveConversationId())) armApprovalTimeout(key);
   });
 }
 
@@ -314,17 +425,23 @@ function requestUi(
   kind: "select" | "confirm" | "input",
   title: string,
   payload: { options?: string[]; message?: string; placeholder?: string },
+  owner?: { conversationId: string | null },
 ): Promise<string | boolean | undefined> {
   const id = ++uiRequestSeq;
-  send("ui:request", { id, kind, title, ...payload });
+  const conversationId = owner?.conversationId ?? null;
+  const req: UiRequestPayload = {
+    id,
+    kind,
+    conversationId,
+    projectName: projectLabelFor(conversationId),
+    title,
+    ...payload,
+  };
+  send("ui:request", UiRequestPayloadSchema.parse(req));
+  const key = pendingKey(conversationId, id);
   return new Promise((resolve) => {
-    pendingUiRequests.set(id, { kind, resolve });
-    setTimeout(() => {
-      if (pendingUiRequests.has(id)) {
-        pendingUiRequests.delete(id);
-        resolve(kind === "confirm" ? false : undefined);
-      }
-    }, 120_000);
+    pendingUiRequests.set(key, { conversationId, projectName: req.projectName, kind, resolve, armed: false });
+    if (shouldArmTimeout(conversationId, getActiveConversationId())) armUiTimeout(key);
   });
 }
 
@@ -407,22 +524,26 @@ function installCapabilitiesOnce(): void {
       );
       return { content: r.content as unknown[], details: r.details };
     },
-    requestUi: async (p: HostUiParams) => {
+    requestUi: async (ctx: { conversationId: string; projectDir: string }, p: HostUiParams) => {
       switch (p.op) {
         case "notify":
           send("ui:notify", { message: p.message, type: p.type ?? "info" });
           return undefined;
         case "select":
-          return requestUi("select", p.title, { options: p.options });
+          return requestUi("select", p.title, { options: p.options }, { conversationId: ctx.conversationId });
         case "confirm":
-          return Boolean(await requestUi("confirm", p.title, { message: p.message }));
+          return Boolean(await requestUi("confirm", p.title, { message: p.message }, { conversationId: ctx.conversationId }));
         case "input":
-          return requestUi("input", p.title, { placeholder: p.placeholder });
+          return requestUi("input", p.title, { placeholder: p.placeholder }, { conversationId: ctx.conversationId });
         default:
           return undefined;
       }
     },
     decideApproval: async (ctx, p: HostApprovalParams) => {
+      // 一次性票据防重放：同一 ticket 只能背书一次裁决（T8.4；拒绝也是一种裁决，别让重放绕过）
+      const ticket = checkApprovalTicket(consumedApprovalTickets, p.ticket);
+      if (!ticket.ok) return { allow: false, reason: ticket.error };
+      if (p.ticket) consumedApprovalTickets.add(p.ticket);
       const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
       const decision = decide(getPolicy(), p.toolName, p.input, override);
       if (decision === "allow") return { allow: true };
@@ -462,7 +583,10 @@ function installCapabilitiesOnce(): void {
           return undefined;
         }
         case "guard-tool": {
-          // 子代理孙会话的工具守卫：与父审批门同源（decide + ApprovalCard），child 无本地放行路径
+          // 子代理孙会话的工具守卫：与父审批门同源（decide + PromptTray），child 无本地放行路径
+          const guardTicket = checkApprovalTicket(consumedApprovalTickets, p.ticket);
+          if (!guardTicket.ok) return { reason: guardTicket.error };
+          if (p.ticket) consumedApprovalTickets.add(p.ticket);
           const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
           const decision = decide(getPolicy(), p.toolName, p.input, override);
           if (decision === "allow") return { reason: undefined };
@@ -756,47 +880,90 @@ function mapSubagentRuns(
 /** T2.2：diff 快照逻辑已迁至 workbench/snapshot-service.ts */
 
 export function initEngineIpc(): void {
-  // T4.1：审批决策回传（渲染层 ApprovalCard → 主进程 resolve）
+  // T4.1/T8.4：审批决策回传（渲染层 PromptTray → 主进程 resolve）。
+  // 归属校验双保险：① 应答者自报的对话必须等于发起对话（canRespond）；② 主进程视角该对话确实是
+  // 当前 active——跨对话放行 = 安全旁路，宁可拒绝也不放行。
   ipcMain.handle("approval:decide", (_e, raw: unknown) => {
-    const { id, allow } = z.object({ id: z.number(), allow: z.boolean() }).parse(raw);
-    const entry = pendingApprovals.get(id);
-    if (entry) {
-      pendingApprovals.delete(id);
-      noteApprovalPending(entry.conv, -1);
-      entry.resolve(allow);
+    const p = ApprovalRespondPayloadSchema.parse(raw);
+    const key = pendingKey(p.conversationId ?? null, p.id);
+    const entry = pendingApprovals.get(key);
+    if (!entry) return false;
+    if (entry.conversationId && entry.conversationId !== getActiveConversationId()) {
+      send("ui:notify", {
+        message: "已拒绝跨对话审批：请切到发起该请求的对话后再应答",
+        type: "warning",
+      });
+      return false;
     }
+    if (!canRespond(entry.conversationId, p.conversationId ?? null)) {
+      send("ui:notify", { message: "已拒绝跨对话审批：应答者与发起对话不一致", type: "warning" });
+      return false;
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    pendingApprovals.delete(key);
+    if (entry.conversationId) noteApprovalPending(entry.conversationId, -1);
+    entry.resolve(p.allow);
     return true;
   });
 
+  // T8.4：ctx.ui 应答——与审批同款归属校验（无归属的全局请求不受限）
   ipcMain.handle("ui:respond", (_e, raw: unknown) => {
-    const { id, value } = z.object({
-      id: z.number().int().positive(),
-      value: z.union([z.string(), z.boolean()]).optional(),
-    }).parse(raw);
-    pendingUiRequests.get(id)?.resolve(value);
-    pendingUiRequests.delete(id);
+    const p = UiRespondPayloadSchema.parse(raw);
+    const key = pendingKey(p.conversationId ?? null, p.id);
+    const entry = pendingUiRequests.get(key);
+    if (!entry) return false;
+    if (!canRespond(entry.conversationId, p.conversationId ?? null)) {
+      send("ui:notify", { message: "已拒绝跨对话交互应答：应答者与发起对话不一致", type: "warning" });
+      return false;
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    pendingUiRequests.delete(key);
+    entry.resolve(p.value);
     return true;
   });
 
-  // T7.2：开启 per-session 自动接受时，立即放行当前所有在飞的审批/确认（select/input 不动）。
-  // T8.1：只放行 **active 对话** 的在飞审批——跨对话放行等于替用户点头别的项目的写盘操作。
+  // T7.2：开启 per-session 自动接受时，放行在飞的审批/确认。
+  // T8.4：只放行 **active 对话** 的 pending（acceptAllScope）——跨对话放行等于替用户点头
+  // 别的项目的写盘操作；无归属的全局插件 confirm 也不被对话的「自动接受」连带放行。
   ipcMain.handle("approval:acceptAll", () => {
     const activeId = getActiveConversationId();
-    let accepted = 0;
-    for (const [id, entry] of pendingApprovals) {
-      if (!activeId || entry.conv !== activeId) continue;
-      pendingApprovals.delete(id);
-      noteApprovalPending(entry.conv, -1);
-      entry.resolve(true);
-      accepted += 1;
+    const approvals = acceptAllScope(
+      [...pendingApprovals.entries()].map(([key, entry]) => ({ key, ...entry })),
+      activeId,
+    );
+    const confirms = acceptAllScope(
+      [...pendingUiRequests.entries()]
+        .filter(([, entry]) => entry.kind === "confirm")
+        .map(([key, entry]) => ({ key, ...entry })),
+      activeId,
+    );
+    for (const { key, conversationId, resolve } of approvals) {
+      const entry = pendingApprovals.get(key);
+      if (entry?.timer) clearTimeout(entry.timer);
+      pendingApprovals.delete(key);
+      if (conversationId) noteApprovalPending(conversationId, -1);
+      resolve(true);
     }
-    for (const [id, entry] of pendingUiRequests) {
-      if (entry.kind !== "confirm") continue;
-      entry.resolve(true);
-      pendingUiRequests.delete(id);
-      accepted += 1;
+    for (const { key, resolve } of confirms) {
+      const entry = pendingUiRequests.get(key);
+      if (entry?.timer) clearTimeout(entry.timer);
+      pendingUiRequests.delete(key);
+      resolve(true);
     }
-    return accepted;
+    return approvals.length + confirms.length;
+  });
+
+  // T8.4：点来源行/徽章「去应答」——切对话后渲染层调用；主进程据此把该对话未计时的
+  // pending 恢复 120s 计时，并回执条数（渲染层滚动到对应审批卡）。
+  ipcMain.handle("approval:focus-requested", (_e, raw: unknown) => {
+    const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
+    const h = getConversation(conversationId);
+    if (!h) return { ok: false as const, pending: 0 };
+    armPendingTimeoutsFor(conversationId);
+    const pending =
+      [...pendingApprovals.values()].filter((e) => e.conversationId === conversationId).length +
+      [...pendingUiRequests.values()].filter((e) => e.conversationId === conversationId).length;
+    return { ok: true as const, pending };
   });
 
   // T7.6：侧边问答——独立第二会话，不影响主会话；引擎未就绪时 ensureBtwAdapter 会抛错由渲染层提示。
@@ -1041,6 +1208,8 @@ export function initEngineIpc(): void {
 
   ipcMain.handle(ENGINE_CHANNELS.closeConversation, async (_e, raw: unknown) => {
     const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
+    const dropped = dropPendingFor(conversationId);
+    if (dropped > 0) console.warn(`[engine] 对话 ${conversationId} 关闭，连带回收 ${dropped} 条未应答的审批/ctx.ui 请求`);
     return closeConversation(conversationId);
   });
 
@@ -1056,6 +1225,8 @@ export function initEngineIpc(): void {
     targetByConversation.set(conversationId, _e.sender);
     const ok = setActiveConversation(conversationId);
     if (ok) flushOutbound(conversationId); // 切回来立刻看到尾巴，不等下一个 200ms 节流窗口
+    // T8.4 超时分档：切到该对话后，其未计时的审批/ctx.ui pending 恢复 120s 计时
+    armPendingTimeoutsFor(conversationId);
     return { ok, projectDir: h.projectDir, status: h.record.status, droppedEvents: h.record.droppedEvents };
   });
 
