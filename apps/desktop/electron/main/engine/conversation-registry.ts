@@ -153,6 +153,18 @@ export function hasBusyConversation(): boolean {
   return [...handles.values()].some((h) => h.record.status === "streaming" || h.record.inFlightPrompt);
 }
 
+/** T8.8 退出确认：在跑任务的对话清单（「项目名 · 状态」行） */
+export function busyConversations(): string[] {
+  return [...handles.values()]
+    .filter((h) => h.record.status === "streaming" || h.record.inFlightPrompt || h.record.pendingApprovals > 0)
+    .map((h) => `${shortDir(h.projectDir)} · ${h.record.status === "streaming" || h.record.inFlightPrompt ? "任务在跑" : "等审批"}`);
+}
+
+/** T8.8 资源行：全部活跃引擎 child 的 RSS 合计（MB，取 boot 自报） */
+export function engineRssTotal(): number {
+  return [...handles.values()].reduce((acc, h) => acc + (h.boot?.memRssMB ?? 0), 0);
+}
+
 function setStatus(h: ConversationHandle, to: ConversationStatus): void {
   if (!canTransition(h.record.status, to)) {
     console.warn(`[engine] 忽略非法状态迁移 ${h.record.status} → ${to}（对话 ${h.id}）`);
@@ -322,6 +334,7 @@ async function spawnHandle(
     boot: undefined,
     restarting: false,
   };
+  record.worktreePath = cwd; // T8.8：标签条「树」角标与悬浮路径
   handles.set(id, handle);
   byProject.set(projectDir, id);
 

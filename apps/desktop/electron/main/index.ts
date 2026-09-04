@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from "electron";
+import { app, shell, BrowserWindow, ipcMain, dialog } from "electron";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,9 +11,10 @@ import { isE2EMode, startE2E } from "./engine/e2e-service";
 import { initSettingsIpc } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
 import { initEngineIpc, getActiveWorkspaceDir, getActiveConversationIdSafe } from "./engine/engine-manager";
-import { shutdownAllConversations } from "./engine/conversation-registry"; // T8.1：退出前广播 shutdown 给所有引擎子进程
+import { shutdownAllConversations, busyConversations } from "./engine/conversation-registry"; // T8.1：退出前广播 shutdown；T8.8：退出确认
 import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine-process-probe";
 import { isConversationProbeMode, runConversationProbe } from "./engine/conversation-probe";
+import { runConcurrencyProbe } from "./engine/concurrency-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc, configureBrowserScope } from "./workbench/browser-service";
@@ -188,6 +189,11 @@ if (!gotLock) {
       await runConversationProbe();
       return;
     }
+    // T8.8 并发门禁探针：stub caps + 真 child，断言多对话并存/切换/清空后 app.exit(0|1)
+    if (process.argv.includes("--concurrency-probe")) {
+      await runConcurrencyProbe();
+      return;
+    }
     ipcMain.handle("app:ping", () => ({
       pong: true,
       electron: process.versions.electron,
@@ -221,6 +227,28 @@ if (!gotLock) {
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+  });
+
+  // T8.8 步骤 3：退出时若仍有对话任务在跑 → 确认框列清单（绝不静默杀任务）。
+  // showMessageBoxSync 阻塞取结果；取消 → preventDefault 留在应用。
+  let quitConfirmed = false;
+  app.on("before-quit", (e) => {
+    if (quitConfirmed) return;
+    const busy = busyConversations();
+    if (busy.length === 0) return;
+    e.preventDefault();
+    const choice = dialog.showMessageBoxSync({
+      type: "warning",
+      buttons: ["仍要退出", "取消"],
+      defaultId: 1,
+      cancelId: 1,
+      message: `仍有 ${busy.length} 个对话的任务在跑`,
+      detail: `${busy.join("\n")}\n\n退出会关停这些引擎（会话上下文保留，可恢复），但正在执行的一轮会被中止。`,
+    });
+    if (choice === 0) {
+      quitConfirmed = true;
+      app.quit();
+    }
   });
 
   app.on("window-all-closed", () => {

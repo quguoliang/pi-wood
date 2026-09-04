@@ -6,6 +6,41 @@ import { GoalStatusBar } from "./GoalStatusBar";
 import { Icon, type IconName } from "../ui/Icon";
 import { cn } from "@/lib/utils";
 
+/** T8.8 资源行：活跃对话 N/M · 在飞 prompt X/Y · 子代理 run Z/W · 引擎 RSS 合计（listConversations.capacity） */
+interface CapacityView {
+  liveConversations: number;
+  maxLiveEngines: number;
+  inFlightPrompts: number;
+  maxPrompts: number;
+  runningSubagentRuns: number;
+  maxSubagentRuns: number;
+  totalRssMB: number;
+}
+
+function useCapacity(open: boolean): CapacityView | undefined {
+  const [capacity, setCapacity] = useState<CapacityView | undefined>();
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const pull = (): void => {
+      void window.pi
+        .listConversations?.()
+        .then((r) => {
+          const c = (r as { capacity?: CapacityView } | undefined)?.capacity;
+          if (alive && c) setCapacity(c);
+        })
+        .catch(() => undefined);
+    };
+    pull();
+    const timer = window.setInterval(pull, 4000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [open]);
+  return capacity;
+}
+
 function summarizeInput(input: Record<string, unknown> | undefined): string {
   if (!input) return "";
   for (const key of ["command", "path", "file", "pattern", "query", "url"]) {
@@ -78,6 +113,7 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
   const tasks = useRuntimeStore((s) => s.tasks);
   const todos = useRuntimeStore((s) => s.todos);
   const refresh = useRuntimeStore((s) => s.refresh);
+  const capacity = useCapacity(open);
   const [showTools, setShowTools] = useState(false);
   const projectName = activeProject?.split(/[\\/]/).filter(Boolean).pop() ?? "未选择项目";
 
@@ -119,6 +155,11 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
             <GoalStatusBar />
             <Group title="会话">
               <Row icon="folder" title={activeProject}>{projectName}</Row>
+              {capacity && (
+                <Row icon="activity" title="活跃对话 / 在飞 prompt / 子代理 run / 引擎 RSS">
+                  {`对话 ${capacity.liveConversations}/${capacity.maxLiveEngines} · prompt ${capacity.inFlightPrompts}/${capacity.maxPrompts} · 子代理 ${capacity.runningSubagentRuns}/${capacity.maxSubagentRuns} · RSS ${capacity.totalRssMB}MB`}
+                </Row>
+              )}
               {info?.model && <Row icon="cpu">{info.model}</Row>}
               {info?.thinkingLevel && <Row icon="brain">思考 · {info.thinkingLevel}</Row>}
               {usage && (

@@ -50,6 +50,7 @@ import {
   configureCapabilities,
   conversationForProject,
   ensureConversation,
+  engineRssTotal,
   getActiveConversationId,
   getConversation,
   listConversations,
@@ -59,6 +60,7 @@ import {
   setActiveConversation,
   suspendConversation,
 } from "./conversation-registry";
+import { summarizeCapacity } from "./conversation-core";
 import {
   SlotGate,
   applyRunsSnapshot,
@@ -1347,7 +1349,21 @@ export function initEngineIpc(): void {
   // ---- T8.2/T8.3 对话域（多对话标签条的 UI 接线在 T8.8）----
   ipcMain.handle(ENGINE_CHANNELS.listConversations, () => {
     const stats = outboundStatsSnapshot();
-    return listConversations().map((c) => ({ ...c, outbound: stats[c.id] }));
+    const list = listConversations().map((c) => ({ ...c, outbound: stats[c.id] }));
+    // T8.8 资源行：活跃对话 N/M · 在飞 prompt X/Y · 子代理 run Z/W · 引擎 RSS 合计
+    const runningRuns = [...subagentMirror.values()].flat().filter((r) => r.status === "running").length;
+    const capacity = summarizeCapacity(list, {
+      maxLiveEngines: maxLiveEnginesValue(),
+      maxPrompts: effectivePromptLimit(
+        (loadSettings() as { engineMaxPrompts?: unknown }).engineMaxPrompts,
+        maxLiveEnginesValue(),
+        { rateLimited: quotaEffect().throttle },
+      ),
+      runningSubagentRuns: runningRuns,
+      maxSubagentRuns: childRunLimits().global,
+      totalRssMB: engineRssTotal(),
+    });
+    return { conversations: list, capacity };
   });
 
   ipcMain.handle(ENGINE_CHANNELS.suspendConversation, async (_e, raw: unknown) => {

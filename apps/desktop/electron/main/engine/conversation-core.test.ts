@@ -400,10 +400,12 @@ test("快照只含文档约定的 6 个字段，pid/lastSeq/restarts 等实现�
   assert.deepEqual(Object.keys(snap[0]).sort(), [
     "droppedEvents",
     "id",
+    "inFlightPrompt",
     "lastActiveAt",
     "pendingApprovals",
     "projectDir",
     "status",
+    "worktreePath",
   ]);
   assert.equal(snap[0].id, "a");
   assert.ok(!("pid" in snap[0]));
@@ -424,6 +426,8 @@ test("快照保序并如实反映各字段值", () => {
     lastActiveAt: 7,
     droppedEvents: 3,
     pendingApprovals: 1,
+    inFlightPrompt: false,
+    worktreePath: undefined,
   });
 });
 
@@ -433,7 +437,7 @@ test("快照是投影不是引用：改结果不能污染注册表", () => {
   const snap = summarizeConversations(records);
   snap[0].status = "spawning";
   snap[0].droppedEvents = 999;
-  snap.push({ id: "c", status: "idle", projectDir: "/x", lastActiveAt: 0, droppedEvents: 0, pendingApprovals: 0 });
+  snap.push({ id: "c", status: "idle", projectDir: "/x", lastActiveAt: 0, droppedEvents: 0, pendingApprovals: 0, inFlightPrompt: false });
   delete (snap[1] as Partial<typeof snap[1]>).id;
   assert.equal(JSON.stringify(records), before);
   assert.equal(records.length, 2);

@@ -10,6 +10,7 @@ import { CommandPalette } from "./components/center/CommandPalette";
 import { LeftPane } from "./components/left/LeftPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
+import { ConversationTabs } from "./components/center/ConversationTabs";
 import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
@@ -220,6 +221,7 @@ export default function App() {
             className="relative flex h-full min-h-0 flex-col bg-surface-app outline-none transition-shadow focus:ring-2 focus:ring-inset focus:ring-ring/60"
             style={{ ["--pk-chat-width" as string]: "48rem" }}
           >
+            <ConversationTabs />
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
             <MessageList />
             <ConversationAssist className="pt-1" />

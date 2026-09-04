@@ -186,6 +186,10 @@ export function summarizeConversations(records: readonly ConversationRecord[]): 
   lastActiveAt: number;
   droppedEvents: number;
   pendingApprovals: number;
+  /** T8.8：标签条需要——有一轮 prompt 在飞 */
+  inFlightPrompt: boolean;
+  /** T8.8：该对话的引擎 cwd（worktree 启用 = 独占树；标签「树」角标 + 悬浮路径） */
+  worktreePath?: string;
 }> {
   return records.map((r) => ({
     id: r.id,
@@ -194,5 +198,42 @@ export function summarizeConversations(records: readonly ConversationRecord[]): 
     lastActiveAt: r.lastActiveAt,
     droppedEvents: r.droppedEvents,
     pendingApprovals: r.pendingApprovals,
+    inFlightPrompt: r.inFlightPrompt,
+    worktreePath: r.worktreePath,
   }));
+}
+
+/**
+ * T8.8 资源行（EnvironmentPanel「活跃对话 N/M · 在飞 prompt X/Y · 子代理 run Z/W · RSS 合计」）：
+ * 纯函数可穷举。子代理运行数与 RSS 由调用方（engine-manager）聚合传入。
+ */
+export interface CapacityView {
+  liveConversations: number;
+  maxLiveEngines: number;
+  inFlightPrompts: number;
+  maxPrompts: number;
+  runningSubagentRuns: number;
+  maxSubagentRuns: number;
+  totalRssMB: number;
+}
+
+export function summarizeCapacity(
+  records: readonly { status: ConversationStatus; inFlightPrompt: boolean }[],
+  opts: {
+    maxLiveEngines: number;
+    maxPrompts: number;
+    runningSubagentRuns: number;
+    maxSubagentRuns: number;
+    totalRssMB: number;
+  },
+): CapacityView {
+  return {
+    liveConversations: records.filter(isLive).length,
+    maxLiveEngines: opts.maxLiveEngines,
+    inFlightPrompts: records.filter((r) => r.inFlightPrompt).length,
+    maxPrompts: opts.maxPrompts,
+    runningSubagentRuns: opts.runningSubagentRuns,
+    maxSubagentRuns: opts.maxSubagentRuns,
+    totalRssMB: Math.round(opts.totalRssMB),
+  };
 }
