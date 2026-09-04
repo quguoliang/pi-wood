@@ -22,6 +22,8 @@ import {
   type ConversationRecord,
   type ConversationStatus,
 } from "./conversation-core";
+import { ensureWorktree, reconcileOrphans, removeWorktree } from "../worktree/worktree-service";
+import { loadSettings } from "../settings-service";
 
 /**
  * ConversationRegistry —— 对话 → 引擎子进程的注册表（T8.1）
@@ -70,8 +72,12 @@ export interface ConversationCapabilities {
 
 export interface ConversationHandle {
   id: string;
+  /** 基准项目目录（对话归属的项目；worktree 启用时 ≠ 引擎 cwd） */
   projectDir: string;
+  /** 引擎实际 cwd：worktree 启用 = 该对话独占树；降级/停用 = 与 projectDir 相同（T8.6） */
   worktreePath?: string;
+  /** 建树时的主树 HEAD（回流 diff 基线；树重建后缺失 → 回流退回 merge-base） */
+  worktreeBaseRef?: string;
   host: EngineHost;
   adapter: RemoteAdapterLike;
   record: ConversationRecord;
@@ -159,13 +165,23 @@ function touch(h: ConversationHandle): void {
   h.record.lastActiveAt = Date.now();
 }
 
+/** worktree 设置（缺省启用；keepAfterClose 缺省 false = close 即回收） */
+function worktreeSettings(): { enabled: boolean; keepAfterClose: boolean } {
+  const s = (loadSettings() as { worktree?: { enabled?: unknown; keepAfterClose?: unknown } }).worktree ?? {};
+  return { enabled: s.enabled !== false, keepAfterClose: s.keepAfterClose === true };
+}
+
 /**
  * 取（必要时新建/唤醒）某项目的对话适配器。
- * 这是 engine-manager 那 11 处 `requireAdapter()` 的唯一改动点：语义从「唯一 adapter」变成「当前对话的 adapter」。
+ * `opts.newConversation=true`（T8.6）：同项目**再开一条**对话——每条对话各有一棵独立 worktree
+ * （引擎 cwd 不同，物理不互踩），不再走「复用既有对话」捷径；这是同项目多对话的解锁前提。
  */
-export async function ensureConversation(projectDir: string): Promise<RemoteAdapterLike> {
+export async function ensureConversation(
+  projectDir: string,
+  opts: { newConversation?: boolean } = {},
+): Promise<RemoteAdapterLike> {
   const existing = conversationForProject(projectDir);
-  if (existing && existing.host.alive && existing.record.status !== "dead") {
+  if (existing && existing.host.alive && existing.record.status !== "dead" && !opts.newConversation) {
     activeConversationId = existing.id;
     touch(existing);
     return existing.adapter;
@@ -225,6 +241,9 @@ function shortDir(dir: string): string {
   return parts[parts.length - 1] ?? dir;
 }
 
+/** 孤儿对账去重：每个项目每进程只对账一次（引擎启动时发现上次会话遗留的树） */
+const orphanCheckedProjects = new Set<string>();
+
 async function spawnHandle(
   id: string,
   projectDir: string,
@@ -233,19 +252,40 @@ async function spawnHandle(
 ): Promise<ConversationHandle> {
   const c = needCaps();
   const baseline = await countEngineishProcesses();
+  // ---- T8.6 worktree：引擎 cwd = 该对话独占树（惰性建，T8.0 实测 151~180ms 不卡 UI）----
+  // 降级（非 git / detached / 路径过长）→ 显式提示后共享主树，不静默。
+  let cwd = projectDir;
+  let worktreeBaseRef: string | undefined;
+  if (worktreeSettings().enabled) {
+    if (!orphanCheckedProjects.has(projectDir)) {
+      orphanCheckedProjects.add(projectDir);
+      const orphans = await reconcileOrphans(projectDir, [...handles.values()].map((h) => h.worktreePath ?? h.projectDir));
+      if (orphans.length > 0) {
+        console.warn(`[engine] 项目 ${projectDir} 发现 ${orphans.length} 个未回收的工作树（可能来自上次会话）`);
+        c.notify(`发现 ${orphans.length} 个未回收的并行工作树（可能来自上次会话），可在设置「工作树」里回收`, "info");
+      }
+    }
+    const ensured = await ensureWorktree(projectDir, id);
+    cwd = ensured.cwd;
+    worktreeBaseRef = ensured.baseRef;
+    if (ensured.status === "degraded-shared" && ensured.reason) {
+      c.notify(ensured.reason, "warning");
+    }
+  }
   const host = new EngineHost({
     conversationId: id,
-    cwd: projectDir,
+    cwd: cwd,
     executeHostTool: (p) => c.executeHostTool(p),
     requestUi: (ctx, p) => c.requestUi(ctx, p),
-    decideApproval: (p) => c.decideApproval({ conversationId: id, projectDir }, p),
-    onSubagent: (p) => c.onSubagent({ conversationId: id, projectDir }, p),
+    decideApproval: (p) => c.decideApproval({ conversationId: id, projectDir: cwd }, p),
+    onSubagent: (p) => c.onSubagent({ conversationId: id, projectDir: cwd }, p),
     onEvent: (event, seq) => {
       const h = handles.get(id);
       if (!h) return;
       applyStatusFromEvent(h, event);
       touch(h);
-      c.onEngineEvent({ conversationId: id, projectDir: h.projectDir, seq }, event);
+      // T8.6：ctx.projectDir = 引擎实际 cwd（worktree）——快照/diff/辅助都按树归集，不写主树
+      c.onEngineEvent({ conversationId: id, projectDir: cwd, seq }, event);
     },
     onDropped: (info) => {
       const h = handles.get(id);
@@ -274,7 +314,8 @@ async function spawnHandle(
   const handle: ConversationHandle = {
     id,
     projectDir,
-    worktreePath: projectDir,
+    worktreePath: cwd,
+    worktreeBaseRef,
     host,
     adapter: host.adapter as unknown as RemoteAdapterLike,
     record,
@@ -286,7 +327,7 @@ async function spawnHandle(
 
   await host.spawn();
   const info = await host.startEngine({
-    projectDir,
+    projectDir: cwd, // T8.6：child 的 cwd/会话目录/工具默认路径全部落在独占树上
     hostToolNames: c.hostToolNames(),
     additionalExtensionPaths: c.additionalExtensionPaths(),
     approvalMode: "delegated", // child 不本地判策略，见 engine-child.remoteApprovalGate
@@ -390,7 +431,7 @@ function isSuspendable(h: ConversationHandle): boolean {
   return h.record.status === "idle" && !h.record.inFlightPrompt && h.record.pendingApprovals === 0;
 }
 
-/** 关停并摘表（用户显式关闭对话） */
+/** 关停并摘表（用户显式关闭对话）。T8.6：随对话回收其 worktree（keepAfterClose=true 留树；脏树保留并提示） */
 export async function closeConversation(id: string): Promise<boolean> {
   const h = handles.get(id);
   if (!h) return false;
@@ -398,6 +439,14 @@ export async function closeConversation(id: string): Promise<boolean> {
   handles.delete(id);
   if (byProject.get(h.projectDir) === id) byProject.delete(h.projectDir);
   if (activeConversationId === id) activeConversationId = undefined;
+  const wt = worktreeSettings();
+  if (wt.enabled && !wt.keepAfterClose && h.worktreePath && h.worktreePath !== h.projectDir) {
+    const rm = await removeWorktree(h.projectDir, id);
+    if (!rm.ok) {
+      console.warn(`[engine] 对话 ${id} 的工作树未回收：${rm.reason}`);
+      needCaps().notify(`对话已关闭，但其工作树未回收：${rm.reason ?? ""}`, "warning");
+    }
+  }
   return true;
 }
 

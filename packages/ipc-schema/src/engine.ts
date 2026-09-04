@@ -450,4 +450,11 @@ export const ENGINE_CHANNELS = {
   closeConversation: "engine:closeConversation",
   /** 渲染层告知「用户正在看这条」：主进程据此做可见性节流（T8.3）与命令缺省归属 */
   setActiveConversation: "engine:setActiveConversation",
+  // ---- T8.6 worktree 域（设置「工作树」页与回流按钮；UI 随 T8.8 接线）----
+  /** 列出本项目管辖范围内的未回收工作树（孤儿对账视图） */
+  worktreeList: "engine:worktreeList",
+  /** 回流：把某对话工作树的改动 `git apply --3way --ignore-whitespace` 进主工作树（冲突不自动合） */
+  worktreeMergeBack: "engine:worktreeMergeBack",
+  /** 回收某对话的工作树（脏树拒绝；force=显式丢弃） */
+  worktreeRemove: "engine:worktreeRemove",
 } as const;

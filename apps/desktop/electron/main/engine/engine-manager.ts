@@ -233,8 +233,13 @@ let capabilitiesInstalled = false;
 
 const execFileAsync = promisify(execFile);
 
+/** 引擎域 git 操作的工作目录：active 对话的 worktree（T8.6），降级/未起 = 主项目目录 */
+function activeGitDir(): string {
+  return activeConversation()?.worktreePath ?? activeProject;
+}
+
 async function git(args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, { cwd: activeProject, maxBuffer: 4 * 1024 * 1024 });
+  const { stdout } = await execFileAsync("git", args, { cwd: activeGitDir(), maxBuffer: 4 * 1024 * 1024 });
   return stdout;
 }
 
@@ -854,15 +859,18 @@ function preferredModelAvailable(models: Array<{ provider: string; id: string }>
  * 取当前项目的对话引擎（T8.1 起 = 惰性 fork 一个 utilityProcess 并装配引擎）。
  * 换项目不再关停旧引擎：它留在注册表里被 LRU/上限管着（这正是 D 方案要的「切回去不用重新冷启动」）。
  */
-export async function ensureEngine(projectDir: string): Promise<EngineAdapter> {
+export async function ensureEngine(
+  projectDir: string,
+  opts: { newConversation?: boolean } = {},
+): Promise<EngineAdapter> {
   let result: EngineAdapter | undefined;
   engineTransition = engineTransition.catch(() => undefined).then(async () => {
     installCapabilitiesOnce();
     // T3.2：钥匙串密钥 → 环境变量。必须在 fork 之前（child 直接继承 env，密钥不落 child 磁盘）。
     reinjectProviderEnv();
-    result = await ensureConversation(projectDir);
+    result = await ensureConversation(projectDir, opts);
     activeProject = projectDir;
-    snapshotsFor(projectDir);
+    snapshotsFor(activeConversation()?.worktreePath ?? projectDir); // T8.6：快照按对话 cwd（树）归集
     // T8.5：btw 已 per-对话化、随对话 close 释放；换项目不再统一关停（旧单槽语义作废）
   });
   await engineTransition;
@@ -1099,7 +1107,7 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:diffRevert", (_e, raw: unknown) => {
     const { changeId } = z.object({ changeId: z.string().min(1) }).parse(raw);
-    const snapshots = activeProject ? snapshotsByProject.get(activeProject) : undefined;
+    const snapshots = snapshotsByProject.get(activeGitDir());
     if (!snapshots) throw new Error("引擎未启动：没有可回滚的变更");
     try {
       const result = snapshots.revert(changeId);
@@ -1381,10 +1389,45 @@ export function initEngineIpc(): void {
     if (quotaEffect().blockNewConversation) {
       throw new Error("本月用量已超配额，已按设置阻止新建对话（可在用量页调整超限动作）");
     }
-    const adapter = await ensureEngine(projectDir);
+    const adapter = await ensureEngine(projectDir, { newConversation: true }); // T8.6：同项目再开一条（各自 worktree）
     const convId = getActiveConversationId() ?? "";
     targetByConversation.set(convId, _e.sender);
-    return { conversationId: convId, cwd: projectDir, booted: Boolean(adapter) };
+    return { conversationId: convId, cwd: activeConversation()?.worktreePath ?? projectDir, booted: Boolean(adapter) };
+  });
+
+  // ---- T8.6 worktree IPC（设置「工作树」页与 DiffPanel 回流按钮的数据源；UI 随 T8.8 接线） ----
+  ipcMain.handle(ENGINE_CHANNELS.worktreeList, async () => {
+    const dir = getActiveProjectDirSafe();
+    if (!dir) return [];
+    const { reconcileOrphans } = await import("../worktree/worktree-service");
+    return reconcileOrphans(dir, [activeConversation()?.worktreePath ?? dir]);
+  });
+  ipcMain.handle(ENGINE_CHANNELS.worktreeMergeBack, async (_e, raw: unknown) => {
+    const { conversationId } = z.object({ conversationId: z.string().min(1) }).parse(raw);
+    const h = getConversation(conversationId);
+    if (!h?.worktreePath || h.worktreePath === h.projectDir) {
+      throw new Error("该对话没有独立工作树（降级共享主树），无需回流");
+    }
+    const { mergeBackWorktree } = await import("../worktree/worktree-service");
+    const r = await mergeBackWorktree(h.projectDir, conversationId, { baseRef: h.worktreeBaseRef ?? "" });
+    if (r.status === "applied" && r.appliedFiles.length > 0) {
+      send("ui:notify", { message: `已回流 ${r.appliedFiles.length} 个文件到主工作树`, type: "success" });
+    } else if (r.status === "conflict") {
+      send("ui:notify", { message: `回流冲突（${r.conflictedFiles.join("、") || "语义冲突"}）：改动保留在工作树，请手工处理`, type: "warning" });
+    }
+    return r;
+  });
+  ipcMain.handle(ENGINE_CHANNELS.worktreeRemove, async (_e, raw: unknown) => {
+    const { conversationId, force } = z
+      .object({ conversationId: z.string().min(1), force: z.boolean().optional() })
+      .parse(raw);
+    const h = getConversation(conversationId);
+    const projectDir = h?.projectDir ?? getActiveProjectDirSafe();
+    if (!projectDir) throw new Error("引擎未启动：请先选择项目");
+    const { removeWorktree } = await import("../worktree/worktree-service");
+    const r = await removeWorktree(projectDir, conversationId, { force });
+    if (r.ok) send("ui:notify", { message: "工作树已回收", type: "success" });
+    return r;
   });
 
   ipcMain.handle("project:pickDialog", async () => {
