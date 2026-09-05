@@ -2,3 +2,5 @@ node_modules/
 out/
 release/
 *.log
+# 例外：门禁证据日志必须入库（t88-verify.sh 的 typecheck/test/build/probe-* 落这里）
+!docs/proofs/**/*.log

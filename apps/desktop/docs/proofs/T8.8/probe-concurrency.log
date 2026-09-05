@@ -1,0 +1,12 @@
+=== T8.8 --concurrency-probe ===
+✓ ① 三对话并存且引擎 cwd 各不相同（worktree 隔离） — list=3 cwd 去重=3 [conv-1-f2dcd3e7:f2dcd3e7 conv-2-2a068081:2a068081 conv-3-be94c3d7:be94c3d7]
+✓ ② 切换对话不打断引擎（句柄均存活） — dead=0
+✓ ⑥ 审批门在位（探针策略=恒拒） — asked=0（无真模型流量时不增长属正常）
+引擎子进程退出中（close）
+引擎子进程退出中（close）
+引擎子进程退出中（close）
+✓ ③ close 全部后注册表清空
+SKIP ⑦ 零残留计数（tasklist 口径仅 Windows；T8.0 P1-e 已在真机证 Δ0）
+SKIP ④⑤⑧ prompt/子代理闸计数与性能红线逐条 → 需真渲染层/真模型流量（SlotGate 与预约-快照对账已由 38 例单测穷举；红线定档随 --ui-chat 真机）
+
+=== 结论：4/4 条通过 ===

@@ -11,7 +11,8 @@
 #   darwin 二进制，探针类（需 Electron 进程）无法在沙箱内代跑。
 set -uo pipefail
 cd "$(dirname "$0")/.."
-PROOF=apps/desktop/docs/proofs/T8.8
+# 绝对路径：探针阶段会 cd apps/desktop，相对路径会让证据落盘失效
+PROOF="$(pwd)/apps/desktop/docs/proofs/T8.8"
 mkdir -p "$PROOF"
 LOG() { echo "[$(date +%H:%M:%S)] $*"; }
 RUN() { # RUN <logname> <cmd...>
@@ -28,14 +29,29 @@ RUN() { # RUN <logname> <cmd...>
 }
 
 # 0) 手滑保护：残留的旧 Electron / dev 实例会污染验证（MEMORY 铁律）
-pkill -9 -f "electron-vite" 2>/dev/null || true
-pkill -9 -f "Electron.app/Contents/MacOS/Electron" 2>/dev/null || true
+# ⚠ 模式必须锁定本项目路径——宽松的 "Electron.app/..." 会误杀用户其它 Electron 应用（如 Trae CN）
+pkill -9 -f "pi-wood.*/node_modules/.pnpm/electron@.*/dist/Electron.app/Contents/MacOS/Electron" 2>/dev/null || true
+pkill -9 -f "pi-wood.*/electron-vite" 2>/dev/null || true
 sleep 1
+
+# 0.5) 单测清单覆盖对账：desktop 的 test 脚本是显式文件清单，漏登记 = 静默漏测
+#      （T8.8 实际踩过：conversation-badge.test.ts 5 例没进清单，门禁跑 216 而记录写 221）
+(
+  set -e
+  cd apps/desktop
+  listed="$(node -e 'process.stdout.write(require("./package.json").scripts.test)')"
+  missing=0
+  for f in $(find electron src -name "*.test.ts" -not -path "*/vendor/*" | sort); do
+    echo "$listed" | grep -qF "$f" || { echo "单测未登记进 test 脚本: $f"; missing=1; }
+  done
+  test "$missing" = "0" || exit 1
+  echo "单测清单覆盖对账通过（$(find electron src -name "*.test.ts" -not -path "*/vendor/*" | wc -l | tr -d ' ') 个文件全在案）"
+) >"$PROOF/test-coverage.log" 2>&1 && LOG "PASS  test-coverage" || { LOG "FAIL test-coverage —— 见 $PROOF/test-coverage.log"; tail -20 "$PROOF/test-coverage.log"; exit 1; }
 
 # 1) 基础门禁
 RUN typecheck  pnpm -r typecheck
 RUN test       pnpm -r test
-RUN build      pnpm exec electron-vite build
+RUN build      pnpm --filter @pi-wood/desktop exec electron-vite build
 
 # 2) 产物 ESM/新符号断言（T8.4~T8.8 的关键符号必须进 bundle）
 (
@@ -69,9 +85,22 @@ fi
 
 # 6) 打包冒烟：packaged child 载 SDK/扩展（T8.0 P1-d / T8.8 验收最后一条）
 if [ "${SKIP_PACKAGE:-0}" != "1" ]; then
-  RUN package-dir         pnpm package:dir
-  RUN probe-conversation-packaged \
-      ./release/mac-unpacked/pi-wood.app/Contents/MacOS/pi-wood --conversation-probe=packaged
+  # electron-builder 默认会去 GitHub 重下 Electron 发行包（09-05 真机：connection reset by peer → 整步 FAIL）。
+  # node_modules 里已有解好的同版本 dist，能指过去就指过去（离线、且保证与依赖版本一致）。
+  EDIST="$(node -p 'require("path").join(require("path").dirname(require.resolve("electron")),"dist")' 2>/dev/null || true)"
+  if [ -n "$EDIST" ] && [ -d "$EDIST" ]; then
+    LOG "package:dir 使用本地 Electron dist：$EDIST"
+    RUN package-dir pnpm exec electron-builder --dir "--config.electronDist=$EDIST"
+  else
+    RUN package-dir pnpm package:dir
+  fi
+  # 产物目录名随平台/架构变：macOS arm64=release/mac-arm64/pi-wood.app/…、Windows=release/win-unpacked/pi-wood.exe
+  PACKAGED_BIN="$(ls -d release/mac-*/pi-wood.app/Contents/MacOS/pi-wood release/mac-unpacked/pi-wood.app/Contents/MacOS/pi-wood release/win-unpacked/pi-wood.exe 2>/dev/null | head -1)"
+  if [ -z "$PACKAGED_BIN" ]; then
+    LOG "FAIL packaged-probe —— 打包产物里没找到可执行文件（release/ 下 mac-*/win-unpacked 均无）"; exit 1
+  fi
+  LOG "packaged 探针可执行：$PACKAGED_BIN"
+  RUN probe-conversation-packaged "./$PACKAGED_BIN" --conversation-probe=packaged
 fi
 
 LOG "================ 全部通过 ================"

@@ -1,0 +1,11 @@
+Scope: 5 of 6 workspace projects
+packages/plugin-api typecheck$ tsc --noEmit
+packages/ui-kit typecheck$ tsc --noEmit
+packages/plugin-api typecheck: Done
+packages/ui-kit typecheck: Done
+packages/ipc-schema typecheck$ tsc --noEmit
+packages/ipc-schema typecheck: Done
+packages/engine typecheck$ tsc --noEmit
+packages/engine typecheck: Done
+apps/desktop typecheck$ tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json
+apps/desktop typecheck: Done

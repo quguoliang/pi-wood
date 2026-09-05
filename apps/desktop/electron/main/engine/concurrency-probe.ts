@@ -1,8 +1,9 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { app } from "electron";
 import type { EngineEvent, HostToolResult, HostUiParams } from "@pi-wood/ipc-schema";
 import { ALL_HOST_TOOL_SPECS } from "../agent-tools/host-tool-specs";
 import {
@@ -64,6 +65,15 @@ function installStubCaps(maxLive: number): void {
 function makeProject(tag: string): string {
   const dir = mkdtempSync(join(tmpdir(), `piwood-conc-${tag}-`));
   writeFileSync(join(dir, "README.md"), `# probe ${tag}\n`, "utf-8");
+  // 必须是真 git 仓库：非 git 会走 degraded-shared（共享主树），断言①「cwd 各不相同」就永远不成立
+  const run = (args: string[]): void => {
+    execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+  };
+  run(["init", "-q"]);
+  run(["config", "user.email", "probe@piwood.dev"]);
+  run(["config", "user.name", "piwood-probe"]);
+  run(["add", "-A"]);
+  run(["commit", "-q", "-m", "probe base"]);
   return dir;
 }
 
@@ -88,10 +98,13 @@ export async function runConcurrencyProbe(): Promise<void> {
     await ensureConversation(projB);
     const list = listConversations();
     const cwdSet = new Set(list.map((c) => c.worktreePath ?? c.projectDir));
+    const cwdDetail = list
+      .map((c) => `${c.id}:${(c.worktreePath ?? c.projectDir).split("/").pop()}`)
+      .join(" ");
     check(
       "① 三对话并存且引擎 cwd 各不相同（worktree 隔离）",
       list.length >= 3 && cwdSet.size >= 3,
-      `list=${list.length} cwd 去重=${cwdSet.size}`,
+      `list=${list.length} cwd 去重=${cwdSet.size} [${cwdDetail}]`,
     );
 
     // ② 切走不打断：切到 A1，B1 仍 alive；切回后 record 状态一致
@@ -128,5 +141,7 @@ export async function runConcurrencyProbe(): Promise<void> {
   console.log(`\n=== 结论：${pass}/${results.length} 条通过 ===`);
   const engineExit = process.env["ENGINE_EXIT"] ?? "";
   if (engineExit) console.log(`ENGINE_EXIT=${engineExit}`);
-  process.exitCode = results.every((r) => r.ok) ? 0 : 1;
+  const code = results.every((r) => r.ok) ? 0 : 1;
+  process.exitCode = code;
+  app.exit(code); // 主进程设 exitCode 不会退出 Electron，必须显式 app.exit（与 conversation-probe 同法）
 }

@@ -193,19 +193,21 @@ export async function ensureConversation(
   opts: { newConversation?: boolean } = {},
 ): Promise<RemoteAdapterLike> {
   const existing = conversationForProject(projectDir);
-  if (existing && existing.host.alive && existing.record.status !== "dead" && !opts.newConversation) {
+  const existingAlive = Boolean(existing?.host.alive) && existing?.record.status !== "dead";
+  if (existing && existingAlive && !opts.newConversation) {
     activeConversationId = existing.id;
     touch(existing);
     return existing.adapter;
   }
-  // 进程已经不在了（休眠或崩溃）：摘掉旧句柄再重开，否则表里会攒一堆永不活跃的僵尸记录。
-  // 会话文件随句柄一起带走，重开时按它把上下文接回。
-  const resumeSessionFile = existing?.record.sessionFile;
-  const carriedRestarts = existing?.record.restarts ?? 0;
-  if (existing) {
+  if (existing && !existingAlive) {
+    // 进程已经不在了（休眠或崩溃）：摘掉旧句柄再重开，否则表里会攒一堆永不活跃的僵尸记录。
+    // 会话文件随句柄一起带走，重开时按它把上下文接回。
+    // 「同项目再开一条」不摘活跃句柄（那等于把旧对话连进程一起泄漏），也绝不接回旧会话文件。
     handles.delete(existing.id);
     if (byProject.get(projectDir) === existing.id) byProject.delete(projectDir);
   }
+  const resumeSessionFile = existing && !existingAlive && !opts.newConversation ? existing.record.sessionFile : undefined;
+  const carriedRestarts = existing && !existingAlive && !opts.newConversation ? existing.record.restarts : 0;
 
   // 腾位置：纯函数一次只给一个 victim，超得多的时候要循环（否则会「休眠一条仍超限」）
   const maxLive = normalizeMaxLiveEngines(needCaps().maxLiveEngines());

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -36,6 +37,15 @@ async function git(args: string[], cwd: string): Promise<GitResult> {
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message?: string };
     return { ok: false, out: e.stdout ?? "", err: e.stderr ?? e.message ?? String(err) };
+  }
+}
+
+/** 解析软链后的真实路径；路径不存在（worktree 已被手工删除等）时原样返回 */
+async function realpathSafe(p: string): Promise<string> {
+  try {
+    return await realpath(p);
+  } catch {
+    return p;
   }
 }
 
@@ -307,13 +317,21 @@ export interface OrphanReport {
 /**
  * 孤儿对账：本项目管辖范围内（.pi-wood/worktrees + piwood/* 分支）、「不归属任何活跃对话」的树。
  * 只报告不偷删（与 T8.1 残留看门狗同一哲学）；由设置页/用户显式回收。
+ * 路径一律先 realpath 归一：git 返回的是解析后的真实路径，而调用方传入的 projectDir/activePaths
+ * 可能含软链段（macOS `/var` → `/private/var` 等），不归一会把活跃树误报成孤儿。
  */
 export async function reconcileOrphans(projectDir: string, activePaths: readonly string[]): Promise<OrphanReport[]> {
   const list = await git(["worktree", "list", "--porcelain"], projectDir);
   if (!list.ok) return [];
-  const active = new Set(activePaths.map((p) => p.replace(/[\\/]+$/, "")));
-  return parseWorktreeList(list.out)
-    .filter((e) => !active.has(e.path.replace(/[\\/]+$/, "")))
-    .filter((e) => isManagedWorktree(e.path, e.branch, projectDir))
-    .map((e) => ({ path: e.path, branch: e.branch }));
+  const active = new Set<string>();
+  for (const p of activePaths) active.add(await realpathSafe(p));
+  const project = await realpathSafe(projectDir);
+  const out: OrphanReport[] = [];
+  for (const e of parseWorktreeList(list.out)) {
+    const path = await realpathSafe(e.path);
+    if (active.has(path)) continue;
+    if (!isManagedWorktree(path, e.branch, project)) continue;
+    out.push({ path, branch: e.branch });
+  }
+  return out;
 }

@@ -13,3 +13,6 @@ node_modules
 
 # 运行时数据目录（worktree/memory，勿入库）
 .pi-wood/
+
+# 探针「半途静默崩溃」临时标记（跑完即无意义，不入库）
+*.started

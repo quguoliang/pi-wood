@@ -1,0 +1,27 @@
+[plugin:demo-kitchen] [kitchen] activate
+[plugin:demo-crash] [crash] activate（等待 crash 控制消息）
+[plugin:demo-kitchen] 未声明权限「terminal:run」，API terminal.run 被拒绝
+[plugin:demo-kitchen] [kitchen] panel registered
+[plugin:demo-kitchen] [kitchen] statusbar item set
+[plugin:demo-kitchen] [kitchen] declared permissions: ["notify","window:control","panels","statusbar","bus:*","editor:open","fs:read"]
+[plugin:demo-kitchen] [kitchen] terminal denied as ex
+Error occurred in handler for 'fs:read': Error: 引擎未启动：请先选择项目
+    at file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:7244:21
+    at file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:5494:23
+    at Session.<anonymous> (node:electron/js2c/browser_init:2:107269)
+    at Session.emit (node:events:519:28)
+[plugin:demo-overreach] [overreach] 第 1 轮：尝试越权调用
+[plugin:demo-overreach] 未声明权限「terminal:run」，API terminal.run 被拒绝
+[plugin:demo-overreach] [overreach] terminal.run 被拒（预期）：未声明权限「terminal:run」，API terminal.run 被拒绝
+[plugin:demo-overreach] 未声明权限「fs:write」，API diff.revert 被拒绝
+[plugin:demo-overreach] [overreach] diff.revert 被拒（预期）：未声明权限「fs:write」，API diff.revert 被拒绝
+[engine:conv-1-e] (node:42734) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+[engine:conv-1-e] (Use `Electron Helper --trace-warnings ...` to show where the warning was created)
+(node:42497) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `Electron --trace-warnings ...` to show where the warning was created)
+[ui-chat] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/ui-v3/ui-chat.png
+[plugin:demo-crash] crashed code=0 uptime=146298ms restarts=0
+[engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
+[plugin:demo-kitchen] crashed code=0 uptime=146297ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=146297ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-ef71c174）

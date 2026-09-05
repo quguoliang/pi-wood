@@ -1,0 +1,8 @@
+[memory-probe] ✓ global 保存 — id=mem-mtnuq3j1-9f8h2m reviewed=false
+[memory-probe] ✓ project 保存 + 落项目内文件 — projectCount=1
+[memory-probe] ✓ 确认→reviewed — 
+[memory-probe] ✓ 同标题 upsert 不新增、内容更新、reviewed 复位 — globalCount=1
+[memory-probe] ✓ project scope 隔离（切项目后不可见） — projB project=0 global=1
+[memory-probe] ✓ 切回 projA 其 project 记忆仍在 — 
+[memory-probe] ✓ 删除生效 — 
+[memory-probe] = 7/7 通过 · 结论 ALL PASS

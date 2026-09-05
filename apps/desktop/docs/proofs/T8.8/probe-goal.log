@@ -1,0 +1,8 @@
+[goal-probe] ✓ 自动续跑发 prompt — status=active turns=1 sent=1
+[goal-probe] ✓ token 预算耗尽停 — status=budgetLimited tokensUsed=100 sent=1
+[goal-probe] ✓ 轮次上限 blocked — 前三轮后 turns=3/3 第4次 status=blocked
+[goal-probe] ✓ complete 终止 — status=complete note=probe:complete
+[goal-probe] ✓ 暂停幂等 + 恢复 — paused=paused resumed=active
+[goal-probe] ✓ 状态与正文落文件 — probe-session.md,probe-session.state.json
+[goal-probe] ✓ abort→暂停 — status=paused
+[goal-probe] = 7/7 通过 · 结论 ALL PASS
