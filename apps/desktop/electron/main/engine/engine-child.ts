@@ -339,13 +339,20 @@ const HANDLERS: Record<EngineRpcMethod, Handler> = {
       });
       await gap(); // 按接近模型的速率灌 = 测「到达延迟」；0 = 突发全速 = 测「管子塞多快」
     }
+    const verdicts: Array<{ allow: boolean; auto?: boolean; reason?: string }> = [];
     for (let i = 0; i < params.approvals; i += 1) {
-      await rpc("host:approval", { ticket: `piwood-latency-probe-${i}`, toolName: "piwood_latency_probe" }, 10_000, {
+      const v = (await rpc("host:approval", { ticket: `piwood-latency-probe-${i}`, toolName: "piwood_latency_probe" }, 10_000, {
         name: "approvalRtt",
-        when: (v) => (v as { auto?: boolean } | undefined)?.auto === true,
-      });
+        when: (x) => (x as { auto?: boolean } | undefined)?.auto === true,
+      }).catch((err: unknown) => ({ allow: false, reason: `通道异常：${frameErrorText(err)}` }))) as {
+        allow?: boolean;
+        auto?: boolean;
+        reason?: string;
+      };
+      // 回执随结果带回主进程：探针要端到端断言「child 确实收到 allow:false」，而不是只看主进程日志
+      if (verdicts.length < 20) verdicts.push({ allow: v.allow === true, auto: v.auto, reason: v.reason?.slice(0, 60) });
     }
-    return { events: params.events, approvals: params.approvals, gapMs: params.gapMs };
+    return { events: params.events, approvals: params.approvals, gapMs: params.gapMs, verdicts };
   },
   shutdown: (p) => stopEngine(String(p?.reason ?? "quit")),
 };

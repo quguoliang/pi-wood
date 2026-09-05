@@ -20,9 +20,11 @@ import {
   UiRequestPayloadSchema,
   UiRespondPayloadSchema,
   type ApprovalRequestPayload,
+  type ApprovalRespondPayload,
   type EnginePiTheme,
   type GitInfo,
   type HostApprovalParams,
+  type HostApprovalResult,
   type HostSubagentParams,
   type HostToolExecuteParams,
   type HostUiParams,
@@ -216,10 +218,14 @@ interface PendingApprovalEntry {
   projectName?: string;
   /** child 侧一次性票据（host:approval），消费后记录在 consumedApprovalTickets */
   ticket?: string;
+  /** 审批卡序号（pendingKey 的另一半；探针构造应答载荷要用） */
+  id: number;
   resolve: (allow: boolean) => void;
   timer?: NodeJS.Timeout;
   /** 120s 计时是否已起（非 active 对话的 pending 不计时，切过去再起表） */
   armed: boolean;
+  /** 起卡时刻（探针断言「后台 pending 存活多久仍未被拒」用） */
+  createdAt: number;
 }
 const pendingApprovals = new Map<string, PendingApprovalEntry>();
 let uiRequestSeq = 0;
@@ -234,7 +240,19 @@ interface PendingUiEntry {
 const pendingUiRequests = new Map<string, PendingUiEntry>();
 /** 已消费的 child 审批/守卫票据（一次性，防重放；child 崩溃重建后票据本就换新，无需清理） */
 const consumedApprovalTickets = new Set<string>();
-const APPROVAL_TIMEOUT_MS = 120_000;
+/**
+ * 审批/ctx.ui 的默认拒绝窗口。**测试缝**：`PIWOOD_APPROVAL_TIMEOUT_MS` 仅当是正有限数时生效，
+ * 否则一律回落 120s（生产不设 = 原行为）。
+ * 为什么要缝：「无应答 = 拒」是安全底线，但 120s 让人没法在探针里断言它——
+ * `--approval-probe` 用它把窗口压到秒级，从而能硬证明「后台对话不被静默拒、切过去后才计时、
+ * 超时确实落 deny」。
+ * ⚠ **必须在起表时调用**（不能提成模块常量）：`index.ts` 静态 import 本模块，常量会在探针设置
+ * env 之前就被固化，测试缝会静默失效。
+ */
+function approvalTimeoutMs(): number {
+  const raw = Number(process.env.PIWOOD_APPROVAL_TIMEOUT_MS ?? "");
+  return Number.isFinite(raw) && raw > 0 ? raw : 120_000;
+}
 let capabilitiesInstalled = false;
 
 const execFileAsync = promisify(execFile);
@@ -420,7 +438,7 @@ function armApprovalTimeout(key: string): void {
     pendingApprovals.delete(key);
     if (entry.conversationId) noteApprovalPending(entry.conversationId, -1);
     entry.resolve(false);
-  }, APPROVAL_TIMEOUT_MS);
+  }, approvalTimeoutMs());
 }
 
 /** 起（且只起一次）某条 ctx.ui 请求的 120s 计时 */
@@ -432,7 +450,7 @@ function armUiTimeout(key: string): void {
     if (!pendingUiRequests.has(key)) return;
     pendingUiRequests.delete(key);
     entry.resolve(entry.kind === "confirm" ? false : undefined);
-  }, APPROVAL_TIMEOUT_MS);
+  }, approvalTimeoutMs());
 }
 
 /**
@@ -486,8 +504,10 @@ function confirmViaRenderer(conversationId: string, title: string, message: stri
       conversationId,
       projectName: payload.projectName,
       ticket,
+      id,
       resolve,
       armed: false,
+      createdAt: Date.now(),
     });
     // 超时按可见性分档：只有发起对话正被看着才起 120s 表；后台对话的 pending 常驻待应答
     if (shouldArmTimeout(conversationId, getActiveConversationId())) armApprovalTimeout(key);
@@ -496,6 +516,99 @@ function confirmViaRenderer(conversationId: string, title: string, message: stri
 
 function getPolicy(): ApprovalPolicy {
   return loadSettings().approval as ApprovalPolicy;
+}
+
+/**
+ * T8.4/T8.5 审批裁决的真实路径（**从 caps 字面量里抽出来导出**）：
+ * `--approval-probe` 要直接驱动它断言「票据一次性、跨对话应答被拒、后台 pending 不被静默拒、
+ * 超时确实落 deny」——藏在 caps 对象里就没法在探针里碰到真实现。
+ * ⚠ 语义逐字不变：child 没有任何本地放行路径，宿主是唯一裁决者。
+ */
+export async function decideApprovalFor(
+  ctx: { conversationId: string; projectDir: string },
+  p: HostApprovalParams,
+): Promise<HostApprovalResult> {
+  // 一次性票据防重放：同一 ticket 只能背书一次裁决（T8.4；拒绝也是一种裁决，别让重放绕过）
+  const ticket = checkApprovalTicket(consumedApprovalTickets, p.ticket);
+  if (!ticket.ok) return { allow: false, reason: ticket.error, auto: true };
+  if (p.ticket) consumedApprovalTickets.add(p.ticket);
+  const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
+  const decision = decide(getPolicy(), p.toolName, p.input, override);
+  if (decision === "deny") {
+    return {
+      allow: false,
+      reason:
+        override?.[p.toolName] === "deny"
+          ? `已由子代理「${p.agentName}」的 per-tool 权限拒绝（${p.toolName}: deny）`
+          : "已由安全策略拦截（path-guard / denyAll）",
+      auto: true, // T8.9：未走用户卡 → 这次往返可计入 approvalRtt 通道红线
+    };
+  }
+  // T8.5 子代理全局闸：agent_start 接缝**排队而非 spawn**（每 agent_start 恰好产 1 个 run，
+  // vendored 事实）。不改 vendored 内核、不违反其 ADR 0001「无上限」设计——闸门在宿主侧。
+  // 预约-快照对账：放行前 reserved++；run 在 runs 快照转 running 时按差值折算；审批被拒显式退还。
+  let reservedRun = false;
+  if (p.toolName === "agent_start") {
+    for (;;) {
+      const plan = planChildRunAdmit(childRunGate, ctx.conversationId, childRunLimits());
+      if (plan.action === "admit") break;
+      console.info(`[engine] agent_start 排队：${plan.reason}（对话 ${ctx.conversationId}）`);
+      await waitForChildRunSlot();
+    }
+    reserveChildRun(childRunGate, ctx.conversationId);
+    reservedRun = true;
+  }
+  try {
+    // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
+    const conv = getConversation(ctx.conversationId);
+    const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
+    if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true, auto: true };
+    const { title, message } = describeApprovalCall(p.toolName, p.input);
+    const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
+    if (!ok) {
+      if (reservedRun) releaseChildRunReservation(childRunGate, ctx.conversationId);
+      return { allow: false, reason: "用户拒绝该操作" };
+    }
+    return { allow: true };
+  } catch (err) {
+    if (reservedRun) releaseChildRunReservation(childRunGate, ctx.conversationId);
+    throw err;
+  }
+}
+
+/**
+ * 审批应答的真实归属校验路径（同样从 ipc handler 里抽出来导出，供 `--approval-probe` 驱动）。
+ * 双保险：① 应答者自报对话必须等于发起对话；② 主进程视角该对话必须是当前 active。
+ * 任一条不满足一律**拒绝**（返回 false，pending 保留给发起对话自己应答）。
+ */
+export function respondApprovalFor(p: ApprovalRespondPayload): boolean {
+  const key = pendingKey(p.conversationId ?? null, p.id);
+  const entry = pendingApprovals.get(key);
+  if (!entry) return false;
+  if (entry.conversationId && entry.conversationId !== getActiveConversationId()) {
+    send("ui:notify", { message: "已拒绝跨对话审批：请切到发起该请求的对话后再应答", type: "warning" });
+    return false;
+  }
+  if (!canRespond(entry.conversationId, p.conversationId ?? null)) {
+    send("ui:notify", { message: "已拒绝跨对话审批：应答者与发起对话不一致", type: "warning" });
+    return false;
+  }
+  if (entry.timer) clearTimeout(entry.timer);
+  pendingApprovals.delete(key);
+  if (entry.conversationId) noteApprovalPending(entry.conversationId, -1);
+  entry.resolve(p.allow);
+  return true;
+}
+
+/** 在飞审批的只读快照（探针断言「后台 pending 未被静默判死」用；不暴露 resolve/ticket） */
+export function pendingApprovalSnapshot(): Array<{ id: number; conversationId: string | null; pendingMs: number; armed: boolean }> {
+  const now = Date.now();
+  return [...pendingApprovals.values()].map((e) => ({
+    id: e.id,
+    conversationId: e.conversationId,
+    pendingMs: now - e.createdAt,
+    armed: e.armed,
+  }));
 }
 
 function requestUi(
@@ -616,54 +729,8 @@ function installCapabilitiesOnce(): void {
           return undefined;
       }
     },
-    decideApproval: async (ctx, p: HostApprovalParams) => {
-      // 一次性票据防重放：同一 ticket 只能背书一次裁决（T8.4；拒绝也是一种裁决，别让重放绕过）
-      const ticket = checkApprovalTicket(consumedApprovalTickets, p.ticket);
-      if (!ticket.ok) return { allow: false, reason: ticket.error, auto: true };
-      if (p.ticket) consumedApprovalTickets.add(p.ticket);
-      const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
-      const decision = decide(getPolicy(), p.toolName, p.input, override);
-      if (decision === "deny") {
-        return {
-          allow: false,
-          reason:
-            override?.[p.toolName] === "deny"
-              ? `已由子代理「${p.agentName}」的 per-tool 权限拒绝（${p.toolName}: deny）`
-              : "已由安全策略拦截（path-guard / denyAll）",
-          auto: true, // T8.9：未走用户卡 → 这次往返可计入 approvalRtt 通道红线
-        };
-      }
-      // T8.5 子代理全局闸：agent_start 接缝**排队而非 spawn**（每 agent_start 恰好产 1 个 run，
-      // vendored 事实）。不改 vendored 内核、不违反其 ADR 0001「无上限」设计——闸门在宿主侧。
-      // 预约-快照对账：放行前 reserved++；run 在 runs 快照转 running 时按差值折算；审批被拒显式退还。
-      let reservedRun = false;
-      if (p.toolName === "agent_start") {
-        for (;;) {
-          const plan = planChildRunAdmit(childRunGate, ctx.conversationId, childRunLimits());
-          if (plan.action === "admit") break;
-          console.info(`[engine] agent_start 排队：${plan.reason}（对话 ${ctx.conversationId}）`);
-          await waitForChildRunSlot();
-        }
-        reserveChildRun(childRunGate, ctx.conversationId);
-        reservedRun = true;
-      }
-      try {
-        // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
-        const conv = getConversation(ctx.conversationId);
-        const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
-        if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true, auto: true };
-        const { title, message } = describeApprovalCall(p.toolName, p.input);
-        const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
-        if (!ok) {
-          if (reservedRun) releaseChildRunReservation(childRunGate, ctx.conversationId);
-          return { allow: false, reason: "用户拒绝该操作" };
-        }
-        return { allow: true };
-      } catch (err) {
-        if (reservedRun) releaseChildRunReservation(childRunGate, ctx.conversationId);
-        throw err;
-      }
-    },
+    // T8.4/T8.9：真实裁决路径已抽成 decideApprovalFor（供 --approval-probe 直接驱动）
+    decideApproval: (ctx, p: HostApprovalParams) => decideApprovalFor(ctx, p),
     onSubagent: (ctx, p: HostSubagentParams) => {
       switch (p.op) {
         case "runs": {
@@ -1022,25 +1089,7 @@ export function initEngineIpc(): void {
   // 当前 active——跨对话放行 = 安全旁路，宁可拒绝也不放行。
   ipcMain.handle("approval:decide", (_e, raw: unknown) => {
     const p = ApprovalRespondPayloadSchema.parse(raw);
-    const key = pendingKey(p.conversationId ?? null, p.id);
-    const entry = pendingApprovals.get(key);
-    if (!entry) return false;
-    if (entry.conversationId && entry.conversationId !== getActiveConversationId()) {
-      send("ui:notify", {
-        message: "已拒绝跨对话审批：请切到发起该请求的对话后再应答",
-        type: "warning",
-      });
-      return false;
-    }
-    if (!canRespond(entry.conversationId, p.conversationId ?? null)) {
-      send("ui:notify", { message: "已拒绝跨对话审批：应答者与发起对话不一致", type: "warning" });
-      return false;
-    }
-    if (entry.timer) clearTimeout(entry.timer);
-    pendingApprovals.delete(key);
-    if (entry.conversationId) noteApprovalPending(entry.conversationId, -1);
-    entry.resolve(p.allow);
-    return true;
+    return respondApprovalFor(p);
   });
 
   // T8.4：ctx.ui 应答——与审批同款归属校验（无归属的全局请求不受限）

@@ -1,13 +1,13 @@
-[plugin:demo-crash] [crash] activate（等待 crash 控制消息）
 [plugin:demo-kitchen] [kitchen] activate
+[plugin:demo-crash] [crash] activate（等待 crash 控制消息）
+[plugin:demo-kitchen] 未声明权限「terminal:run」，API terminal.run 被拒绝
 [plugin:demo-kitchen] [kitchen] panel registered
 [plugin:demo-kitchen] [kitchen] statusbar item set
-[plugin:demo-kitchen] 未声明权限「terminal:run」，API terminal.run 被拒绝
 [plugin:demo-kitchen] [kitchen] declared permissions: ["notify","window:control","panels","statusbar","bus:*","editor:open","fs:read"]
-[plugin:demo-kitchen] [kitchen] terminal denied as expected: 未声明权限「terminal:run」，API terminal.run 被拒绝
+[plugin:demo-kitchen] [kitchen] terminal denied as ex
 Error occurred in handler for 'fs:read': Error: 引擎未启动：请先选择项目
-    at file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:7849:21
-    at file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:6172:23
+    at file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:8013:21
+    at file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:6332:23
     at Session.<anonymous> (node:electron/js2c/browser_init:2:107269)
     at Session.emit (node:events:519:28)
 [plugin:demo-overreach] [overreach] 第 1 轮：尝试越权调用
@@ -16,21 +16,21 @@ Error occurred in handler for 'fs:read': Error: 引擎未启动：请先选择�
 [plugin:demo-overreach] 未声明权限「fs:write」，API diff.revert 被拒绝
 [plugin:demo-overreach] [overreach] diff.revert 被拒（预期）：未声明权限「fs:write」，API diff.revert 被拒绝
 === T8.10 --ui-latency-probe（带窗：第二跳 / 首屏 / 掉帧 / 主进程 CPU） ===
-✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.798ms（预算 ≤20ms，n=368）；负载=900 帧 / 3 路 / 间隔 16ms
-✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=9.5ms（预算 ≤33.3ms，n=985）
-✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=3.79%（预算 ≤60%，n=5；无样本不判达标）
-✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=8.1ms（预算 ≤100ms，n=6）
-✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1359 rejectedBatches=0
-  · 全量摘要：rpcRtt p50=0.968 p95=1.472 max=1.472 n=4 | eventHop p50=0.14 p95=0.24 max=0.578 n=900 | rendererHop p50=0.132 p95=0.798 max=2.803 n=368 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=5.1 p95=8.1 max=8.1 n=6 | frameGap p50=8.3 p95=9.5 max=16.7 n=985 | hostTool p50=0 p95=0 max=0 n=0
-  · 主进程 CPU：p50=2.617% p95=3.79% max=3.79%（n=5）
+✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.609ms（预算 ≤20ms，n=369）；负载=900 帧 / 3 路 / 间隔 16ms
+✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=8.8ms（预算 ≤33.3ms，n=1008）
+✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=3.753%（预算 ≤60%，n=5；无样本不判达标）
+✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=9.6ms（预算 ≤100ms，n=6）
+✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1383 rejectedBatches=0
+  · 全量摘要：rpcRtt p50=0.92 p95=3.112 max=3.112 n=4 | eventHop p50=0.029 p95=0.137 max=1.678 n=763 | rendererHop p50=0.154 p95=0.609 max=4.763 n=369 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=6.2 p95=9.6 max=9.6 n=6 | frameGap p50=8.3 p95=8.8 max=16.648 n=1008 | hostTool p50=0 p95=0 max=0 n=0
+  · 主进程 CPU：p50=2.022% p95=3.753% max=3.753%（n=5）
   · 口径提醒：负载是 debugEcho 合成事件（不含模型生成），测的是通道 + 渲染管线扛不扛得住
 
 === 结论：5/5 条通过 ===
 [ui-latency] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/T8.8/ui-latency-probe.png
-[plugin:demo-crash] crashed code=0 uptime=12620ms restarts=0
+[plugin:demo-crash] crashed code=0 uptime=12607ms restarts=0
 [engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
-[plugin:demo-kitchen] crashed code=0 uptime=12620ms restarts=0
-[plugin:demo-overreach] crashed code=0 uptime=12619ms restarts=0
-[engine] 子进程异常退出（code=0, conv=conv-1-1d851ae1）
-[engine] 子进程异常退出（code=0, conv=conv-2-a987febb）
-[engine] 子进程异常退出（code=0, conv=conv-3-a9a344fd）
+[plugin:demo-kitchen] crashed code=0 uptime=12608ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=12607ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-84e2fc99）
+[engine] 子进程异常退出（code=0, conv=conv-2-9592d406）
+[engine] 子进程异常退出（code=0, conv=conv-3-1d362ad4）

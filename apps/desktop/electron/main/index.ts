@@ -17,6 +17,7 @@ import { isConversationProbeMode, runConversationProbe } from "./engine/conversa
 import { runConcurrencyProbe } from "./engine/concurrency-probe";
 import { runLatencyProbe } from "./engine/latency-probe";
 import { runWorkspaceScopeProbe } from "./engine/workspace-scope-probe";
+import { isApprovalProbeMode, runApprovalProbe } from "./engine/approval-probe";
 import { isUiLatencyProbeMode, runUiLatencyProbe } from "./engine/latency-ui-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
@@ -210,6 +211,11 @@ if (!gotLock) {
     // T8.7 作用域探针：真 child + 真 git 工作树，交叉断言 fs/git/snapshot/memory/term/sessions 归属后 app.exit(0|1)
     if (process.argv.includes("--workspace-scope-probe")) {
       await runWorkspaceScopeProbe();
+      return;
+    }
+    // T8.4 安全底线探针：真裁决路径断言 deny-by-default / 票据一次性 / 应答归属 / 后台不静默拒
+    if (isApprovalProbeMode()) {
+      await runApprovalProbe();
       return;
     }
     ipcMain.handle("app:ping", () => ({

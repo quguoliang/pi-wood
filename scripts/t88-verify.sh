@@ -76,10 +76,11 @@ RUN probe-memory          pnpm exec electron . --memory-probe
 RUN probe-engine-process  pnpm exec electron . --engine-process-probe
 RUN probe-conversation    pnpm exec electron . --conversation-probe
 
-# 4) T8.8 并发门禁探针 + T8.9 红线度量探针 + T8.7 作用域探针（本轮新增的收口断言）
+# 4) 收口断言：T8.8 并发门禁 / T8.9 红线度量 / T8.7 作用域归属 / T8.4 审批安全底线
 RUN probe-concurrency     pnpm exec electron . --concurrency-probe
 RUN probe-latency         pnpm exec electron . --latency-probe
 RUN probe-workspace-scope pnpm exec electron . --workspace-scope-probe
+RUN probe-approval        pnpm exec electron . --approval-probe
 
 # 4b) T8.10 带窗红线探针（第二跳 / 切换首屏 / 掉帧 / 主进程 CPU）——需要可见窗口，会抢焦点
 if [ "${SKIP_GUI:-0}" != "1" ]; then
