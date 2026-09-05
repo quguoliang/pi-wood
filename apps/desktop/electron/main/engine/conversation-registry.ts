@@ -8,7 +8,9 @@ import type {
   HostToolExecuteParams,
   HostToolResult,
   HostUiParams,
+  LatencyReport,
 } from "@pi-wood/ipc-schema";
+import { mergeRecorders } from "@pi-wood/ipc-schema";
 import type { EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
 import { EngineHost } from "./engine-host";
 import {
@@ -163,6 +165,25 @@ export function busyConversations(): string[] {
 /** T8.8 资源行：全部活跃引擎 child 的 RSS 合计（MB，取 boot 自报） */
 export function engineRssTotal(): number {
   return [...handles.values()].reduce((acc, h) => acc + (h.boot?.memRssMB ?? 0), 0);
+}
+
+/**
+ * T8.9 红线度量：跨对话合并各 host 的窗口样本（合并的是样本，不是快照平均——
+ * 平均的平均会掩盖单路抖动，正是这张红线表要避免的事）。无活跃对话时返回空报告。
+ */
+export function engineLatencySummary(): { hosts: number; report: LatencyReport; perConversation: Array<{ id: string; report: LatencyReport }> } {
+  const live = [...handles.values()].filter((h) => h.host.alive);
+  const parts = live.map((h) => h.host.latencyRecorders());
+  return {
+    hosts: live.length,
+    report: {
+      rpcRtt: mergeRecorders(parts.map((p) => p.rpcRtt), 1024),
+      eventHop: mergeRecorders(parts.map((p) => p.eventHop), 2048),
+      approvalRtt: mergeRecorders(parts.map((p) => p.approvalRtt), 1024),
+      hostToolRtt: mergeRecorders(parts.map((p) => p.hostToolRtt), 1024),
+    },
+    perConversation: live.map((h) => ({ id: h.id, report: h.host.latencyReport() })),
+  };
 }
 
 function setStatus(h: ConversationHandle, to: ConversationStatus): void {

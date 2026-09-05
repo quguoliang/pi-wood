@@ -8,12 +8,26 @@ import type {
   EngineRpcMethod,
   EngineUpFrame,
   HostApprovalParams,
+  HostApprovalResult,
   HostSubagentParams,
   HostToolExecuteParams,
   HostToolResult,
   HostUiParams,
+  LatencyReport,
+  LatencySnapshot,
 } from "@pi-wood/ipc-schema";
-import { ENGINE_RPC_VERSION, acceptSeq, decodeFrameLoose, frameErrorText, isEngineReverseRpcMethod, makeRespond } from "@pi-wood/ipc-schema";
+import {
+  EMPTY_LATENCY,
+  ENGINE_RPC_VERSION,
+  LatencyRecorder,
+  acceptSeq,
+  decodeFrameLoose,
+  frameErrorText,
+  isEngineReverseRpcMethod,
+  isRpcLatencySampled,
+  makeRespond,
+  nowEpochMs,
+} from "@pi-wood/ipc-schema";
 import { RemoteEngineAdapter, type EngineTransport } from "@pi-wood/engine/sdk";
 import type { EngineStartInfo, EngineStartOptions } from "@pi-wood/engine";
 
@@ -37,7 +51,7 @@ export interface EngineHostDeps {
   executeHostTool(p: HostToolExecuteParams): Promise<HostToolResult>;
   /** T8.4：ctx.ui 请求带发起对话归属（ctx 由本类按 deps 构造，child 不可自报） */
   requestUi(ctx: { conversationId: string; projectDir: string }, p: HostUiParams): Promise<unknown>;
-  decideApproval(p: HostApprovalParams): Promise<{ allow: boolean; reason?: string }>;
+  decideApproval(p: HostApprovalParams): Promise<HostApprovalResult>;
   /** 可回传值：guard-tool 的拦截原因必须回到 child（fire-and-forget 的 runs/child-event 返回 undefined） */
   onSubagent(p: HostSubagentParams): unknown;
   onEvent(event: EngineEvent, seq: number): void;
@@ -51,6 +65,8 @@ interface Pending {
   reject: (e: Error) => void;
   timer?: NodeJS.Timeout;
   method: string;
+  /** 发出时刻（performance.now()）；回执到达时相减即该命令的往返耗时（T8.9） */
+  t0: number;
 }
 
 /** child 入口解析：dev = out/main 里的独立产物；packaged = asar 内 + asar.unpacked 双候选 */
@@ -90,6 +106,28 @@ export class EngineHost implements EngineTransport {
   private forkMs = -1;
   private bootInfo: EngineStartInfo | undefined;
 
+  /* ---------------- T8.9 度量（红线口径的统计出口，只读、不参与任何判定逻辑） ---------------- */
+
+  /** 只读命令的 main→child→main 往返（prompt/start 等含模型/装配耗时的命令不入此表） */
+  readonly rpcRtt = new LatencyRecorder(256);
+  /** 事件帧 child→main 单跳（跨进程 epoch 时间戳相减；脏样本由 recorder 拒收） */
+  readonly eventHop = new LatencyRecorder(512);
+  /** child 自计并上报的反向往返，按指标名归档（approvalRtt / hostToolRtt / 未来新增） */
+  private readonly metrics = new Map<string, LatencyRecorder>();
+
+  private metricRecorder(name: string): LatencyRecorder {
+    let r = this.metrics.get(name);
+    if (!r) {
+      r = new LatencyRecorder(256);
+      this.metrics.set(name, r);
+    }
+    return r;
+  }
+  /** 取某个上行指标的快照（未知名字给空快照，不抛） */
+  metricSnapshot(name: string): LatencySnapshot {
+    return this.metrics.get(name)?.snapshot() ?? { ...EMPTY_LATENCY };
+  }
+
   constructor(private readonly deps: EngineHostDeps) {
     this.adapter = new RemoteEngineAdapter(this);
   }
@@ -105,6 +143,25 @@ export class EngineHost implements EngineTransport {
   }
   get forkToReadyMs(): number {
     return this.forkMs;
+  }
+
+  /** T8.9：本对话的四项红线指标快照（探针与资源行读它；无样本就是 0，不伪装成达标） */
+  latencyReport(): LatencyReport {
+    return {
+      rpcRtt: this.rpcRtt.snapshot(),
+      eventHop: this.eventHop.snapshot(),
+      approvalRtt: this.metricSnapshot("approvalRtt"),
+      hostToolRtt: this.metricSnapshot("hostToolRtt"),
+    };
+  }
+  /** 给注册表跨对话聚合用（合并的是窗口样本，不是快照平均） */
+  latencyRecorders(): { rpcRtt: LatencyRecorder; eventHop: LatencyRecorder; approvalRtt: LatencyRecorder; hostToolRtt: LatencyRecorder } {
+    return {
+      rpcRtt: this.rpcRtt,
+      eventHop: this.eventHop,
+      approvalRtt: this.metricRecorder("approvalRtt"),
+      hostToolRtt: this.metricRecorder("hostToolRtt"),
+    };
   }
 
   /** fork 子进程；ready 判据 = 收到 hello 帧（协议对齐 + pid 已知），引擎装配在 start() 里 */
@@ -163,6 +220,7 @@ export class EngineHost implements EngineTransport {
     const proc = this.proc;
     if (!proc) return Promise.reject(new Error("引擎子进程未启动"));
     const id = ++this.reqSeq;
+    const t0 = performance.now();
     return new Promise<unknown>((resolve, reject) => {
       const timer =
         timeoutMs > 0
@@ -171,7 +229,7 @@ export class EngineHost implements EngineTransport {
               reject(new Error(`引擎子进程无应答：${method}（${timeoutMs}ms）`));
             }, timeoutMs)
           : undefined;
-      this.pending.set(id, { resolve, reject, timer, method });
+      this.pending.set(id, { resolve, reject, timer, method, t0 });
       try {
         proc.postMessage({ v: ENGINE_RPC_VERSION, kind: "invoke", id, method, params });
       } catch (err) {
@@ -204,6 +262,7 @@ export class EngineHost implements EngineTransport {
         return;
       }
       case "event": {
+        if (typeof frame.sentAt === "number") this.eventHop.record(nowEpochMs() - frame.sentAt); // T8.9 单跳（旧帧无戳则不记）
         const verdict = acceptSeq(this.lastSeq, frame.seq);
         if (!verdict.ok && verdict.dropped > 0) {
           this.droppedEvents += verdict.dropped;
@@ -224,8 +283,13 @@ export class EngineHost implements EngineTransport {
         if (!cb) return;
         this.pending.delete(frame.id);
         if (cb.timer) clearTimeout(cb.timer);
+        if (isRpcLatencySampled(cb.method)) this.rpcRtt.record(performance.now() - cb.t0); // T8.9 只读命令往返
         if (frame.ok) cb.resolve(frame.value);
         else cb.reject(new Error(frame.error ?? `引擎子进程 ${cb.method} 失败`));
+        return;
+      }
+      case "metric": {
+        this.metricRecorder(frame.name).record(frame.ms); // child 单时钟自计，按名归档
         return;
       }
       case "invoke":

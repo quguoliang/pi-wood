@@ -612,7 +612,7 @@ function installCapabilitiesOnce(): void {
     decideApproval: async (ctx, p: HostApprovalParams) => {
       // 一次性票据防重放：同一 ticket 只能背书一次裁决（T8.4；拒绝也是一种裁决，别让重放绕过）
       const ticket = checkApprovalTicket(consumedApprovalTickets, p.ticket);
-      if (!ticket.ok) return { allow: false, reason: ticket.error };
+      if (!ticket.ok) return { allow: false, reason: ticket.error, auto: true };
       if (p.ticket) consumedApprovalTickets.add(p.ticket);
       const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
       const decision = decide(getPolicy(), p.toolName, p.input, override);
@@ -623,6 +623,7 @@ function installCapabilitiesOnce(): void {
             override?.[p.toolName] === "deny"
               ? `已由子代理「${p.agentName}」的 per-tool 权限拒绝（${p.toolName}: deny）`
               : "已由安全策略拦截（path-guard / denyAll）",
+          auto: true, // T8.9：未走用户卡 → 这次往返可计入 approvalRtt 通道红线
         };
       }
       // T8.5 子代理全局闸：agent_start 接缝**排队而非 spawn**（每 agent_start 恰好产 1 个 run，
@@ -643,7 +644,7 @@ function installCapabilitiesOnce(): void {
         // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
         const conv = getConversation(ctx.conversationId);
         const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
-        if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true };
+        if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true, auto: true };
         const { title, message } = describeApprovalCall(p.toolName, p.input);
         const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
         if (!ok) {

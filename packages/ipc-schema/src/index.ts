@@ -1,6 +1,7 @@
 export * from "./engine.ts";
 export * from "./engine-rpc.ts";
 export * from "./engine-throttle.ts";
+export * from "./latency-stats.ts";
 export * from "./projects.ts";
 export * from "./plugins.ts";
 export * from "./subagents.ts";

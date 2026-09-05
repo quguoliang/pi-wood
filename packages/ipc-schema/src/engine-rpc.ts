@@ -43,6 +43,14 @@ export const ENGINE_RPC_METHODS = [
   "getRuntimeInfo",
   "listCommands",
   "stats",
+  /** T8.9 度量：child 立即回执的空操作，专测 main→child→main 的纯通道往返（红线口径用它，不掺模型耗时） */
+  "ping",
+  /**
+   * T8.9 度量：仅探针模式（child 环境带 `PIWOOD_ENGINE_PROBE=1`，否则直接抛）可用。
+   * 经**真实 IPC 通道**合成 N 条事件帧 / M 次 `host:approval` 往返，让「事件到达单跳」「审批往返」
+   * 两条红线在没有模型流量、没有窗口时也有样本可判——而不是永远 SKIP。
+   */
+  "debugEcho",
   "shutdown",
 ] as const;
 export type EngineRpcMethod = (typeof ENGINE_RPC_METHODS)[number];
@@ -93,6 +101,12 @@ export const NewSessionParamsSchema = z.object({ parentSession: z.string().optio
 export const CompactParamsSchema = z.object({ custom: z.string().optional() });
 export const TextParamsSchema = z.object({ text: z.string() });
 export const StatsParamsSchema = z.object({ tag: z.string().optional() });
+/** T8.9 探针合成量（上限防手滑把 child 与主进程管道灌爆） */
+export const DebugEchoParamsSchema = z.object({
+  events: z.number().int().nonnegative().max(2000).default(0),
+  approvals: z.number().int().nonnegative().max(500).default(0),
+});
+export type DebugEchoParams = z.infer<typeof DebugEchoParamsSchema>;
 
 /** 上行反向调用的参数 */
 export const HostToolExecuteParamsSchema = z.object({
@@ -118,7 +132,15 @@ export const HostApprovalParamsSchema = z.object({
 });
 export type HostApprovalParams = z.infer<typeof HostApprovalParamsSchema>;
 /** 审批裁决回执：主进程是唯一裁决者，child 拿不到 allow 一律拒绝（deny-by-default） */
-export const HostApprovalResultSchema = z.object({ allow: z.boolean(), reason: z.string().optional() });
+export const HostApprovalResultSchema = z.object({
+  allow: z.boolean(),
+  reason: z.string().optional(),
+  /**
+   * T8.9 度量：`true` = 本次裁决**没走用户卡**（规则直拒/直放、会话自动接受、票据失效）。
+   * child 只把这类样本计入 `approvalRtt` 通道红线——弹卡那次含人的思考时间，不是 RPC 成本。
+   */
+  auto: z.boolean().optional(),
+});
 export type HostApprovalResult = z.infer<typeof HostApprovalResultSchema>;
 /** 宿主工具执行回执（形状对齐 Pi ToolResult：content 数组 + details） */
 export const HostToolResultSchema = z.object({
@@ -158,6 +180,22 @@ const EventUp = z.object({
   kind: z.literal("event"),
   seq: z.number().int().nonnegative(),
   event: EngineEventSchema,
+  /**
+   * T8.9 度量：child 发出该帧的时刻（epoch 毫秒，`performance.timeOrigin + performance.now()`）。
+   * 主进程用同式相减即得 child→main 单跳延迟。**口径限制**：两进程读同一系统时钟，偏差可忽略，
+   * 但调度抖动/休眠唤醒会给出负值或异常大值——由 `LatencyRecorder` 拒收（计入 invalid），不污染 p95。
+   */
+  sentAt: z.number().finite().optional(),
+});
+/** T8.9 度量：child 单时钟自计的反向往返（审批、宿主工具），fire-and-forget，不参与 seq 对账 */
+const MetricUp = z.object({
+  v: z.literal(ENGINE_RPC_VERSION).default(ENGINE_RPC_VERSION),
+  kind: z.literal("metric"),
+  /** 指标名（approvalRtt / guardRtt / hostToolRtt …），未知名字主进程按名归档不报错 */
+  name: z.string().min(1),
+  ms: z.number().finite(),
+  /** 采样窗口内的计数（可选，仅用于日志核对） */
+  n: z.number().int().nonnegative().optional(),
 });
 const HelloUp = z.object({
   v: z.literal(ENGINE_RPC_VERSION).default(ENGINE_RPC_VERSION),
@@ -195,12 +233,13 @@ export const RpcRespondFrameSchema = RespondFrame;
 /** 下行帧（main → child） */
 export const EngineDownFrameSchema = z.discriminatedUnion("kind", [InvokeDown, RespondFrame, CancelDown, ShutdownDown]);
 /** 上行帧（child → main） */
-export const EngineUpFrameSchema = z.discriminatedUnion("kind", [InvokeUp, RespondFrame, EventUp, HelloUp, ByeUp, LogUp]);
+export const EngineUpFrameSchema = z.discriminatedUnion("kind", [InvokeUp, RespondFrame, EventUp, HelloUp, ByeUp, LogUp, MetricUp]);
 
 export type EngineDownFrame = z.infer<typeof EngineDownFrameSchema>;
 export type EngineUpFrame = z.infer<typeof EngineUpFrameSchema>;
 export type EngineInvokeDown = z.infer<typeof InvokeDown>;
 export type EngineEventUp = z.infer<typeof EventUp>;
+export type EngineMetricUp = z.infer<typeof MetricUp>;
 
 // ---------- 纯函数编解码（可 node --test 穷举） ----------
 
@@ -228,7 +267,7 @@ export function decodeFrame<T>(schema: z.ZodType<T>, raw: unknown): DecodeResult
   return parsed.success ? { ok: true, frame: parsed.data } : asErr(parsed.error.issues[0]?.message ?? "schema 不匹配", raw);
 }
 
-const ALLOWED_KINDS = new Set(["invoke", "respond", "event", "hello", "bye", "log", "cancel", "shutdown"]);
+const ALLOWED_KINDS = new Set(["invoke", "respond", "event", "hello", "bye", "log", "metric", "cancel", "shutdown"]);
 
 /**
  * 热路径解码：只做「能不能安全分发」的结构哨兵，不校验载荷。
@@ -249,6 +288,9 @@ export function decodeFrameLoose(raw: unknown): EngineUpFrame | EngineDownFrame 
       break;
     case "event":
       if (!isNonNegInt(f.seq) || typeof f.event !== "object" || f.event === null) return null;
+      break;
+    case "metric":
+      if (typeof f.name !== "string" || f.name.length === 0 || typeof f.ms !== "number" || !Number.isFinite(f.ms)) return null;
       break;
     case "cancel":
     case "shutdown":
@@ -277,8 +319,27 @@ export function makeInvoke(method: EngineRpcMethod | EngineReverseRpcMethod, par
 export function makeRespond(id: number, ok: boolean, value?: unknown, error?: string) {
   return { v: ENGINE_RPC_VERSION, kind: "respond" as const, id, ok, value, error };
 }
-export function makeEvent(seq: number, event: unknown) {
-  return { v: ENGINE_RPC_VERSION, kind: "event" as const, seq, event };
+export function makeEvent(seq: number, event: unknown, sentAt?: number) {
+  return { v: ENGINE_RPC_VERSION, kind: "event" as const, seq, event, ...(sentAt === undefined ? {} : { sentAt }) };
+}
+/** T8.9 度量帧（fire-and-forget，无 id/无回执） */
+export function makeMetric(name: string, ms: number, n?: number) {
+  return { v: ENGINE_RPC_VERSION, kind: "metric" as const, name, ms, ...(n === undefined ? {} : { n }) };
+}
+/**
+ * 跨进程可比的 epoch 毫秒。**child 打戳与 main 收戳必须都走这里**：
+ * 两侧同式（timeOrigin + performance.now()）才等价，一边写 Date.now() 一边写 performance.now()
+ * 会把「单跳延迟」量成「两种时钟之差」。
+ *
+ * ⚠ 用 `globalThis.performance` 而**不是** `import { performance } from "node:perf_hooks"`：
+ * 本包同时被渲染层（浏览器环境）import，那条 node: 导入会让 electron-vite 的 renderer 构建
+ * 直接失败（`"performance" is not exported by "__vite-browser-external"`，09-05 实踩）。
+ * Node ≥16 与浏览器都有 globalThis.performance；万一没有则退回 Date.now()（精度降到毫秒，仍可比）。
+ */
+export function nowEpochMs(): number {
+  const perf = (globalThis as { performance?: { timeOrigin?: number; now(): number } }).performance;
+  if (perf && typeof perf.timeOrigin === "number") return perf.timeOrigin + perf.now();
+  return Date.now();
 }
 
 /** 把任意异常安全地翻成可克隆的错误字符串（child/main 两侧 respond 失败路径共用） */
@@ -333,6 +394,8 @@ export const ENGINE_RPC_PARAM_SCHEMAS: Record<EngineRpcMethod, z.ZodTypeAny> = {
   getRuntimeInfo: VOID_PARAMS,
   listCommands: VOID_PARAMS,
   stats: StatsParamsSchema,
+  ping: VOID_PARAMS,
+  debugEcho: DebugEchoParamsSchema,
   shutdown: VOID_PARAMS,
 };
 

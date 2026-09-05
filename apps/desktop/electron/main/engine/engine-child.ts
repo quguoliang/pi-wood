@@ -23,6 +23,8 @@ import {
   decodeFrameLoose,
   frameErrorText,
   makeRespond,
+  nowEpochMs,
+  makeMetric,
   validateRpcParams,
 } from "@pi-wood/ipc-schema";
 import { ALL_HOST_TOOL_SPECS } from "../agent-tools/host-tool-specs";
@@ -59,9 +61,19 @@ let upSeq = 0; // 上行 event 帧的单调 seq（主进程据此对账丢帧）
 let reqSeq = 0; // 上行 invoke 的请求 id（与下行 id 空间互不干涉）
 const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer?: NodeJS.Timeout }>();
 
-/** 反向 RPC（child → main）：宿主工具、ctx.ui、审批裁决、子代理守卫 */
-function rpc(method: EngineReverseRpcMethod, params?: unknown, timeoutMs = 30_000): Promise<unknown> {
+/**
+ * 反向 RPC（child → main）：宿主工具、ctx.ui、审批裁决、子代理守卫。
+ * `metric` 一旦给出，成功回执后用 **child 单时钟**自计往返并 fire 一条 metric 帧；
+ * `when` 用来挑样本——审批只在「未走用户卡的自动裁决」时记（人的思考时间不是通道延迟），
+ * 超时/失败路径一律不记（否则把 120s 等待当成 RPC 成本）。
+ */
+interface RpcMetric {
+  name: string;
+  when?(value: unknown): boolean;
+}
+function rpc(method: EngineReverseRpcMethod, params?: unknown, timeoutMs = 30_000, metric?: RpcMetric): Promise<unknown> {
   const id = ++reqSeq;
+  const t0 = performance.now();
   return new Promise<unknown>((resolve, reject) => {
     const timer =
       timeoutMs === T0
@@ -70,7 +82,14 @@ function rpc(method: EngineReverseRpcMethod, params?: unknown, timeoutMs = 30_00
             pending.delete(id);
             reject(new Error(`宿主未应答：${method}（${timeoutMs}ms）`));
           }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
+    pending.set(id, {
+      resolve: (v) => {
+        if (metric && (!metric.when || metric.when(v))) post(makeMetric(metric.name, performance.now() - t0));
+        resolve(v);
+      },
+      reject,
+      timer,
+    });
     post({ kind: "invoke", id, method, params });
   });
 }
@@ -96,10 +115,10 @@ function makeProxyToolNames(names: string[]): unknown[] {
     parameters: s.parameters,
     async execute(toolCallId: string, params: Record<string, unknown>) {
       // 宿主侧工具可能很慢（浏览器导航/截图），给足余量；超时按工具失败回报而非让整轮卡死
-      const r = (await rpc("host:tool-execute", { name: s.name, toolCallId, params }, 120_000)) as {
-        content: unknown[];
-        details?: object;
-      };
+      // hostToolRtt **含宿主执行时间**，只作展示，不参与通道红线判定（那条用 ping 与 approvalRtt）
+      const r = (await rpc("host:tool-execute", { name: s.name, toolCallId, params }, 120_000, {
+        name: "hostToolRtt",
+      })) as { content: unknown[]; details?: object };
       return { content: r?.content ?? [], details: r?.details ?? {} };
     },
   }));
@@ -129,6 +148,8 @@ function remoteApprovalGate() {
           "host:approval",
           { ticket: randomUUID(), toolName: event.toolName, input: event.input },
           150_000,
+          // 只记自动裁决的往返（规则直拒/直放/票据失效）；弹了用户卡的那次含人的思考时间
+          { name: "approvalRtt", when: (v) => (v as { auto?: boolean } | undefined)?.auto === true },
         ).catch((err: unknown) => ({ allow: false, reason: `宿主审批通道异常：${frameErrorText(err)}` }))) as {
           allow?: boolean;
           reason?: string;
@@ -234,7 +255,8 @@ async function doStart(params: {
   E.sessionId = info.sessionId;
   E.unsub = adapter.subscribe((event) => {
     upSeq += 1;
-    post({ kind: "event", seq: upSeq, event });
+    // sentAt：与主进程同一表达式（timeOrigin + performance.now()），主进程据此算 child→main 单跳
+    post({ kind: "event", seq: upSeq, event, sentAt: nowEpochMs() });
   });
   return info;
 }
@@ -295,6 +317,32 @@ const HANDLERS: Record<EngineRpcMethod, Handler> = {
     mem: process.memoryUsage(),
     hasEngine: Boolean(E.adapter),
   }),
+  // T8.9 度量：空操作、不碰引擎，主进程据此量 main→child→main 的纯通道往返
+  ping: async (p) => ({ pong: Number((p as { n?: unknown } | undefined)?.n ?? 0) }),
+  /**
+   * T8.9 度量：探针专用。走**真实 IPC 通道**合成事件帧与审批往返，让「事件到达单跳」「审批往返」
+   * 两条红线在没有模型流量时也有样本可判。非探针模式一律拒绝（不给生产留后门）。
+   */
+  debugEcho: async (p) => {
+    if (process.env.PIWOOD_ENGINE_PROBE !== "1") throw new Error("debugEcho 仅探针模式可用（PIWOOD_ENGINE_PROBE=1）");
+    const params = p as { events: number; approvals: number };
+    for (let i = 0; i < params.events; i += 1) {
+      upSeq += 1;
+      post({
+        kind: "event",
+        seq: upSeq,
+        sentAt: nowEpochMs(),
+        event: { type: "message_update", messageId: "piwood-latency-probe", assistantMessageEvent: { type: "text_delta", delta: "." } },
+      });
+    }
+    for (let i = 0; i < params.approvals; i += 1) {
+      await rpc("host:approval", { ticket: `piwood-latency-probe-${i}`, toolName: "piwood_latency_probe" }, 10_000, {
+        name: "approvalRtt",
+        when: (v) => (v as { auto?: boolean } | undefined)?.auto === true,
+      });
+    }
+    return { events: params.events, approvals: params.approvals };
+  },
   shutdown: (p) => stopEngine(String(p?.reason ?? "quit")),
 };
 

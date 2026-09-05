@@ -15,8 +15,10 @@ import {
   isEngineRpcMethod,
   makeEvent,
   makeInvoke,
+  makeMetric,
   makeRespond,
   nextFrameId,
+  nowEpochMs,
   resetFrameIdForTest,
   validateRpcParams,
   type DecodeResult,
@@ -393,4 +395,46 @@ test("类型守卫：下行方法与反向方法各自只认自己的名字", ()
     assert.equal(isEngineRpcMethod(m), false);
     assert.equal(isEngineReverseRpcMethod(m), false);
   }
+});
+
+// ---------- T8.9 度量出口（ping / sentAt / metric 帧） ----------
+
+test("T8.9：ping 是合法下行方法，空参/带 n 都能过入参校验", () => {
+  assert.ok(isEngineRpcMethod("ping"), "ping 必须进下行方法表");
+  assert.ok(validateRpcParams("ping", undefined).ok);
+  assert.ok(validateRpcParams("ping", { n: 3 }).ok);
+});
+
+test("T8.9：event 帧的 sentAt 可选——旧帧零改动，带戳则原样解出，非有限数被拒", () => {
+  const legacy = expectKind(decodeFrame(EngineUpFrameSchema, { kind: "event", seq: 1, event: OK_EVENT }), "event");
+  assert.equal(legacy.sentAt, undefined);
+  const stamped = expectKind(
+    decodeFrame(EngineUpFrameSchema, { kind: "event", seq: 2, event: OK_EVENT, sentAt: 1750000000123.5 }),
+    "event",
+  );
+  assert.equal(stamped.sentAt, 1750000000123.5);
+  mustReject(decodeFrame(EngineUpFrameSchema, { kind: "event", seq: 3, event: OK_EVENT, sentAt: Number.NaN }));
+});
+
+test("T8.9：makeEvent 只有显式传戳才出现 sentAt 键（消费侧形状向后兼容）", () => {
+  assert.deepEqual(Object.keys(makeEvent(1, OK_EVENT)), ["v", "kind", "seq", "event"]);
+  const withStamp = makeEvent(2, OK_EVENT, 111.5);
+  assert.equal(withStamp.sentAt, 111.5);
+});
+
+test("T8.9：metric 帧可严格解码，热路径哨兵拒空名与非有限 ms", () => {
+  const frame = expectKind(decodeFrame(EngineUpFrameSchema, { kind: "metric", name: "approvalRtt", ms: 12.5 }), "metric");
+  assert.equal(frame.name, "approvalRtt");
+  assert.equal(frame.ms, 12.5);
+  assert.ok(decodeFrameLoose({ kind: "metric", name: "x", ms: 1 }));
+  assert.equal(decodeFrameLoose({ kind: "metric", name: "", ms: 1 }), null, "空名必须被哨兵拒");
+  assert.equal(decodeFrameLoose({ kind: "metric", name: "x", ms: Number.NaN }), null, "NaN 延迟无意义");
+  assert.equal(decodeFrameLoose({ kind: "metric", ms: 1 }), null, "缺 name 拒");
+  assert.deepEqual(makeMetric("guardRtt", 3, 2), { v: ENGINE_RPC_VERSION, kind: "metric", name: "guardRtt", ms: 3, n: 2 });
+  assert.deepEqual(makeMetric("guardRtt", 3), { v: ENGINE_RPC_VERSION, kind: "metric", name: "guardRtt", ms: 3 });
+});
+
+test("T8.9：nowEpochMs 与 Date.now 同机可比（跨进程相减的前提）", () => {
+  assert.ok(Math.abs(nowEpochMs() - Date.now()) < 50, "epoch 毫秒必须贴着系统时钟");
+  assert.ok(nowEpochMs() >= Date.now() - 50);
 });
