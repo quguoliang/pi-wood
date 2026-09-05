@@ -1,19 +1,19 @@
 vite v5.4.21 building SSR bundle for production...
 transforming...
-✓ 87 modules transformed.
+✓ 88 modules transformed.
 rendering chunks...
 [plugin:vite:reporter] [plugin vite:reporter] 
 (!) /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/worktree/worktree-service.ts is dynamically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts but also statically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/conversation-registry.ts, dynamic import will not move module into another chunk.
 
 [plugin:vite:reporter] [plugin vite:reporter] 
-(!) /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/conversation-registry.ts is dynamically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/workbench/terminal-service.ts but also statically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/concurrency-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/conversation-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-ui-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/index.ts, dynamic import will not move module into another chunk.
+(!) /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/conversation-registry.ts is dynamically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/workbench/terminal-service.ts but also statically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/concurrency-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/conversation-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-ui-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/workspace-scope-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/index.ts, dynamic import will not move module into another chunk.
 
 [plugin:vite:reporter] [plugin vite:reporter] 
-(!) /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts is dynamically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts but also statically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-ui-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/ui-chat-harness.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/index.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/memory/memory.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/plugins/plugins.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/review/review.ipc.ts, dynamic import will not move module into another chunk.
+(!) /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts is dynamically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts but also statically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-ui-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/ui-chat-harness.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/workspace-scope-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/index.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/memory/memory.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/plugins/plugins.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/review/review.ipc.ts, dynamic import will not move module into another chunk.
 
 out/main/engine-child.js                      11.17 kB
 out/main/chunks/host-tool-specs-DUJ1iY7F.js   48.16 kB
-out/main/index.js                            281.49 kB
+out/main/index.js                            291.47 kB
 ✓ built in 249ms
 vite v5.4.21 building SSR bundle for production...
 transforming...
@@ -345,4 +345,4 @@ rendering chunks...
 ../../out/renderer/assets/emacs-lisp-BEPQeTF2.js                    790.05 kB
 ../../out/renderer/assets/index-D1V2jmXW.js                         824.99 kB
 ../../out/renderer/assets/index-BmW_Vmhc.js                       1,976.30 kB
-✓ built in 2.36s
+✓ built in 2.23s

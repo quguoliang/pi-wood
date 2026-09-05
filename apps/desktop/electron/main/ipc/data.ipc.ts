@@ -11,7 +11,7 @@ import {
   FileArgSchema,
 } from "@pi-wood/ipc-schema";
 import { ProjectManager, DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
-import { listSessions, openSessionTree, loadSessionMessages } from "../engine/session-service.ts";
+import { listSessionsAcrossTrees, openSessionTree, loadSessionMessages } from "../engine/session-service.ts";
 
 /** T3.4：包管理（实验性，经全局 pi CLI；超时 120s） */
 function piExec(args: string[], timeoutMs = 120000): Promise<string> {
@@ -89,24 +89,11 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
   });
 
   // T8.7 步骤 7：会话聚合——主项目 + 其全部 worktree 的 sessions 一起列出（否则 worktree 化后
-  // 桌面看不到彼此、CLI 侧也看不到桌面新对话，破坏 T1.4 CLI 互通硬验收）。按修改时间新→旧排序。
+  // 桌面看不到彼此、CLI 侧也看不到桌面新对话，破坏 T1.4 CLI 互通硬验收）。实现在 session-service，
+  // 与 --workspace-scope-probe 共用同一份（探针断言的就是应用真正跑的那段逻辑）。
   ipcMain.handle(SESSION_CHANNELS.list, async (_e, raw: unknown) => {
     const { path } = PathArgSchema.parse(raw);
-    const wtRoot = join(path, ".pi-wood", "worktrees");
-    const dirs = [path];
-    if (existsSync(wtRoot)) {
-      for (const entry of readdirSync(wtRoot)) dirs.push(join(wtRoot, entry));
-    }
-    const all = await Promise.all(dirs.map((d) => listSessions(d).catch(() => [])));
-    const seen = new Set<string>();
-    return all
-      .flat()
-      .filter((s) => {
-        if (seen.has(s.id)) return false; // worktree 与主树同 id 的会话只留一份
-        seen.add(s.id);
-        return true;
-      })
-      .sort((a, b) => (a.modified < b.modified ? 1 : -1));
+    return listSessionsAcrossTrees(path);
   });
   ipcMain.handle(SESSION_CHANNELS.tree, (_e, raw: unknown) => {
     const { file } = FileArgSchema.parse(raw);

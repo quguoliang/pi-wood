@@ -1,10 +1,10 @@
-=== T8.0 P2 worktree 探针（git git version 2.39.5 (Apple Git-154)，tmp=/var/folders/26/3w298cl57vsch3h05l26klww0000gn/T/piwood-t80-dOQ4Ux）===
-基线仓库就绪 @32a0de7（node_modules 未跟踪，2MB）
+=== T8.0 P2 worktree 探针（git git version 2.39.5 (Apple Git-154)，tmp=/var/folders/26/3w298cl57vsch3h05l26klww0000gn/T/piwood-t80-lfhgmI）===
+基线仓库就绪 @6170d17（node_modules 未跟踪，2MB）
 ✓ P2-a worktree add 成功 — A=29ms B=29ms
 ✓ P2-a 工作树不复制未跟踪依赖（node_modules 缺席） — wt-a 大小=0.00MB（主树 node_modules 含 2MB 假依赖）
 ✓ P2-a .git 是文件而非目录（共享 object 库） — worktree 天然共享 objects，不复制历史
 ✓ P2-a 两工作树 diff 互不污染 — A diff 13 行 / B diff 13 行
-✓ P2-a 两份改动先后回流进主工作树（内容判据） — A=14ms(ok=true) B=14ms(ok=true)，两者均在主树=true
+✓ P2-a 两份改动先后回流进主工作树（内容判据） — A=14ms(ok=true) B=15ms(ok=true)，两者均在主树=true
 ✓ P2-a 回流退出码干净 — 两次 apply 均 0 退出
 ✓ P2-a 缓解方案有效：--ignore-whitespace 下退出码 0 且内容落盘 — ok=true 含A=true err="" → T8.6 回流固定用 --3way --ignore-whitespace，并以内容/diff 复核而非只看退出码
 ✓ P2-a 同行冲突不自动合（第二份 apply 失败且原因可读） — 主树还原=true，C=true，D=被拒：Applied patch to 'src/app.js' with conflicts.
@@ -14,8 +14,8 @@
 （跳过真实仓库计时：C:/Users/1/Desktop/pi-wood 不是 git 仓库）
 
 --- P2-b Pi 会话目录按 cwd 编码（worktree 化会令会话分家） ---
-  默认 sessionDir 主项目：/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-t80-dOQ4Ux-main--
-  默认 sessionDir 工作树：/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-t80-dOQ4Ux-wt-s--
+  默认 sessionDir 主项目：/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-t80-lfhgmI-main--
+  默认 sessionDir 工作树：/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-t80-lfhgmI-wt-s--
 ✓ P2-b 会话目录按 cwd 编码为互不相同的子目录（worktree 化必分家） — 不同=true
 ✓ P2-b 两者都走默认目录（即真跑到用户机器上会各存一处） — main=true wt=true
   → 结论：worktree 化后左栏须聚合「主项目 + 其全部 worktree」的会话（写进 T8.7）

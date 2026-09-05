@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import {
   buildSessionTree,
   defaultLeaf,
@@ -60,6 +61,41 @@ export async function listSessions(cwd: string): Promise<SessionListItem[]> {
     messageCount: s.messageCount,
     firstMessage: s.firstMessage.slice(0, 120),
   }));
+}
+
+/**
+ * T8.7 会话聚合的「有哪些树」：主项目 + `<proj>/.pi-wood/worktrees/*` 全部对话工作树。
+ * Pi 的会话目录按 cwd 编码 ⇒ worktree 化会让会话分家，左栏必须按整个项目聚合（CLI 互通不回退）。
+ */
+export function worktreeTreesOf(projectDir: string): string[] {
+  const wtRoot = join(projectDir, ".pi-wood", "worktrees");
+  const dirs = [projectDir];
+  if (existsSync(wtRoot)) {
+    for (const entry of readdirSync(wtRoot)) dirs.push(join(wtRoot, entry));
+  }
+  return dirs;
+}
+
+/**
+ * 跨树列举会话：同 id 只留一份（worktree 与主树可能是同一会话的副本），按 modified 新→旧。
+ * `lister` 可注入——`--workspace-scope-probe` 用它断言聚合语义而不依赖 Pi 的会话目录编码规则。
+ * 单棵树列举失败不影响其余（会话目录还没建出来的空树是常态）。
+ */
+export async function listSessionsAcrossTrees(
+  projectDir: string,
+  lister: (cwd: string) => Promise<SessionListItem[]> = listSessions,
+): Promise<SessionListItem[]> {
+  const trees = worktreeTreesOf(projectDir);
+  const all = await Promise.all(trees.map((d) => lister(d).catch(() => [] as SessionListItem[])));
+  const seen = new Set<string>();
+  return all
+    .flat()
+    .filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    })
+    .sort((a, b) => (a.modified < b.modified ? 1 : -1));
 }
 
 export async function openSessionTree(file: string): Promise<SessionTreeResult> {

@@ -16,6 +16,7 @@ import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine
 import { isConversationProbeMode, runConversationProbe } from "./engine/conversation-probe";
 import { runConcurrencyProbe } from "./engine/concurrency-probe";
 import { runLatencyProbe } from "./engine/latency-probe";
+import { runWorkspaceScopeProbe } from "./engine/workspace-scope-probe";
 import { isUiLatencyProbeMode, runUiLatencyProbe } from "./engine/latency-ui-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
@@ -204,6 +205,11 @@ if (!gotLock) {
     // T8.9 红线度量探针：真 child + 真 IPC 通道，输出 RPC/事件单跳/审批往返的 p50/p95 后 app.exit(0|1)
     if (process.argv.includes("--latency-probe")) {
       await runLatencyProbe();
+      return;
+    }
+    // T8.7 作用域探针：真 child + 真 git 工作树，交叉断言 fs/git/snapshot/memory/term/sessions 归属后 app.exit(0|1)
+    if (process.argv.includes("--workspace-scope-probe")) {
+      await runWorkspaceScopeProbe();
       return;
     }
     ipcMain.handle("app:ping", () => ({

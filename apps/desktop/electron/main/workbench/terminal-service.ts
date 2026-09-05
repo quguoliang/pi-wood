@@ -29,6 +29,21 @@ const SizeArgSchema = z.object({ id: z.string(), cols: z.number().int(), rows: z
 const IdArgSchema = z.object({ id: z.string() });
 const WriteArgSchema = z.object({ id: z.string(), data: z.string() });
 
+/**
+ * T8.7 终端作用域：对话的终端 cwd = 该对话的 worktree（会话按 cwd 归集，树内起 shell 即在树上）。
+ * 查不到树（降级共享主树、对话已关闭、旧调用不带 conversationId）一律**保留请求值**——
+ * 宁可回到改造前的行为，也不要悄悄把 shell 塞进一个不存在的路径。
+ * 抽成纯函数是为了让 `--workspace-scope-probe` 断言的就是应用真正跑的这段逻辑。
+ */
+export function resolveTermCwd(
+  requestedCwd: string,
+  conversationId: string | undefined,
+  worktreeOf: (id: string) => string | undefined,
+): string {
+  if (!conversationId) return requestedCwd;
+  return worktreeOf(conversationId) ?? requestedCwd;
+}
+
 function resolveShell(preferred?: string): { file: string; args: string[] } {
   if (preferred === "cmd") return { file: "cmd.exe", args: [] };
   if (preferred === "git-bash") {
@@ -41,13 +56,9 @@ function resolveShell(preferred?: string): { file: string; args: string[] } {
 export function initTerminalIpc(send: (channel: string, data: unknown) => void): void {
   ipcMain.handle("term:create", async (_e, raw: unknown) => {
     const { cwd: requestedCwd, conversationId, shell, cols = 100, rows = 30 } = CreateArgSchema.parse(raw ?? {});
-    // T8.7：对话的终端 cwd = 该对话的 worktree（会话按 cwd 归集，树内起 shell 即在树上）
-    let cwd = requestedCwd;
-    if (conversationId) {
-      const { getConversation } = await import("../engine/conversation-registry");
-      const wt = getConversation(conversationId)?.worktreePath;
-      if (wt) cwd = wt;
-    }
+    // T8.7：对话的终端 cwd = 该对话的 worktree（解析逻辑抽成 resolveTermCwd，供探针共用）
+    const { getConversation } = conversationId ? await import("../engine/conversation-registry") : { getConversation: undefined };
+    const cwd = resolveTermCwd(requestedCwd, conversationId, (id) => getConversation?.(id)?.worktreePath);
     const pty = await import("@lydell/node-pty");
     const { file, args } = resolveShell(shell);
     const id = `term-${++seq}`;
