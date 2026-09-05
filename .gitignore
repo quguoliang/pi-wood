@@ -10,3 +10,6 @@ node_modules
 .codegraph/
 .trash/
 .DS_Store
+
+# 运行时数据目录（worktree/memory，勿入库）
+.pi-wood/
