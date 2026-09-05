@@ -22,6 +22,7 @@ import {
   LatencyRecorder,
   acceptSeq,
   decodeFrameLoose,
+  emptyLatencyReport,
   frameErrorText,
   isEngineReverseRpcMethod,
   isRpcLatencySampled,
@@ -145,9 +146,14 @@ export class EngineHost implements EngineTransport {
     return this.forkMs;
   }
 
-  /** T8.9：本对话的四项红线指标快照（探针与资源行读它；无样本就是 0，不伪装成达标） */
+  /**
+   * T8.9：本对话的四项通道指标快照（探针与面板读它；无样本就是 0，不伪装成达标）。
+   * 后三项（rendererHop / firstPaint / frameGap）量的是「这台机器的 UI」，属全局量、
+   * 不归单个引擎子进程 ⇒ 恒为空，聚合视图（注册表 `engineLatencySummary()`）才带得上。
+   */
   latencyReport(): LatencyReport {
     return {
+      ...emptyLatencyReport(),
       rpcRtt: this.rpcRtt.snapshot(),
       eventHop: this.eventHop.snapshot(),
       approvalRtt: this.metricSnapshot("approvalRtt"),

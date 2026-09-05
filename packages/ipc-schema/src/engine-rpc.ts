@@ -105,6 +105,12 @@ export const StatsParamsSchema = z.object({ tag: z.string().optional() });
 export const DebugEchoParamsSchema = z.object({
   events: z.number().int().nonnegative().max(2000).default(0),
   approvals: z.number().int().nonnegative().max(500).default(0),
+  /**
+   * 每帧之间的间隔（ms）。0 = 突发全速（测「管子能塞多快」）；
+   * 真实流式红线要按接近模型的速率灌（如 16ms ≈ 60 token/秒/对话），
+   * 否则测到的是排队延迟而不是到达延迟——两种都要能显式表达。
+   */
+  gapMs: z.number().nonnegative().max(200).default(0),
 });
 export type DebugEchoParams = z.infer<typeof DebugEchoParamsSchema>;
 

@@ -1,11 +1,11 @@
 === T8.9 --latency-probe（红线度量出口） ===
-✓ L1a A 对话 ping 往返 p95 达标（预算取红线表 RPC 行） — rpcRtt(A)：p95=0.11ms（预算 ≤40ms，n=150）
+✓ L1a A 对话 ping 往返 p95 达标（预算取红线表 RPC 行） — rpcRtt(A)：p95=0.094ms（预算 ≤40ms，n=150）
 ✓ L1b 统计按对话独立（A/B 各只含自己的 ping 样本） — A=150 B=150（各 150）
-✓ L2 事件到达单跳 child→main p95 达标 — eventHop：p95=2.292ms（预算 ≤20ms，n=512，窗口覆盖 288）
+✓ L2 事件到达单跳 child→main p95 达标 — eventHop：p95=2.222ms（预算 ≤20ms，n=512，窗口覆盖 288）
 ✓ L2b 跨进程时钟口径可信（拒收的脏样本占比 ≤10%） — invalid=0/512（负值=时钟回拨，占比过高说明口径坏了）
-✓ L3 审批往返（自动裁决路径）p95 达标 — approvalRtt：p95=0.087ms（预算 ≤40ms，n=60）
-✓ L4 跨对话聚合可用（hosts 数正确、合并样本 ≥ 单路） — hosts=2 合并 rpcRtt n=300 p95=0.093ms
-  · 聚合摘要：rpcRtt p50=0.048 p95=0.093 max=0.275 n=300 | eventHop p50=1.842 p95=2.292 max=2.462 n=512 | approvalRtt p50=0.053 p95=0.087 max=0.387 n=60 | hostTool p50=0 p95=0 max=0 n=0
+✓ L3 审批往返（自动裁决路径）p95 达标 — approvalRtt：p95=0.061ms（预算 ≤40ms，n=60）
+✓ L4 跨对话聚合可用（hosts 数正确、合并样本 ≥ 单路） — hosts=2 合并 rpcRtt n=300 p95=0.085ms
+  · 聚合摘要：rpcRtt p50=0.047 p95=0.085 max=0.415 n=300 | eventHop p50=1.636 p95=2.222 max=2.283 n=512 | rendererHop p50=0 p95=0 max=0 n=0 | approvalRtt p50=0.034 p95=0.061 max=0.299 n=60 | firstPaint p50=0 p95=0 max=0 n=0 | frameGap p50=0 p95=0 max=0 n=0 | hostTool p50=0 p95=0 max=0 n=0
   · 展示项（不判红线，含宿主真干活时间）：hostToolRtt n=0
 引擎子进程退出中（close）
 引擎子进程退出中（close）

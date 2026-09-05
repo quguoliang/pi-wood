@@ -124,6 +124,12 @@ export const ConversationEventEnvelopeSchema = z.object({
   seq: z.number().int().nonnegative().optional(),
   /** 推送时该对话是否正被用户看着（渲染层据此决定逐 token 渲染 vs 只更摘要，T8.3） */
   active: z.boolean().optional(),
+  /**
+   * T8.10 度量：主进程把该帧交给 webContents 的时刻（epoch 毫秒，`nowEpochMs()`）。
+   * 渲染层收到时相减即「事件两跳」的第二跳（第一跳是 child→main 的 `sentAt`）。
+   * 缺省 = 未打戳的推送路径，渲染层跳过不记（宁可少样本，也不要错样本）。
+   */
+  tPush: z.number().finite().optional(),
   event: EngineEventSchema,
 });
 export type ConversationEventEnvelope = z.infer<typeof ConversationEventEnvelopeSchema>;
@@ -132,13 +138,14 @@ export function makeEngineEnvelope(
   conversationId: string,
   projectDir: string,
   event: unknown,
-  extra?: { seq?: number; active?: boolean },
+  extra?: { seq?: number; active?: boolean; tPush?: number },
 ): ConversationEventEnvelope {
   return {
     conversationId,
     projectDir,
     ...(extra?.seq !== undefined ? { seq: extra.seq } : {}),
     ...(extra?.active !== undefined ? { active: extra.active } : {}),
+    ...(extra?.tPush !== undefined ? { tPush: extra.tPush } : {}),
     event: event as ConversationEventEnvelope["event"],
   };
 }
@@ -457,4 +464,28 @@ export const ENGINE_CHANNELS = {
   worktreeMergeBack: "engine:worktreeMergeBack",
   /** 回收某对话的工作树（脏树拒绝；force=显式丢弃） */
   worktreeRemove: "engine:worktreeRemove",
+  // ---- T8.10 度量域（红线「事件两跳 / 切换首屏 / 掉帧」的渲染层出口）----
+  /** 渲染层 → 主进程：批量上报自测样本（rendererHop / firstPaint / frameGap） */
+  reportLatency: "engine:reportLatency",
+  /** 渲染层 → 主进程：拉取合并后的完整红线报告（EnvironmentPanel 资源行用） */
+  getLatency: "engine:getLatency",
 } as const;
+
+const SampleArray = z.array(z.number().finite().nonnegative()).max(512);
+
+/**
+ * T8.10：渲染层自测样本的批量上报载荷。
+ * 数组而非单值——每帧一次 IPC 会把度量本身变成性能问题；主进程侧再入同一组环形窗口。
+ * ⚠ 载荷不可信：主进程 handler 只做「清洗 + 入窗」，任何异常都记数不抛（度量不许影响功能）。
+ */
+export const RendererLatencyPayloadSchema = z.object({
+  /** main 推送→渲染层收到（envelope.tPush 与本地 epoch 相减） */
+  rendererHopMs: SampleArray.default([]),
+  /** 切到已存在对话→该对话首帧提交 */
+  firstPaintMs: SampleArray.default([]),
+  /** 流式期间相邻 rAF 间隔（>33.3ms 即掉帧） */
+  frameGapMs: SampleArray.default([]),
+  /** 上报时窗口是否可见（不可见时 rAF 被节流，帧间隔样本无意义） */
+  visible: z.boolean().optional(),
+});
+export type RendererLatencyPayload = z.infer<typeof RendererLatencyPayloadSchema>;

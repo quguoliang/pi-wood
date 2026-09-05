@@ -9,8 +9,10 @@ import type {
   HostToolResult,
   HostUiParams,
   LatencyReport,
+  LatencySnapshot,
 } from "@pi-wood/ipc-schema";
 import { mergeRecorders } from "@pi-wood/ipc-schema";
+import { rendererLatencyView } from "./renderer-latency";
 import type { EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
 import { EngineHost } from "./engine-host";
 import {
@@ -171,9 +173,17 @@ export function engineRssTotal(): number {
  * T8.9 红线度量：跨对话合并各 host 的窗口样本（合并的是样本，不是快照平均——
  * 平均的平均会掩盖单路抖动，正是这张红线表要避免的事）。无活跃对话时返回空报告。
  */
-export function engineLatencySummary(): { hosts: number; report: LatencyReport; perConversation: Array<{ id: string; report: LatencyReport }> } {
+export function engineLatencySummary(): {
+  hosts: number;
+  report: LatencyReport;
+  perConversation: Array<{ id: string; report: LatencyReport }>;
+  mainCpuPct: LatencySnapshot;
+  rejectedBatches: number;
+  reportedSamples: number;
+} {
   const live = [...handles.values()].filter((h) => h.host.alive);
   const parts = live.map((h) => h.host.latencyRecorders());
+  const renderer = rendererLatencyView();
   return {
     hosts: live.length,
     report: {
@@ -181,8 +191,15 @@ export function engineLatencySummary(): { hosts: number; report: LatencyReport; 
       eventHop: mergeRecorders(parts.map((p) => p.eventHop), 2048),
       approvalRtt: mergeRecorders(parts.map((p) => p.approvalRtt), 1024),
       hostToolRtt: mergeRecorders(parts.map((p) => p.hostToolRtt), 1024),
+      // 渲染层三项与主进程 CPU 是全局单窗口（不分对话）：它们量的是「这台机器的 UI 卡不卡」
+      rendererHop: renderer.rendererHop,
+      firstPaint: renderer.firstPaint,
+      frameGap: renderer.frameGap,
     },
     perConversation: live.map((h) => ({ id: h.id, report: h.host.latencyReport() })),
+    mainCpuPct: renderer.mainCpuPct,
+    rejectedBatches: renderer.rejectedBatches,
+    reportedSamples: renderer.reportedSamples,
   };
 }
 

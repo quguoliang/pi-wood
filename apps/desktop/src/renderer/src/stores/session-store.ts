@@ -9,6 +9,7 @@ import {
   type HistoryMessageItem,
   type ToolStatus,
 } from "./conversation-slice.ts";
+import { markSwitchStart } from "../lib/latency-outlet.ts";
 
 /**
  * 会话 store（T8.3：slice-per-conversation）
@@ -119,6 +120,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   setActiveConversation(id) {
     const state = get();
     if (state.activeConversationId === id) return;
+    markSwitchStart(); // T8.10：首屏计时起点（App 在切换 effect 的下一帧配平）
     const key = id ?? FALLBACK_SLICE_KEY;
     const slice = state.slices[key] ?? emptySlice();
     set({

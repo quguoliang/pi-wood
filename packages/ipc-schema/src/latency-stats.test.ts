@@ -4,6 +4,8 @@ import {
   LATENCY_BUDGETS,
   LatencyRecorder,
   budgetVerdict,
+  clampSamples,
+  cpuPercentFromDelta,
   emptyLatencyReport,
   formatLatencyReport,
   isRpcLatencySampled,
@@ -157,20 +159,63 @@ describe("红线常量与 formatLatencyReport", () => {
   it("预算值与 §7.9 性能红线表逐条对齐（改这里=改红线，必须同步文档）", () => {
     assert.equal(LATENCY_BUDGETS.rpcRttP95Ms, 40);
     assert.equal(LATENCY_BUDGETS.eventHopP95Ms, 20);
+    assert.equal(LATENCY_BUDGETS.rendererHopP95Ms, 20);
     assert.equal(LATENCY_BUDGETS.approvalRttP95Ms, 40);
     assert.equal(LATENCY_BUDGETS.firstPaintP95Ms, 100);
+    assert.equal(LATENCY_BUDGETS.frameGapP95Ms, 33.3);
+    assert.equal(LATENCY_BUDGETS.mainCpuP95Pct, 60);
   });
 
-  it("空报告四段齐全且都是 0 样本", () => {
+  it("空报告七项齐全且都是 0 样本", () => {
     const r = emptyLatencyReport();
-    assert.deepEqual(Object.keys(r).sort(), ["approvalRtt", "eventHop", "hostToolRtt", "rpcRtt"]);
+    assert.deepEqual(Object.keys(r).sort(), [
+      "approvalRtt",
+      "eventHop",
+      "firstPaint",
+      "frameGap",
+      "hostToolRtt",
+      "rendererHop",
+      "rpcRtt",
+    ]);
     assert.equal(r.rpcRtt.count, 0);
+    assert.equal(r.rendererHop.count, 0);
   });
 
-  it("摘要一行含四个指标名，供探针与资源行共用", () => {
+  it("摘要一行含七个指标名，供探针与资源行共用", () => {
     const line = formatLatencyReport(emptyLatencyReport());
-    for (const key of ["rpcRtt", "eventHop", "approvalRtt", "hostTool"]) {
+    for (const key of ["rpcRtt", "eventHop", "rendererHop", "approvalRtt", "firstPaint", "frameGap", "hostTool"]) {
       assert.ok(line.includes(key), `摘要缺 ${key}：${line}`);
     }
+  });
+});
+
+describe("cpuPercentFromDelta（主进程 CPU 占单核百分比）", () => {
+  it("1 秒用了 50 万微秒 CPU → 50%", () => {
+    assert.equal(cpuPercentFromDelta(500_000, 1000), 50);
+  });
+
+  it("elapsedMs≤0 或非有限数给 0（除零不产 Infinity 污染直方图）", () => {
+    assert.equal(cpuPercentFromDelta(1000, 0), 0);
+    assert.equal(cpuPercentFromDelta(1000, Number.NaN), 0);
+    assert.equal(cpuPercentFromDelta(Number.NaN, 1000), 0);
+  });
+
+  it("多核跑满给 >100，不归一化掩盖（红线按单核判）", () => {
+    assert.equal(cpuPercentFromDelta(2_000_000, 1000), 200);
+  });
+});
+
+describe("clampSamples（渲染层批量上报前的清洗）", () => {
+  it("剔 NaN/Infinity/负值", () => {
+    assert.deepEqual(clampSamples([1, Number.NaN, -2, 3, Number.POSITIVE_INFINITY]), [1, 3]);
+  });
+
+  it("超 cap 保留最近的（窗口语义与 recorder 一致）", () => {
+    assert.deepEqual(clampSamples([1, 2, 3, 4, 5], 2), [4, 5]);
+  });
+
+  it("非数组/缺省给空数组（IPC 载荷不可信，不许抛）", () => {
+    assert.deepEqual(clampSamples(undefined), []);
+    assert.deepEqual(clampSamples("nope" as unknown as number[]), []);
   });
 });

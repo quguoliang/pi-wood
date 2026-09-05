@@ -25,6 +25,7 @@ import { useToolGroupsStore } from "./stores/tool-groups-store";
 import { useThemeStore } from "./stores/theme-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
 import { cycleColumnFocus, focusColumn } from "./hooks/use-column-focus";
+import { noteEventArrival, noteSwitchPainted, startLatencyOutlet, stopLatencyOutlet } from "./lib/latency-outlet";
 
 const RightPane = lazy(() => import("./components/right/RightPane").then((module) => ({ default: module.RightPane })));
 
@@ -41,6 +42,11 @@ export default function App() {
   // T8.7：工作台（标签/差异/请求文件）随对话切换——切片常驻内存，切回来原样恢复
   useEffect(() => {
     useWorkbenchStore.getState().switchConversation(activeConversationId);
+    // T8.10 红线「切换已激活对话首屏 ≤100ms」：起点在 store 的 setActiveConversation，
+    // 这里等 React 提交完再取下一帧——主进程不知道帧什么时候真画出来。
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => noteSwitchPainted());
+    }
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -119,7 +125,9 @@ export default function App() {
     };
 
     const offNotify = window.pi.onUiNotify((d) => pushToast(d.message, d.type));
+    startLatencyOutlet(); // T8.10：渲染层度量出口（未启动时各 note* 一律 no-op）
     const offEvt = window.pi.onEngineEvent((event, meta) => {
+      noteEventArrival(meta.tPush); // T8.10 红线「事件两跳」第二跳：main 推送→这里收到
       // T8.2/T8.3 路由：main 把每条对话的事件都推来（envelope 归属）。
       // 别家对话的事件**照样进它自己的切片**（分片的目的就是后台继续累积而前台不重渲染），
       // 这里只把它计成 foreignEventCount 作为可观测指标——丢事件才是被禁止的事。
@@ -186,6 +194,7 @@ export default function App() {
     // T7.5 目标模式：状态推送落 store（settle/暂停/完成等即时刷新状态条）。
     const offGoalStatus = window.pi.onGoalStatus((state) => useGoalStore.getState().applyStatus(state));
     return () => {
+      stopLatencyOutlet(); // T8.10：停帧表与上报定时器（与 startLatencyOutlet 配对）
       offNotify();
       offEvt();
       offBtwEvt();

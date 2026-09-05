@@ -8,6 +8,8 @@ interface EngineEventMetaLite {
   projectDir: string | null;
   seq?: number;
   active?: boolean;
+  /** 主进程推送时刻（epoch 毫秒，T8.10 第二跳度量）；未打戳的推送路径为 undefined */
+  tPush?: number;
   legacy: boolean;
 }
 
@@ -31,6 +33,7 @@ const unwrapEnginePayloadLite = (
       projectDir: typeof r.projectDir === "string" ? r.projectDir : null,
       ...(typeof r.seq === "number" ? { seq: r.seq } : {}),
       ...(typeof r.active === "boolean" ? { active: r.active } : {}),
+      ...(typeof r.tPush === "number" ? { tPush: r.tPush } : {}), // ⚠ 与 ipc-schema envelope 同步：漏这里 = 第二跳永远没样本
       legacy: false,
     };
     return { event: r.event as Record<string, unknown>, meta };
@@ -133,6 +136,17 @@ const api = {
   setActiveConversation: (conversationId: string): Promise<unknown> =>
     ipcRenderer.invoke("engine:setActiveConversation", { conversationId }),
   listConversations: (): Promise<unknown[]> => ipcRenderer.invoke("engine:listConversations"),
+  // ---- T8.10 度量出口（渲染层自测样本上报 / 合并报告拉取）----
+  /** fire-and-forget：度量上报失败绝不影响功能，也不许冒未处理拒绝 */
+  reportLatency: (payload: {
+    rendererHopMs?: number[];
+    firstPaintMs?: number[];
+    frameGapMs?: number[];
+    visible?: boolean;
+  }): void => {
+    void ipcRenderer.invoke("engine:reportLatency", payload).catch(() => undefined);
+  },
+  getLatency: (): Promise<unknown> => ipcRenderer.invoke("engine:getLatency"),
   createConversation: (projectDir: string): Promise<unknown> =>
     ipcRenderer.invoke("engine:createConversation", { projectDir }),
   suspendConversation: (conversationId: string): Promise<boolean> =>

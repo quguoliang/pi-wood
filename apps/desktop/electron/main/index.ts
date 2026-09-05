@@ -16,6 +16,7 @@ import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine
 import { isConversationProbeMode, runConversationProbe } from "./engine/conversation-probe";
 import { runConcurrencyProbe } from "./engine/concurrency-probe";
 import { runLatencyProbe } from "./engine/latency-probe";
+import { isUiLatencyProbeMode, runUiLatencyProbe } from "./engine/latency-ui-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc, configureBrowserScope } from "./workbench/browser-service";
@@ -124,6 +125,11 @@ function createWindow(): void {
   // dev 真实对话视觉测试台（走正式引擎链路，settle 后截屏退出）
   if (isUiChatMode()) {
     win.webContents.once("did-finish-load", () => setTimeout(runUiChat, 1500));
+  }
+
+  // T8.10 带窗红线探针：三路过载 + 切换，测第二跳/首屏/掉帧/主进程 CPU（必须窗口可见）
+  if (isUiLatencyProbeMode()) {
+    win.webContents.once("did-finish-load", () => setTimeout(() => void runUiLatencyProbe(), 1500));
   }
 
   // T1.2 无干扰视觉验收：--capture <file> 渲染完成后截窗口内容（不需前台）

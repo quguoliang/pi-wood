@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LATENCY_BUDGETS } from "@pi-wood/ipc-schema";
 import { Button } from "@/components/ui/button";
 import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useRuntimeStore, type TodoItem } from "../../stores/runtime-store";
@@ -39,6 +40,83 @@ function useCapacity(open: boolean): CapacityView | undefined {
     };
   }, [open]);
   return capacity;
+}
+
+/** T8.10 红线视图：主进程合并后的分位数快照（无样本 = 显示「待采样」，不假装 0ms 达标） */
+interface LatencySnapshotView {
+  count: number;
+  p50: number;
+  p95: number;
+  max: number;
+}
+interface LatencyView {
+  report: {
+    rpcRtt: LatencySnapshotView;
+    eventHop: LatencySnapshotView;
+    rendererHop: LatencySnapshotView;
+    approvalRtt: LatencySnapshotView;
+    firstPaint: LatencySnapshotView;
+    frameGap: LatencySnapshotView;
+  };
+  mainCpuPct: LatencySnapshotView;
+  hosts: number;
+}
+
+function useLatency(open: boolean): LatencyView | undefined {
+  const [view, setView] = useState<LatencyView | undefined>();
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const pull = (): void => {
+      // 桥缺失（旧 preload）或主进程异常都静默：度量不许影响面板其余部分
+      void window.pi
+        .getLatency?.()
+        .then((r) => {
+          if (alive && r) setView(r as LatencyView);
+        })
+        .catch(() => undefined);
+    };
+    pull();
+    const timer = window.setInterval(pull, 4000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [open]);
+  return view;
+}
+
+/** 红线一项的紧凑展示：无样本一律标「待采样」，绝不显示 0ms 冒充达标 */
+function fmtP95(label: string, s: LatencySnapshotView | undefined, budgetMs: number): React.ReactNode {
+  if (!s || s.count === 0) {
+    return (
+      <span key={label} className="text-muted-foreground/70">
+        {label} 待采样
+      </span>
+    );
+  }
+  const over = s.p95 > budgetMs;
+  return (
+    <span key={label} className={over ? "text-destructive" : "text-muted-foreground"} title={`n=${s.count} · p50=${s.p50}ms · max=${s.max}ms · 预算 ≤${budgetMs}ms`}>
+      {label} {s.p95}ms
+    </span>
+  );
+}
+
+function fmtPct(label: string, s: LatencySnapshotView | undefined, budgetPct: number): React.ReactNode {
+  if (!s || s.count === 0) {
+    return (
+      <span key={label} className="text-muted-foreground/70">
+        {label} 待采样
+      </span>
+    );
+  }
+  const over = s.p95 > budgetPct;
+  return (
+    <span key={label} className={over ? "text-destructive" : "text-muted-foreground"} title={`n=${s.count} · max=${s.max}% · 预算 ≤${budgetPct}%（单核）`}>
+      {label} {s.p95}%
+    </span>
+  );
 }
 
 function summarizeInput(input: Record<string, unknown> | undefined): string {
@@ -114,6 +192,7 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
   const todos = useRuntimeStore((s) => s.todos);
   const refresh = useRuntimeStore((s) => s.refresh);
   const capacity = useCapacity(open);
+  const latency = useLatency(open);
   const [showTools, setShowTools] = useState(false);
   const projectName = activeProject?.split(/[\\/]/).filter(Boolean).pop() ?? "未选择项目";
 
@@ -158,6 +237,18 @@ export function EnvironmentPanel({ open, onOpenChange }: { open: boolean; onOpen
               {capacity && (
                 <Row icon="activity" title="活跃对话 / 在飞 prompt / 子代理 run / 引擎 RSS">
                   {`对话 ${capacity.liveConversations}/${capacity.maxLiveEngines} · prompt ${capacity.inFlightPrompts}/${capacity.maxPrompts} · 子代理 ${capacity.runningSubagentRuns}/${capacity.maxSubagentRuns} · RSS ${capacity.totalRssMB}MB`}
+                </Row>
+              )}
+              {latency && (
+                <Row icon="activity" title="§7.9 性能红线 p95（无样本=待采样，不拿 0 冒充达标；红色=超预算）">
+                  <span className="flex flex-wrap gap-x-2">
+                    {fmtP95("事件", latency.report.eventHop, LATENCY_BUDGETS.eventHopP95Ms)}
+                    {fmtP95("→UI", latency.report.rendererHop, LATENCY_BUDGETS.rendererHopP95Ms)}
+                    {fmtP95("切换", latency.report.firstPaint, LATENCY_BUDGETS.firstPaintP95Ms)}
+                    {fmtP95("帧", latency.report.frameGap, LATENCY_BUDGETS.frameGapP95Ms)}
+                    {fmtP95("RPC", latency.report.rpcRtt, LATENCY_BUDGETS.rpcRttP95Ms)}
+                    {fmtPct("CPU", latency.mainCpuPct, LATENCY_BUDGETS.mainCpuP95Pct)}
+                  </span>
                 </Row>
               )}
               {info?.model && <Row icon="cpu">{info.model}</Row>}

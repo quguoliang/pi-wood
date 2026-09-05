@@ -2,26 +2,26 @@
 ===== T8.1 多对话探针（真 utilityProcess 引擎，无模型密钥）=====
   ✓ C6 引擎子进程入口可解析 — /Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/engine-child.js
   · 起始 node/python 计数=（非 win32 / tasklist 不可用，跳过残留度量）
-  ✓ C1.1 三条对话并存 — count=3 [xC:idle Hu:idle Z0:idle]
-  ✓ C1.2 三条对话各自独立 pid — 63039,63080,63121
-  ✓ C1.3 引擎确实不在主进程内跑 — main=62989 children=63039,63080,63121
+  ✓ C1.1 三条对话并存 — count=3 [2M:idle Sn:idle ii:idle]
+  ✓ C1.2 三条对话各自独立 pid — 85816,85858,85899
+  ✓ C1.3 引擎确实不在主进程内跑 — main=85766 children=85816,85858,85899
   ✓ C1.4 三个 child 的工具集逐个全等 — 每集 13 个
   ✓ C1.5 9 个宿主代理工具已进 session 工具集 — browser_navigate,browser_read_text,browser_click,browser_fill,browser_screenshot,memory_save,memory_list,memory_read,memory_delete
-  · C1.6 三路装配总耗时=1357ms；单路 timings={"servicesMs":14,"runtimeMs":17,"bindMs":0,"totalMs":17}；child RSS=185MB
-  ✓ C1.7 三路冷启动在 15s 内完成 — 1357ms
-  ✓ C5.1 下行 invoke 往返自洽（stats.pid == start 回执 pid） — {"pid":63039,"cwd":"/Users/admin/Desktop/personal/pi-wood/apps/desktop","uptimeMs":925,"mem":{"rss":185614336,"heapTotal":69337088,"heapUsed":44474392,"external":3959473,"arrayBuffers":0},"hasEngine":true}
+  · C1.6 三路装配总耗时=1433ms；单路 timings={"servicesMs":15,"runtimeMs":19,"bindMs":0,"totalMs":19}；child RSS=186MB
+  ✓ C1.7 三路冷启动在 15s 内完成 — 1433ms
+  ✓ C5.1 下行 invoke 往返自洽（stats.pid == start 回执 pid） — {"pid":85816,"cwd":"/Users/admin/Desktop/personal/pi-wood/apps/desktop","uptimeMs":955,"mem":{"rss":186056704,"heapTotal":69337088,"heapUsed":44195868,"external":3959473,"arrayBuffers":0},"hasEngine":true}
   ✓ C5.2 上行事件 seq 单调（无重复/倒退帧） — 事件帧=0，越界=0
 引擎子进程退出中（suspend）
 引擎子进程退出中（suspend）
-  ✓ C2.1 新建后活跃引擎数不超过上限 2 — live=2 [xC:suspended Hu:suspended Z0:idle Fi:idle]
+  ✓ C2.1 新建后活跃引擎数不超过上限 2 — live=2 [2M:suspended Sn:suspended ii:idle hx:idle]
   ✓ C2.2 超限把最久未活跃的 idle 对话休眠了 — suspended=2
-  ✓ C2.3 休眠对话的 child 确已退出 — d80a:0,e256:0
-  · C2.4 腾位置+新建一路耗时=784ms（含等 child 优雅退出）
+  ✓ C2.3 休眠对话的 child 确已退出 — e20c:0,fc4c:0
+  · C2.4 腾位置+新建一路耗时=777ms（含等 child 优雅退出）
 引擎子进程退出中（suspend）
-  ✓ C2.5 休眠对话可唤醒并读到会话状态 — session=01a06fb6
+  ✓ C2.5 休眠对话可唤醒并读到会话状态 — session=01a06ff6
 引擎子进程退出中（suspend）
-[engine] 子进程异常退出（code=0, conv=conv-6-f545b232）
-  ✓ C3.1 被杀 child 按退避自动恢复（换了新 pid） — 63227 → 63308 status=idle
+[engine] 子进程异常退出（code=0, conv=conv-6-a1267ad2）
+  ✓ C3.1 被杀 child 按退避自动恢复（换了新 pid） — 86002 → 86023 status=idle
   ✓ C3.2 其余对话不受牵连（崩溃隔离） — alive=1/1
   ✓ C3.3 主进程存活且帧管道可用（恢复后的对话能完成一次下行往返）
   ✓ C8.1 后台对话 1 秒 1000 token ≤6 帧/秒（红线） — 实际 5 帧，in=1001 out=6 merged=995
@@ -32,10 +32,10 @@
   · C8.6 节流统计：后台 1000 事件/秒 → 5 帧（合掉 995 条），IPC 降幅 ≈100%
 引擎子进程退出中（quit）
 引擎子进程退出中（quit）
-  · C4.1 全量关停耗时=164ms；剩余记录=xC:dead Z8:dead
+  · C4.1 全量关停耗时=161ms；剩余记录=2M:dead tj:dead
   · C4.2 非 win32 或 tasklist 不可用：跳过残留计数（本机门禁才有效）
   · 反向通道计数：decideApproval=0 次（模型未跑 → 0 次属正常）；toast=13 条
   · toast 样例：该目录不是 git 仓库，无法为对话隔离工作树。该对话将共享主工作树，存在互相覆盖风险。 | 该目录不是 git 仓库，无法为对话隔离工作树。该对话将共享主工作树，存在互相覆盖风险。 | 该目录不是 git 仓库，无法为对话隔离工作树。该对话将共享主工作树，存在互相覆盖风险。
 
 ===== 结论：21 项检查，失败 0 项 =====
-[conversation-probe] 用时 7549ms，checks=21 failures=0
+[conversation-probe] 用时 7616ms，checks=21 failures=0

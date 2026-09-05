@@ -145,10 +145,16 @@ export const LATENCY_BUDGETS = {
   rpcRttP95Ms: 40,
   /** child 发帧→main 收到（事件两跳里的第一跳，跨进程 epoch 时间戳） */
   eventHopP95Ms: 20,
+  /** main 推送→渲染层收到（事件两跳里的第二跳，同机不同进程，仍用 epoch 戳） */
+  rendererHopP95Ms: 20,
   /** child 发起 host:approval→拿到裁决（child 单时钟自计，无跨进程偏差） */
   approvalRttP95Ms: 40,
   /** 切到已存在对话 → 该对话首帧提交（渲染层自计） */
   firstPaintP95Ms: 100,
+  /** 流式期间相邻 rAF 间隔（红线原文「帧间隔 p95 ≤33ms」= 60fps 不掉帧） */
+  frameGapP95Ms: 33.3,
+  /** 流式期间主进程 CPU 占单核百分比 */
+  mainCpuP95Pct: 60,
 } as const;
 
 export type LatencyBudgetKey = keyof typeof LATENCY_BUDGETS;
@@ -203,6 +209,12 @@ export interface LatencyReport {
   approvalRtt: LatencySnapshot;
   /** 宿主工具反向执行往返（含宿主真干活的时间，只展示不判红线） */
   hostToolRtt: LatencySnapshot;
+  /** 事件两跳的第二跳：main 推送→渲染层收到（T8.10） */
+  rendererHop: LatencySnapshot;
+  /** 切到已存在对话→该对话首帧提交（T8.10） */
+  firstPaint: LatencySnapshot;
+  /** 流式期间相邻 rAF 间隔（掉帧判据，T8.10） */
+  frameGap: LatencySnapshot;
 }
 
 export function emptyLatencyReport(): LatencyReport {
@@ -211,6 +223,9 @@ export function emptyLatencyReport(): LatencyReport {
     eventHop: { ...EMPTY_LATENCY },
     approvalRtt: { ...EMPTY_LATENCY },
     hostToolRtt: { ...EMPTY_LATENCY },
+    rendererHop: { ...EMPTY_LATENCY },
+    firstPaint: { ...EMPTY_LATENCY },
+    frameGap: { ...EMPTY_LATENCY },
   };
 }
 
@@ -218,5 +233,30 @@ export function emptyLatencyReport(): LatencyReport {
 export function formatLatencyReport(r: LatencyReport): string {
   const one = (label: string, s: LatencySnapshot): string =>
     `${label} p50=${s.p50} p95=${s.p95} max=${s.max} n=${s.count}`;
-  return [one("rpcRtt", r.rpcRtt), one("eventHop", r.eventHop), one("approvalRtt", r.approvalRtt), one("hostTool", r.hostToolRtt)].join(" | ");
+  return [
+    one("rpcRtt", r.rpcRtt),
+    one("eventHop", r.eventHop),
+    one("rendererHop", r.rendererHop),
+    one("approvalRtt", r.approvalRtt),
+    one("firstPaint", r.firstPaint),
+    one("frameGap", r.frameGap),
+    one("hostTool", r.hostToolRtt),
+  ].join(" | ");
+}
+
+/**
+ * `process.cpuUsage()` 两次差值 → **单核百分比**（红线按单核 60% 判）。
+ * cpuUsage 返回微秒 `{user, system}`；`elapsedMs` 是同一区间的墙上时间。
+ * 多核机器上跑满两个核会给出 >100%，那是真的更忙，不做归一化掩盖。
+ */
+export function cpuPercentFromDelta(cpuDeltaUs: number, elapsedMs: number): number {
+  if (!Number.isFinite(cpuDeltaUs) || !Number.isFinite(elapsedMs) || elapsedMs <= 0) return 0;
+  return round3((cpuDeltaUs / (elapsedMs * 1000)) * 100);
+}
+
+/** 渲染层批量上报前的清洗：剔非有限/负值并按 cap 截尾（保留最近的），防一条坏样本拖歪 p95 */
+export function clampSamples(values: readonly number[] | undefined, cap = 512): number[] {
+  if (!Array.isArray(values)) return [];
+  const clean = values.filter((v) => Number.isFinite(v) && v >= 0);
+  return clean.length > cap ? clean.slice(clean.length - cap) : clean;
 }

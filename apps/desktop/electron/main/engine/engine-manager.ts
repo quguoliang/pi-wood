@@ -13,6 +13,8 @@ import {
   DEFAULT_THROTTLE,
   createOutboundThrottle,
   makeEngineEnvelope,
+  nowEpochMs,
+  RendererLatencyPayloadSchema,
   ApprovalRequestPayloadSchema,
   ApprovalRespondPayloadSchema,
   UiRequestPayloadSchema,
@@ -50,6 +52,7 @@ import {
   configureCapabilities,
   conversationForProject,
   ensureConversation,
+  engineLatencySummary,
   engineRssTotal,
   getActiveConversationId,
   getConversation,
@@ -61,6 +64,7 @@ import {
   suspendConversation,
 } from "./conversation-registry";
 import { summarizeCapacity } from "./conversation-core";
+import { noteRejectedBatch, noteRendererSamples } from "./renderer-latency";
 import {
   SlotGate,
   applyRunsSnapshot,
@@ -341,6 +345,9 @@ function sendFrame(conversationId: string, projectDir: string, frame: ThrottledF
     makeEngineEnvelope(conversationId, projectDir, frame.event, {
       seq: frame.seq,
       active: conversationId === getActiveConversationId(),
+      // T8.10 度量：推送时刻（epoch 毫秒）。每帧一次减法而已——别换回 Date.now()，
+      // 毫秒精度判不了 20ms 的第二跳预算。
+      tPush: nowEpochMs(),
     }),
     conversationId,
   );
@@ -1460,6 +1467,19 @@ export function initEngineIpc(): void {
     if (r.ok) send("ui:notify", { message: "工作树已回收", type: "success" });
     return r;
   });
+
+  // ---- T8.10 度量出口：渲染层批量上报自测样本 + 面板/探针拉取合并报告 ----
+  // 度量不许影响功能：载荷非法只计数并回 {ok:false}，绝不抛（渲染层是 fire-and-forget，抛出来只会变成未处理拒绝）。
+  ipcMain.handle(ENGINE_CHANNELS.reportLatency, (_e, raw: unknown) => {
+    const parsed = RendererLatencyPayloadSchema.safeParse(raw);
+    if (!parsed.success) {
+      noteRejectedBatch(parsed.error.issues[0]?.message ?? "未知字段错误");
+      return { ok: false };
+    }
+    noteRendererSamples(parsed.data);
+    return { ok: true };
+  });
+  ipcMain.handle(ENGINE_CHANNELS.getLatency, () => engineLatencySummary());
 
   ipcMain.handle("project:pickDialog", async () => {
     const win = BrowserWindow.getAllWindows()[0];

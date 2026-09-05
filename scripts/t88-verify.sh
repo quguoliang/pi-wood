@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# T8.8 真机门禁日脚本（macOS）——一次性还掉 T8.4~T8.8 的真机欠账并留证。
+# T8.8~T8.10 真机门禁日脚本（macOS）——一次性还掉 T8.4~T8.10 的真机欠账并留证。
 #
 # 用法：
-#   bash scripts/t88-verify.sh              # 全量（typecheck/test/build + 五探针 + concurrency + package:dir）
+#   bash scripts/t88-verify.sh              # 全量（typecheck/test/build + 五探针 + concurrency + latency + ui-latency + ui-chat + 打包）
 #   SKIP_PACKAGE=1 bash scripts/t88-verify.sh   # 跳过打包冒烟
 #   SKIP_UI=1 bash scripts/t88-verify.sh        # 跳过 --ui-chat（需密钥，最慢）
+#   SKIP_GUI=1 bash scripts/t88-verify.sh       # 跳过 --ui-latency-probe（要可见窗口，会抢焦点）
 # 证据统一落 apps/desktop/docs/proofs/T8.8/。任何一步失败立即以非零码退出并指出日志。
 #
 # ⚠ 本脚本设计在【开发者本机】跑：千问办公沙箱无 DISPLAY、node_modules 里的 Electron 是
@@ -78,6 +79,11 @@ RUN probe-conversation    pnpm exec electron . --conversation-probe
 # 4) T8.8 并发门禁探针 + T8.9 红线度量探针（本轮新增的收口断言）
 RUN probe-concurrency     pnpm exec electron . --concurrency-probe
 RUN probe-latency         pnpm exec electron . --latency-probe
+
+# 4b) T8.10 带窗红线探针（第二跳 / 切换首屏 / 掉帧 / 主进程 CPU）——需要可见窗口，会抢焦点
+if [ "${SKIP_GUI:-0}" != "1" ]; then
+  RUN probe-ui-latency    pnpm exec electron . --ui-latency-probe
+fi
 
 # 5) 真模型对话链路（密钥在 apps/desktop/.env → loadPrivateEnv；含审批/工具往返）
 if [ "${SKIP_UI:-0}" != "1" ]; then

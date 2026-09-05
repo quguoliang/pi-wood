@@ -8,11 +8,11 @@
 ✓ P1-d child 入口在当前形态下可解析 — form=dev → /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
 
 --- P1-a utilityProcess 内装载 SDK + 扩展 ---
-  主进程内基线：boot=26ms tools=4 [read, bash, edit, write]
+  主进程内基线：boot=32ms tools=4 [read, bash, edit, write]
   [c1] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
-✓ P1-a fork→ready 子进程存活 — ready=66ms pid=17697
-    c1·milestone│ sdk-import 315ms @355 {"rssMB":176,"heapMB":37,"extMB":4}
-  child 装配：services=14ms session=9ms bind=0ms 合计 boot=379ms
+✓ P1-a fork→ready 子进程存活 — ready=61ms pid=85305
+    c1·milestone│ sdk-import 309ms @353 {"rssMB":177,"heapMB":37,"extMB":4}
+  child 装配：services=18ms session=10ms bind=0ms 合计 boot=381ms
   child 工具（5）：[read, bash, edit, write, probe_host_echo]
   child 扩展数=0 skills=[code-review-expert,code-review-skill,find-skills,markstream-vue,semi-design-guide,sigma,skill-forge,weread-skills] diagnostics=[]
 ✓ P1-a child 内 diagnostics 无 error — 0 条
@@ -23,26 +23,26 @@
 --- P1-b 双向 RPC 三链路 ---
 ✓ P1-b 反向 tool:execute 闭环（child→main→child） — host-ok-1，宿主侧计数 1
 ✓ P1-b 反向 ui:confirm/select/input 闭环 — {"confirm":true,"select":"a","input":"probe-answer","uiHits":3}
-    c1·err│ (node:17697) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+    c1·err│ (node:85305) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
 (Use `Electron Helpe
-✓ P1-b 事件流（prompt 期间 child→main 有引擎事件帧到达） — 事件帧 28，首帧 @381ms，本轮 1025ms
-  首 token 前事件到达：381ms；本轮 settle：1025ms
-    c1·milestone│ slow-prompt-started ms @1405 {}
-    c1·milestone│ aborted ms @5409 {}
+✓ P1-b 事件流（prompt 期间 child→main 有引擎事件帧到达） — 事件帧 12，首帧 @383ms，本轮 1029ms
+  首 token 前事件到达：383ms；本轮 settle：1029ms
+    c1·milestone│ slow-prompt-started ms @1412 {}
+    c1·milestone│ aborted ms @5416 {}
 ✓ P1-b cancel 帧可中止在跑的一轮 — outcome=settled，abort 后仍收帧=true
   [crashx] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
-    crashx·milestone│ sdk-import 302ms @337 {"rssMB":176,"heapMB":37,"extMB":4}
+    crashx·milestone│ sdk-import 312ms @350 {"rssMB":176,"heapMB":37,"extMB":4}
     crashx·log│ [info] 按控制指令硬崩（P1-b 崩溃隔离对照组）
 ✓ P1-b child 崩溃能被观测到（exit 事件） — code=11
-✓ P1-b child 崩溃不波及主进程与其它对话 — c1 pid 17697 仍在响应 RPC
+✓ P1-b child 崩溃不波及主进程与其它对话 — c1 pid 85305 仍在响应 RPC
 
 --- P1-c 1/2/3 个 child 的成本与残留 ---
   [c2] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
-    c2·milestone│ sdk-import 301ms @339 {"rssMB":176,"heapMB":38,"extMB":4}
-  #2 ready=67ms load=361ms childRSS=184MB pidRSS=0MB
+    c2·milestone│ sdk-import 307ms @347 {"rssMB":177,"heapMB":37,"extMB":4}
+  #2 ready=65ms load=370ms childRSS=185MB pidRSS=0MB
   [c3] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
-    c3·milestone│ sdk-import 308ms @349 {"rssMB":176,"heapMB":37,"extMB":4}
-  #3 ready=66ms load=373ms childRSS=184MB pidRSS=0MB
+    c3·milestone│ sdk-import 305ms @346 {"rssMB":176,"heapMB":37,"extMB":4}
+  #3 ready=60ms load=369ms childRSS=184MB pidRSS=0MB
 ! tasklist 失败：spawnSync tasklist ENOENT
   起 3 个后进程数：electron.exe=0 node.exe=0 python.exe=0 总=0
   c1 runtime.dispose=0ms
@@ -55,9 +55,9 @@
 
 --- 计量汇总（回填 §7.9 性能红线表用） ---
   n  ready ms   load ms   child RSS  pid RSS  事件帧     
-  1  66         379       184MB      0MB      254     
-  2  67         361       184MB      0MB      0       
-  3  66         373       184MB      0MB      0       
+  1  61         381       185MB      0MB      243     
+  2  65         370       185MB      0MB      0       
+  3  60         369       184MB      0MB      0       
   每多一个对话的 child 净增 RSS ≈ 0MB（不含其扩展子进程；含扩展的真值看上面进程数增量）
 
 === 结论 ===

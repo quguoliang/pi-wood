@@ -325,7 +325,10 @@ const HANDLERS: Record<EngineRpcMethod, Handler> = {
    */
   debugEcho: async (p) => {
     if (process.env.PIWOOD_ENGINE_PROBE !== "1") throw new Error("debugEcho 仅探针模式可用（PIWOOD_ENGINE_PROBE=1）");
-    const params = p as { events: number; approvals: number };
+    const params = p as { events: number; approvals: number; gapMs: number };
+    const gap = async (): Promise<void> => {
+      if (params.gapMs > 0) await new Promise((r) => setTimeout(r, params.gapMs));
+    };
     for (let i = 0; i < params.events; i += 1) {
       upSeq += 1;
       post({
@@ -334,6 +337,7 @@ const HANDLERS: Record<EngineRpcMethod, Handler> = {
         sentAt: nowEpochMs(),
         event: { type: "message_update", messageId: "piwood-latency-probe", assistantMessageEvent: { type: "text_delta", delta: "." } },
       });
+      await gap(); // 按接近模型的速率灌 = 测「到达延迟」；0 = 突发全速 = 测「管子塞多快」
     }
     for (let i = 0; i < params.approvals; i += 1) {
       await rpc("host:approval", { ticket: `piwood-latency-probe-${i}`, toolName: "piwood_latency_probe" }, 10_000, {
@@ -341,7 +345,7 @@ const HANDLERS: Record<EngineRpcMethod, Handler> = {
         when: (v) => (v as { auto?: boolean } | undefined)?.auto === true,
       });
     }
-    return { events: params.events, approvals: params.approvals };
+    return { events: params.events, approvals: params.approvals, gapMs: params.gapMs };
   },
   shutdown: (p) => stopEngine(String(p?.reason ?? "quit")),
 };

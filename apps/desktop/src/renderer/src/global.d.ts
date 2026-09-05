@@ -11,6 +11,8 @@ export interface EngineEventMeta {
   projectDir: string | null;
   seq?: number;
   active?: boolean;
+  /** 主进程推送时刻（epoch 毫秒，T8.10 第二跳）；与 preload 的 EngineEventMetaLite 同步 */
+  tPush?: number;
   legacy: boolean;
 }
 
@@ -53,6 +55,14 @@ declare global {
       // T8.3 对话域（preload 已实装；声明成可选以免桥与消费者必须同刻改完）
       setActiveConversation?(conversationId: string): Promise<unknown>;
       listConversations?(): Promise<unknown[]>;
+      // T8.10 度量出口：渲染层自测样本批量上报 / 合并红线报告拉取（同样声明成可选）
+      reportLatency?(payload: {
+        rendererHopMs?: number[];
+        firstPaintMs?: number[];
+        frameGapMs?: number[];
+        visible?: boolean;
+      }): void;
+      getLatency?(): Promise<unknown>;
       createConversation?(projectDir: string): Promise<unknown>;
       suspendConversation?(conversationId: string): Promise<boolean>;
       closeConversation?(conversationId: string): Promise<boolean>;
