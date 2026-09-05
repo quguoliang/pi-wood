@@ -16,21 +16,21 @@ Error occurred in handler for 'fs:read': Error: 引擎未启动：请先选择�
 [plugin:demo-overreach] 未声明权限「fs:write」，API diff.revert 被拒绝
 [plugin:demo-overreach] [overreach] diff.revert 被拒（预期）：未声明权限「fs:write」，API diff.revert 被拒绝
 === T8.10 --ui-latency-probe（带窗：第二跳 / 首屏 / 掉帧 / 主进程 CPU） ===
-✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.609ms（预算 ≤20ms，n=369）；负载=900 帧 / 3 路 / 间隔 16ms
-✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=8.8ms（预算 ≤33.3ms，n=1008）
-✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=3.753%（预算 ≤60%，n=5；无样本不判达标）
-✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=9.6ms（预算 ≤100ms，n=6）
-✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1383 rejectedBatches=0
-  · 全量摘要：rpcRtt p50=0.92 p95=3.112 max=3.112 n=4 | eventHop p50=0.029 p95=0.137 max=1.678 n=763 | rendererHop p50=0.154 p95=0.609 max=4.763 n=369 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=6.2 p95=9.6 max=9.6 n=6 | frameGap p50=8.3 p95=8.8 max=16.648 n=1008 | hostTool p50=0 p95=0 max=0 n=0
-  · 主进程 CPU：p50=2.022% p95=3.753% max=3.753%（n=5）
+✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.488ms（预算 ≤20ms，n=355）；负载=900 帧 / 3 路 / 间隔 16ms
+✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=8.8ms（预算 ≤33.3ms，n=925）
+✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=4.672%（预算 ≤60%，n=4；无样本不判达标）
+✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=7.2ms（预算 ≤100ms，n=6）
+✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1286 rejectedBatches=0
+  · 全量摘要：rpcRtt p50=0.921 p95=1.48 max=1.48 n=4 | eventHop p50=0.062 p95=0.174 max=1.251 n=900 | rendererHop p50=0.097 p95=0.488 max=5.189 n=355 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=3.4 p95=7.2 max=7.2 n=6 | frameGap p50=8.3 p95=8.8 max=16.6 n=925 | hostTool p50=0 p95=0 max=0 n=0
+  · 主进程 CPU：p50=2.554% p95=4.672% max=4.672%（n=4）
   · 口径提醒：负载是 debugEcho 合成事件（不含模型生成），测的是通道 + 渲染管线扛不扛得住
 
 === 结论：5/5 条通过 ===
 [ui-latency] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/T8.8/ui-latency-probe.png
-[plugin:demo-crash] crashed code=0 uptime=12607ms restarts=0
+[plugin:demo-crash] crashed code=0 uptime=12000ms restarts=0
 [engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
-[plugin:demo-kitchen] crashed code=0 uptime=12608ms restarts=0
-[plugin:demo-overreach] crashed code=0 uptime=12607ms restarts=0
-[engine] 子进程异常退出（code=0, conv=conv-1-84e2fc99）
-[engine] 子进程异常退出（code=0, conv=conv-2-9592d406）
-[engine] 子进程异常退出（code=0, conv=conv-3-1d362ad4）
+[plugin:demo-kitchen] crashed code=0 uptime=11999ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=11999ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-1e3f1530）
+[engine] 子进程异常退出（code=0, conv=conv-2-46769b6b）
+[engine] 子进程异常退出（code=0, conv=conv-3-00461698）

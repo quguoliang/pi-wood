@@ -1,6 +1,6 @@
 Scope: 5 of 6 workspace projects
-packages/ui-kit typecheck$ tsc --noEmit
 packages/plugin-api typecheck$ tsc --noEmit
+packages/ui-kit typecheck$ tsc --noEmit
 packages/plugin-api typecheck: Done
 packages/ui-kit typecheck: Done
 packages/ipc-schema typecheck$ tsc --noEmit
