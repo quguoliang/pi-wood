@@ -1,20 +1,36 @@
+
 [plugin:demo-crash] [crash] activate（等待 crash 控制消息）
 === T8.10 --ui-latency-probe（带窗：第二跳 / 首屏 / 掉帧 / 主进程 CPU） ===
-✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.451ms（预算 ≤20ms，n=363）；负载=900 帧 / 3 路 / 间隔 16ms
-✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=8.6ms（预算 ≤33.3ms，n=924）
-✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=3.725%（预算 ≤60%，n=4；无样本不判达标）
-✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=11.1ms（预算 ≤100ms，n=5）
-✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1292 rejectedBatches=0
-  · 全量摘要：rpcRtt p50=1.014 p95=1.355 max=1.355 n=4 | eventHop p50=0.214 p95=0.323 max=0.819 n=900 | rendererHop p50=0.177 p95=0.451 max=20.388 n=363 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=7.9 p95=11.1 max=11.1 n=5 | frameGap p50=8.3 p95=8.6 max=16.7 n=924 | hostTool p50=0 p95=0 max=0 n=0
-  · 主进程 CPU：p50=2.721% p95=3.725% max=3.725%（n=4）
+Error occurred in handler for 'engine:getRuntimeInfo': Error: 引擎未启动：先调 start
+    at EngineHost.onFrame (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:1201:24)
+    at ForkUtilityProcess.<anonymous> (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:1112:38)
+    at ForkUtilityProcess.emit (node:events:519:28)
+    at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
+Error occurred in handler for 'engine:getAvailableModels': Error: 引擎未启动：先调 start
+    at EngineHost.onFrame (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:1201:24)
+    at ForkUtilityProcess.<anonymous> (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:1112:38)
+    at ForkUtilityProcess.emit (node:events:519:28)
+    at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
+Error occurred in handler for 'engine:getThinkingLevels': Error: 引擎未启动：先调 start
+    at EngineHost.onFrame (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:1201:24)
+    at ForkUtilityProcess.<anonymous> (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:1112:38)
+    at ForkUtilityProcess.emit (node:events:519:28)
+    at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
+✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.274ms（预算 ≤20ms，n=394）；负载=900 帧 / 3 路 / 间隔 16ms
+✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=7ms（预算 ≤33.3ms，n=1625）
+✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=10.008%（预算 ≤60%，n=8；无样本不判达标）
+✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=7.3ms（预算 ≤100ms，n=5）
+✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=2024 rejectedBatches=0
+  · 全量摘要：rpcRtt p50=3.259 p95=116.376 max=116.376 n=7 | eventHop p50=0.669 p95=0.955 max=1.571 n=900 | rendererHop p50=0.109 p95=0.274 max=17.525 n=394 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=4.4 p95=7.3 max=7.3 n=5 | frameGap p50=6.9 p95=7 max=180.7 n=1625 | hostTool p50=0 p95=0 max=0 n=0
+  · 主进程 CPU：p50=2.349% p95=10.008% max=10.008%（n=8）
   · 口径提醒：负载是 debugEcho 合成事件（不含模型生成），测的是通道 + 渲染管线扛不扛得住
 
 === 结论：5/5 条通过 ===
-[ui-latency] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/T8.8/ui-latency-probe.png
-[plugin:demo-crash] crashed code=0 uptime=11852ms restarts=0
+[ui-latency] captured C:\Users\1\Desktop\pi-wood\apps\desktop\docs\proofs\T8.8\ui-latency-probe.png
+[plugin:demo-crash] crashed code=0 uptime=19207ms restarts=0
 [engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
-[plugin:demo-kitchen] crashed code=0 uptime=11851ms restarts=0
-[plugin:demo-overreach] crashed code=0 uptime=11851ms restarts=0
-[engine] 子进程异常退出（code=0, conv=conv-1-af025955）
-[engine] 子进程异常退出（code=0, conv=conv-2-1d249ae1）
-[engine] 子进程异常退出（code=0, conv=conv-3-83eab2fd）
+[plugin:demo-kitchen] crashed code=0 uptime=19207ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=19206ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-5e5b00e1）
+[engine] 子进程异常退出（code=0, conv=conv-2-cb5afadc）
+[engine] 子进程异常退出（code=0, conv=conv-3-969ab217）

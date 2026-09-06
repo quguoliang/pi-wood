@@ -1204,7 +1204,7 @@ B: N=6 总增 RSS=0MB heap=0MB
 - 仍未闭合（诚实标注）：① 负载是 `debugEcho` 合成事件，**不含模型 token 生成与真实 markdown/代码高亮渲染成本**——真实三路并发的体感仍要在 `--ui-chat` 或人工轮里看；② EnvironmentPanel 那行只经构建 + 探针链路验证，**人眼目检留到 GUI 那一轮**；③ `approvalRtt`/`hostToolRtt` 在本探针恒为 0 样本（不判达标，如实显示）
 - 验证方式：`pnpm exec electron . --ui-latency-probe`（或 `bash scripts/t88-verify.sh`，`SKIP_GUI=1` 跳过）；证据 `docs/proofs/T8.8/probe-ui-latency.log` + `ui-latency-probe.png`
 
-### [ ] T8.11 左栏项目/会话管理：归档优先模型（调研结论 T8.11-R1 + 落地）（🔜 2026-09-06 第二轮用户反馈修复：engineReady 切片同步 + 归档收进设置页 + 工作树设置页补齐，GUI 实测通过；门禁复跑仍欠）
+### [x] T8.11 左栏项目/会话管理：归档优先模型（调研结论 T8.11-R1 + 落地）（✅ 2026-09-06 第二轮用户反馈修复：engineReady 切片同步 + 归档收进设置页 + 工作树设置页补齐，GUI 实测通过；**同日晚 Windows 真机门禁复跑 19/19 + `--ui-chat` EXIT=0，收口**——见 §8 当日行）
 
 > **为什么立它**：T8.8 收口后左栏只有「添加项目 / 新任务 / 关闭对话」，项目与会话**没有任何移除、重命名、归档、置顶入口**；而市场共识（T8.11-R1 调研，2026-09-06）是**「归档（可逆）为默认、删除（不可逆）为末位」**——Cursor 甚至把 Agents 侧栏的 Delete 整个换成了 Archive（社区反弹后也未回退）。调研覆盖 Cursor / VS Code Copilot Agents / ChatGPT Projects / Windsurf / Claude Code / Cline：
 > - **两段式移除是行业标准**：归档（默认、可逆、不删数据）→ 删除（末位、需确认、警告不可逆）；
@@ -1227,7 +1227,7 @@ B: N=6 总增 RSS=0MB heap=0MB
   5. → [x] `ProjectGroup`：会话行/对话行/项目行 ⋯ 菜单；重命名=内联输入；删除与移除项目=内联确认条；项目内「已归档」折叠组（点开归档行=恢复并打开）（✅）
   6. → [x] 置顶排序：pinned 先于普通会话（同 modified desc）；归档对话 = 元数据归档 + 关闭引擎进程，活跃树同步隐藏（✅）
   7. → [x] 单测：session-meta-service 6/6 + project-manager 4/4（含 remove-by-id 回归）；`pnpm -r typecheck` 全绿、`pnpm -r test` 桌面 240/240、`electron-vite build` 通过（✅ 2026-09-06）
-- 验证方式：`pnpm -r typecheck && pnpm -r test`；**欠账**：① 左栏菜单/归档组/删除确认的 GUI 目检；② `t88-verify.sh` 门禁复跑（含产物符号断言是否需补 `sessions:delete`）
+- 验证方式：`pnpm -r typecheck && pnpm -r test`；GUI 目检（✅ 2026-09-06 第二轮 dev 实测：切对话控件全亮、「+」进草稿、归档页、工作树设置页）；`t88-verify.sh` 门禁复跑（✅ 2026-09-06 晚 Windows 真机 19/19 + `--ui-chat` EXIT=0）——**两项欠账均闭**
 - **第二轮（2026-09-06，用户真机反馈四问题，全部修复并 GUI 实测）**：
   1. → [x] **Composer 控件不可点（问题 2，根因）**：engineReady 已按对话切片（T8.3），但置 true 只有 activateProject 一条路——从左栏切到任何既有对话时目标切片恒 false，模型/思考/审批控件整体禁用。修复：`conversations-store` 增 `syncEngineReadyFor`（注册表状态 → 目标切片：非 dead 即可用、suspended 视为可复活、spawning 不动以 activateProject 为准），挂进 `switchTo` 与 1.5s 轮询
   2. → [x] **项目「+」不生效（问题 1）**：重启加载修复后实测正常（草稿态+聚焦）；用户实例跑的是重启前旧进程
@@ -1279,7 +1279,7 @@ B: N=6 总增 RSS=0MB heap=0MB
 
 ### 真机验证状态（2026-09-05 门禁日后；全批收口的单一入口）
 
-> 一次性跑法：`bash scripts/t88-verify.sh`（macOS 本机；`SKIP_UI=1` 跳真模型对话、`SKIP_PACKAGE=1` 跳打包段、`SKIP_GUI=1` 跳需要可见窗口的 `--ui-latency-probe`）。证据统一落 `apps/desktop/docs/proofs/T8.8/`（**本轮起 proofs 下 `.log` 已解除忽略，可入库**）。细节与踩坑全在 §8 的 2026-09-05 行。
+> 一次性跑法：`bash scripts/t88-verify.sh`（macOS / Windows 本机均可；Windows 需 Git Bash 全路径 `C:\Program Files\Git\bin\bash.exe`，见 §8 2026-09-06 行；`SKIP_UI=1` 跳真模型对话、`SKIP_PACKAGE=1` 跳打包段、`SKIP_GUI=1` 跳需要可见窗口的 `--ui-latency-probe`）。证据统一落 `apps/desktop/docs/proofs/T8.8/`（**本轮起 proofs 下 `.log` 已解除忽略，可入库**）。细节与踩坑全在 §8 的 2026-09-05 行。
 
 | 任务 | 真机已闭 | 仍欠（闭不掉的原因） |
 |---|---|---|
@@ -1291,6 +1291,7 @@ B: N=6 总增 RSS=0MB heap=0MB
 | T8.8 UI + 门禁 | 五探针 + concurrency-probe 4/4 + `--ui-chat` + **macOS 首次打包 + packaged 探针 21/21** | 性能红线 5 行定档、并发=1 A/B、4 对话并行回流目检；轻量未做项（「+」选项目/fork、命令面板聚合、标签跨启动持久化、用量按对话细分）不变 |
 | T8.9 红线度量出口 | ✅ `--latency-probe` **7/7 EXIT=0**：rpcRtt p95 0.093ms / eventHop p95 2.292ms / approvalRtt p95 0.087ms，统计按对话独立且 close 后出清 | 渲染层三项已移交 T8.10 闭合；只剩**真模型负载下**的体感复核（合成事件不含 token 生成成本） |
 | T8.10 带窗红线度量 | ✅ `--ui-latency-probe` **5/5 EXIT=0**：第二跳 p95 1.872ms / 帧间隔 p95 9.5ms / 主进程 CPU p95 3.683% / 切换首屏 p95 8ms；EnvironmentPanel 红线行已上 | 真模型三路并发的体感复核（人工轮）；面板那行的人眼目检 |
+| T8.11 左栏管理 | ✅ 2026-09-06：第二轮 GUI 实测（切对话控件全亮/「+」进草稿/归档页/工作树设置页）+ **Windows 真机门禁复跑 19/19 + `--ui-chat` EXIT=0**（concurrency ⑦ 修为基线 Δ 口径后 5/5；packaged 探针 Windows 首证 21/21） | 批内无；轻量未做项不变 |
 
 > **本批全 ✅ 的剩余条件**：①一轮「GUI 人手 + 真模型」验收（4 对话并行改代码→审 diff→回流、并发审批、切换手感、并发=1 A/B 对照、真模型三路体感）；②**度量缺口经 T8.9+T8.10 后只剩两条**：在飞 prompt/子代理峰值计数（需真模型灌流，`--concurrency-probe` ④⑤ 设计上不做）与真模型负载下的体感复核——**红线数字一律要绑负载形状**（同一份代码 16ms 节流下第二跳 p95 1.87ms、无间隔突发下 261ms，后者是排队延迟不是产品慢）；③**探针类工具已全部齐备**（作用域 `--workspace-scope-probe` 14/14、安全底线 `--approval-probe` 9/9、度量 `--latency-probe` 7/7 + `--ui-latency-probe` 5/5，均已进门禁第 4 步）；④Windows 侧零残留硬断言（⑦ 只在 win32 有效）与 T5.3 的安装/签名/三平台（环境阻塞）。
 
@@ -1300,6 +1301,7 @@ B: N=6 总增 RSS=0MB heap=0MB
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-06（晚） | T8.11（§7.9） | 门禁复跑+修探针+踩坑 | **Windows 真机全量门禁复跑：19/19 EXIT=0 + `--ui-chat` EXIT=0，T8.11 最后欠账闭账**。① 环境：Windows 机首跑 `t88-verify.sh`（Git Bash 全路径，`pkill` 缺失被 `\|\| true` 容忍、步骤 0 杀进程改由 PowerShell 预执行）；**首跑 typecheck 即挂**——上一批 2bff728 的 monaco/arborist/iconify 依赖只在 Mac 装过，Windows node_modules 缺失 → `pnpm install` 后复跑（⚠ pnpm 又往 pnpm-workspace.yaml 写 `electron: set this to true or false` 假占位，已清）。② 第二轮 `--concurrency-probe` FAIL（4/5）：⑦「引擎子进程零残留」用**全局绝对计数**（`node.exe==0` 无基线），在开发机被无关软件的 node.exe（3 个，与 pi-wood 无关）打穿；同族探针 conversation-probe C4.2 / engine-process-probe P1-e 均为「基线 Δ≤0」口径 → **修 concurrency-probe ⑦ 为基线回归 Δ**（新增 `countEngineish` 同款实现，注释钉死教训：**残留断言必须绑基线，绝对零只在干净门禁机成立**）→ 第三轮 5/5（基线=0 Δ=0）。③ 全绿明细：typecheck / test / build / 产物符号断言、五探针、concurrency 5/5、latency 7/7、workspace-scope 14/14、approval 9/9、ui-latency 5/5、package:dir（本地 electronDist 指引生效）+ **packaged conversation-probe 21/21（Windows 首证）**；`--ui-chat` 真模型 EXIT=0（`ui-chat-t811.png`：引擎 cwd=worktrees\455acda7、读取工具完成、deepseek-v4-flash 思考+markdown 全渲染；**密钥来自 `~/.pi-wood/settings.json` 而非 .env**——Windows 侧口径与脚本注释不同，ui-chat 不依赖 DEEPSEEK_API_KEY 环境变量）。④ 观察项（登记不修）：SDK 0.84.4 新事件 `entry_appended` 未进 EngineEventSchema，event-bridge 按 unknown 透传（每对话一条警告，无害但应入契约，挂 T8.4 后续）；打包/收尾态 child code=0 仍记「子进程异常退出」（T8.8 观察项 (a) 既有）。⑤ 仓库卫生：工作区 97 个文件 CRLF 假改动（上一批 Mac 提交为 LF、Windows 侧被重写）→ `git diff --ignore-cr-at-eol` 鉴别后 restore，只留 22 个真实改动文件；`scripts/t811-gate.out` 为控制台转录（PowerShell Tee 出 UTF-16），不入库。证据：`docs/proofs/T8.8/` 全量刷新 + 新增 `ui-chat-t811.{png,log}`。 | T8.11 ✅ 收口（T8 批任务级全部完成）；门禁在 Windows 机可复现（剩余人手项：T8.4 PromptTray 目检、T8.7 三项 GUI、真模型灌流 2 行红线） |
 | 2026-09-06 | T8.11（§7.9） | 修复+用户反馈 | **用户真机四问题全修并 GUI 实测**：①② Composer 控件不可点/项目「+」无效——根因是 engineReady 按对话切片后只有 activateProject 置 true，切到既有对话的切片恒 false → `conversations-store.syncEngineReadyFor`（switchTo + 1.5s 轮询同步，spawning 不抢置位权）；③ 归档按用户裁定移出目录树 → 设置「归档」页统一管理（恢复/删除）；④ toast 指向的「设置 → 工作树」页自 T8.0 起从未存在 → WorktreeSettingsPanel 补齐（enabled/keepAfterClose 开关 + 孤儿树回收，`removeManagedWorktreeByPath` realpath 守卫，脏树拒绝后升级强制）。**dev 实例实测：切对话控件全亮、「+」进草稿、孤儿树实际回收一棵、归档页列出正确**。typecheck 全绿 240/240 | T8.11 GUI 目检欠账就此闭账；门禁复跑仍欠 |
 | 2026-09-06 | T8.11（§7.9） | 进展+踩坑 | **左栏项目/会话管理落地（归档优先模型）**：① 新增 `session-meta-service`（`~/.pi-wood/session-meta.json`，键=会话文件绝对路径，archived/pinned/alias 三字段，不动 Pi 会话文件→CLI 互通零影响）；② ipc-schema 增 `sessions:meta/setMeta/delete` + `project:rename`，preload/global.d 补面（projectRemove 此前通道存在但 preload 缺方法，一并补上）；③ 删除会话双守卫（被活跃对话认领即拒 + 仅认存在的 `.jsonl`）；④ ProjectGroup 三级「⋯」菜单：项目（重命名/移除，移除=只解除注册并明示不删磁盘）、对话（重命名/置顶/归档并关闭）、会话（重命名/置顶/归档/删除，删除内联二次确认且明示 CLI 不可恢复）；「已归档」折叠组，点归档行=恢复并打开；置顶恒最前。⑤ **⚠ 踩坑一（既有 bug）**：`project-manager.remove` 对传入 id 再哈希一次导致 IPC 按 id 移除永远 false——改为三口径匹配（新单测钉住）。**⚠ 踩坑二**：Node 26 TS 剥离拒绝 `a \|\| b ?? c`（需括号）。⑥ 单测 +10（meta 6/6、pm 4/4），桌面 240/240、typecheck/build 全绿。**欠账**：GUI 目检 + t88 门禁复跑 | 左栏具备完整「归档优先」管理能力；remove-by-id bug 修复 |
 | 2026-09-06 | T8.11（§7.9） | 决策+调研 | **左栏项目/会话管理立项（归档优先模型）**。市场调研（Cursor/VS Code Copilot Agents/ChatGPT Projects/Windsurf/Claude Code/Cline）四条共识：① 两段式移除（归档默认可逆、删除末位不可逆）——Cursor 已把 Agents 侧栏 Delete 整个换成 Archive；② 项目移除只解除关联不删会话（ChatGPT 连带删除是反面教材）；③ 删除有前置条件（VS Code：worktree 变更未整合则拒绝删会话）；④ 不静默清列表（Windsurf 教训）。**pi-wood 映射口径**：会话元数据（archived/pinned/alias）以会话文件路径为键存 `~/.pi-wood/session-meta.json`，不动 Pi 会话文件（CLI 互通零影响）；「关闭/归档/删除」三层语义分开；删除守卫=被活跃对话认领即拒。详见 §7.9 T8.11 | 左栏从「只能加」到「能管」；T8.11-R1 调研结论固化 |

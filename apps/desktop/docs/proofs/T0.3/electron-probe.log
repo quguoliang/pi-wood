@@ -1,0 +1,10 @@
+[probe] env DEEPSEEK_API_KEY present: true
+[probe] agentDir=C:\Users\1\.pi\agent cwd=C:\Users\1\Desktop\pi-wood\pi-desktop\apps\desktop\scratch\test-project
+[probe] runtime ok（扩展经 DefaultResourceLoader 自动发现，jiti 在 Electron 主进程加载 TS 扩展成功）
+[probe] bindExtensions ok (mode=rpc)
+[probe] available(3): deepseek/deepseek-v4-flash, deepseek/deepseek-v4-flash-vision-exp, deepseek/deepseek-v4-pro
+[probe] model set: deepseek/deepseek-chat
+[probe] TOOL_START: echo_greeting
+[probe] TOOL_END: isError=false
+[probe] prompt 完成
+PROBE_RESULT: PASS

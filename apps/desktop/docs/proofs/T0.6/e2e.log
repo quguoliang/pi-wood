@@ -1,0 +1,51 @@
+e2e: SdkAdapter started
+model: deepseek/deepseek-v4-flash
+auto prompt: 把 test.txt 里的 hello 改成 hola
+FWD agent_start
+FWD turn_start
+FWD message_start
+FWD message_end
+ASSISTANT_TEXT: 把 test.txt 里的 hello 改成 hola
+FWD message_start
+FWD message_end
+ASSISTANT_TOOLCALLS: 1
+FWD tool_execution_start
+FWD tool_execution_end
+FWD message_start
+FWD message_end
+ASSISTANT_TEXT: hello bar
+
+FWD turn_end
+FWD turn_start
+FWD message_start
+FWD message_end
+ASSISTANT_TOOLCALLS: 1
+FWD tool_execution_start
+FWD tool_execution_end
+FWD message_start
+FWD message_end
+ASSISTANT_TEXT: Successfully replaced 1 block(s) in test.txt.
+FWD turn_end
+FWD turn_start
+FWD message_start
+FWD message_end
+ASSISTANT_TOOLCALLS: 1
+FWD tool_execution_start
+FWD tool_execution_end
+FWD message_start
+FWD message_end
+ASSISTANT_TEXT: hola bar
+
+FWD turn_end
+FWD turn_start
+FWD message_start
+FWD message_end
+ASSISTANT_TEXT: 已完成，`test.txt` 里的 `hello` 已改为 `hola`，现在内容是 `hola bar`。
+FWD turn_end
+FWD agent_end
+FWD agent_settled
+DIFF test.txt
+- hello bar
++ hola bar
+
+E2E_RESULT: PASS

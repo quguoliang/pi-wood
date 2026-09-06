@@ -1,3 +1,4 @@
+
 [goal-probe] ✓ 自动续跑发 prompt — status=active turns=1 sent=1
 [goal-probe] ✓ token 预算耗尽停 — status=budgetLimited tokensUsed=100 sent=1
 [goal-probe] ✓ 轮次上限 blocked — 前三轮后 turns=3/3 第4次 status=blocked

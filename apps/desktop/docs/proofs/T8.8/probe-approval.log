@@ -1,17 +1,21 @@
+
 === T8.4 --approval-probe（deny-by-default / 票据 / 归属 / 后台不静默拒） ===
 ✓ D0 前置：策略已钉为 allAsk 且该工具确实要问人 — decide(bash) = ask
 ✓ D1 反向通道无本地放行路径（清单封闭且不含策略读取类方法） — host:tool-execute, host:ui, host:approval, host:subagent
 [engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 engine:subagentRuns）
-✓ D2 端到端 deny-by-default：child 确实收到 allow:false（无人应答 → 超时拒） — verdicts=false(用户拒绝该操作) false(用户拒绝该操作) false(用户拒绝该操作)，耗时 2708ms（3×900ms 超时档，未挂死）
+✓ D2 端到端 deny-by-default：child 确实收到 allow:false（无人应答 → 超时拒） — verdicts=false(用户拒绝该操作) false(用户拒绝该操作) false(用户拒绝该操作)，耗时 2762ms（3×900ms 超时档，未挂死）
 ✓ D3 票据一次性：同一 ticket 的第二次裁决被拒（防重放绕过） — #1 已由安全策略拦截（path-guard / de / #2 审批票据已消费（疑似重放）：probe-ti…
 ✓ D4a 后台对话确实有一条在飞 pending（可被应答，而不是被忽略） — pending=1
 ✓ D4b 跨对话应答被拒（应答者 ≠ 发起对话，且 pending 保留给发起对话） — respond=false，pending 仍在=true
-✓ D5a 后台 pending 活过 2×超时窗口且未起计时表（不被静默拒） — pendingMs=1991ms armed=false
+✓ D5a 后台 pending 活过 2×超时窗口且未起计时表（不被静默拒） — pendingMs=2000ms armed=false
 ✓ D5b 切到该对话后计时表起来 — armed=true
 ✓ D5c 起表后超时确实落 deny 且 pending 出清 — false / 用户拒绝该操作
-  · 已恢复审批策略为 allAsk
+  · 已恢复审批策略为 auto
+[engine:conv-1-f] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
+[engine:conv-2-8] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
+[engine:conv-3-e] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
 
 === 结论：9/9 条通过 ===

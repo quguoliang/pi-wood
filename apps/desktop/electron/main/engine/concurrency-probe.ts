@@ -79,6 +79,22 @@ function makeProject(tag: string): string {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** node/python 进程计数（win32 only，-1=不可用）。口径必须与 conversation-probe 的 countEngineish 一致。 */
+async function countEngineish(): Promise<number> {
+  if (process.platform !== "win32") return -1;
+  try {
+    const { stdout } = await execAsync("tasklist", ["/FI", "STATUS eq RUNNING", "/FO", "CSV", "/NH"], { maxBuffer: 8 * 1024 * 1024 });
+    let n = 0;
+    for (const line of stdout.split("\n")) {
+      const name = line.match(/^"([^"]+)"/)?.[1]?.toLowerCase();
+      if (name === "node.exe" || name === "python.exe") n += 1;
+    }
+    return n;
+  } catch {
+    return -1;
+  }
+}
+
 export async function runConcurrencyProbe(): Promise<void> {
   const results: Array<{ name: string; ok: boolean; note: string }> = [];
   const check = (name: string, ok: boolean, note = ""): void => {
@@ -92,6 +108,7 @@ export async function runConcurrencyProbe(): Promise<void> {
 
   console.log("=== T8.8 --concurrency-probe ===");
   try {
+    const engineishBaseline = await countEngineish();
     // ① 同项目 ×2 + 跨项目 ×1 并行（worktree 生效 ⇒ cwd 不同），事件按对话归属
     await ensureConversation(projA);
     await ensureConversation(projA, { newConversation: true }); // 同项目再开一条（各自树）
@@ -124,10 +141,13 @@ export async function runConcurrencyProbe(): Promise<void> {
     check("③ close 全部后注册表清空", listConversations().length === 0);
 
     // ⑦ 零残留（非 Windows 无 tasklist 口径 → 记 SKIP；Windows 真机跑才有硬断言）
-    if (process.platform === "win32") {
-      const { stdout } = await execAsync("tasklist", ["/FO", "CSV", "/NH"], { maxBuffer: 8 * 1024 * 1024 });
-      const leaked = (stdout.match(/node\.exe/gi) ?? []).length;
-      check("⑦ 引擎子进程零残留", leaked === 0, `node.exe=${leaked}`);
+    // 口径=基线回归 Δ（同 conversation-probe C4.2 / engine-process-probe P1-e）：
+    // 绝对计数在开发机上会被无关软件的 node.exe（dev server/语言服务等）打穿，
+    // 2026-09-06 Windows 门禁首跑即栽在这里（node.exe=3 全部来自其它软件）。
+    if (engineishBaseline >= 0) {
+      const after = await countEngineish();
+      const delta = after - engineishBaseline;
+      check("⑦ 引擎子进程零残留（回基线）", delta <= 0, `基线=${engineishBaseline} 现在=${after} Δ=${delta}`);
     } else {
       console.log("SKIP ⑦ 零残留计数（tasklist 口径仅 Windows；T8.0 P1-e 已在真机证 Δ0）");
     }

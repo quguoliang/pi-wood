@@ -1,0 +1,9 @@
+
+[plugin:demo-crash] [crash] activate（等待 crash 控制消息）
+[ui-chat] captured C:/Users/1/Desktop/pi-wood/apps/desktop/docs/proofs/T8.8/ui-chat-t811.png
+[event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
+[plugin:demo-crash] crashed code=0 uptime=13629ms restarts=0
+[engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
+[plugin:demo-kitchen] crashed code=0 uptime=13628ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=13628ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-455acda7）

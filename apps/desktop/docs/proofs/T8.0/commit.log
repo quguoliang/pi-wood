@@ -1,0 +1,82 @@
+﻿=== add 2026-09-04T03:10:04.6307688+08:00 ===
+git : warning: in the working copy of 'apps/desktop/electron-builder.yml', LF will be replaced by CRLF the next time Git to
+uches it
+所在位置 C:\Users\1\Desktop\pi-wood\scripts\t80-commit.ps1:9 字符: 1
++ git add -- apps/desktop/electron/main/engine/engine-child.mjs apps/de ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: in the working copy of 'apps/desktop/electron/main/index.ts', LF will be replaced by CRLF the next time Git touche
+s it
+warning: in the working copy of 'apps/desktop/package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/desktop/electron/main/engine/engine-child.mjs', LF will be replaced by CRLF the next 
+time Git touches it
+warning: in the working copy of 'apps/desktop/electron/main/engine/engine-process-probe.ts', LF will be replaced by CRLF th
+e next time Git touches it
+warning: in the working copy of 'apps/desktop/electron/main/engine/worktree-probe.mjs', LF will be replaced by CRLF the nex
+t time Git touches it
+git : warning: in the working copy of 'scripts/t80-commit-msg.txt', LF will be replaced by CRLF the next time Git touches i
+t
+所在位置 C:\Users\1\Desktop\pi-wood\scripts\t80-commit.ps1:10 字符: 1
++ git add -- scripts/t80-probe.ps1 scripts/t80-packaged.ps1 scripts/t80 ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: in the working copy of 'scripts/t80-packaged.ps1', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/t80-pathspec.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'scripts/t80-probe.ps1', LF will be replaced by CRLF the next time Git touches it
+git : warning: in the working copy of 'apps/desktop/docs/proofs/T8.0/engine-process-dev.txt', LF will be replaced by CRLF t
+he next time Git touches it
+所在位置 C:\Users\1\Desktop\pi-wood\scripts\t80-commit.ps1:11 字符: 1
++ git add -- apps/desktop/docs/proofs/T8.0/engine-process-dev.txt apps/ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: in the working copy of 'apps/desktop/docs/proofs/T8.0/engine-process-packaged.txt', LF will be replaced by CRLF th
+e next time Git touches it
+warning: in the working copy of 'apps/desktop/docs/proofs/T8.0/worktree-probe.txt', LF will be replaced by CRLF the next ti
+me Git touches it
+git : warning: in the working copy of 'pi-wood-鎵ц璁″垝.md', LF will be replaced by CRLF the next time Git touches it
+所在位置 C:\Users\1\Desktop\pi-wood\scripts\t80-commit.ps1:12 字符: 1
++ git add --pathspec-from-file=scripts/t80-pathspec.txt 2>&1 | Out-File ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: in the... Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+=== staged stat ===
+ .../docs/proofs/T8.0/engine-process-dev.txt        |  61 +++
+ .../docs/proofs/T8.0/engine-process-packaged.txt   |  12 +
+ apps/desktop/docs/proofs/T8.0/worktree-probe.txt   |  39 ++
+ apps/desktop/electron-builder.yml                  |   5 +
+ apps/desktop/electron/main/engine/engine-child.mjs | 334 ++++++++++++
+ .../electron/main/engine/engine-process-probe.ts   | 571 +++++++++++++++++++++
+ .../electron/main/engine/worktree-probe.mjs        | 342 ++++++++++++
+ apps/desktop/electron/main/index.ts                |  13 +-
+ apps/desktop/package.json                          |   3 +
+ pi-wood-鎵ц璁″垝.md                                |  27 +-
+ scripts/t80-commit-msg.txt                         |  37 ++
+ scripts/t80-packaged.ps1                           |  21 +
+ scripts/t80-pathspec.txt                           |   1 +
+ scripts/t80-probe.ps1                              |  31 ++
+ 14 files changed, 1483 insertions(+), 14 deletions(-)
+[main 78124a9] T8.0 鍙屾帰閽堬細utilityProcess 寮曟搸 + git worktree 鐢熷懡鍛ㄦ湡 鈫?D 鏂规鍒?Go
+ 14 files changed, 1483 insertions(+), 14 deletions(-)
+ create mode 100644 apps/desktop/docs/proofs/T8.0/engine-process-dev.txt
+ create mode 100644 apps/desktop/docs/proofs/T8.0/engine-process-packaged.txt
+ create mode 100644 apps/desktop/docs/proofs/T8.0/worktree-probe.txt
+ create mode 100644 apps/desktop/electron/main/engine/engine-child.mjs
+ create mode 100644 apps/desktop/electron/main/engine/engine-process-probe.ts
+ create mode 100644 apps/desktop/electron/main/engine/worktree-probe.mjs
+ create mode 100644 scripts/t80-commit-msg.txt
+ create mode 100644 scripts/t80-packaged.ps1
+ create mode 100644 scripts/t80-pathspec.txt
+ create mode 100644 scripts/t80-probe.ps1
+COMMIT_EXIT=0
+78124a9 T8.0 鍙屾帰閽堬細utilityProcess 寮曟搸 + git worktree 鐢熷懡鍛ㄦ湡 鈫?D 鏂规鍒?Go
+b3a1cfb T8.P 涓昏繘绋?CJS鈫扙SM锛埪?.9 澶氬璇濇壒绗?0 姝ワ級
+=== my paths still dirty (expect none) ===
+?? apps/desktop/docs/proofs/T8.0/engine-process-dev.started
+?? scripts/t80-commit.ps1

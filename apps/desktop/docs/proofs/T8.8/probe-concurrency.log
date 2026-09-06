@@ -1,12 +1,16 @@
+
 === T8.8 --concurrency-probe ===
-✓ ① 三对话并存且引擎 cwd 各不相同（worktree 隔离） — list=3 cwd 去重=3 [conv-1-2a42c663:2a42c663 conv-2-66d761a3:66d761a3 conv-3-c38508e2:c38508e2]
+✓ ① 三对话并存且引擎 cwd 各不相同（worktree 隔离） — list=3 cwd 去重=3 [conv-1-dbcb42ba:C:\Users\1\AppData\Local\Temp\piwood-conc-a-S7KuC1\.pi-wood\worktrees\dbcb42ba conv-2-ab5eaa43:C:\Users\1\AppData\Local\Temp\piwood-conc-a-S7KuC1\.pi-wood\worktrees\ab5eaa43 conv-3-1bc54179:C:\Users\1\AppData\Local\Temp\piwood-conc-b-5BVtie\.pi-wood\worktrees\1bc54179]
 ✓ ② 切换对话不打断引擎（句柄均存活） — dead=0
 ✓ ⑥ 审批门在位（探针策略=恒拒） — asked=0（无真模型流量时不增长属正常）
+[engine:conv-1-d] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
+[engine:conv-2-a] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
+[engine:conv-3-1] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
 ✓ ③ close 全部后注册表清空
-SKIP ⑦ 零残留计数（tasklist 口径仅 Windows；T8.0 P1-e 已在真机证 Δ0）
+✓ ⑦ 引擎子进程零残留（回基线） — 基线=0 现在=0 Δ=0
 SKIP ④⑤⑧ prompt/子代理闸计数与性能红线逐条 → 需真渲染层/真模型流量（SlotGate 与预约-快照对账已由 38 例单测穷举；红线定档随 --ui-chat 真机）
 
-=== 结论：4/4 条通过 ===
+=== 结论：5/5 条通过 ===
