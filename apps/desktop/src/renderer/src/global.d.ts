@@ -96,6 +96,8 @@ declare global {
       sessionsMessages(file: string): Promise<unknown>;
       exportSessionMarkdown(defaultFileName: string, markdown: string): Promise<string | undefined>;
       engineSwitchSession(file: string): Promise<boolean>;
+      worktreeList(): Promise<unknown>;
+      worktreeRemove(opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown>;
       debugStress(count: number): Promise<number>;
       debugCapture(file: string): Promise<boolean>;
       fsTree(dir?: string): Promise<unknown>;

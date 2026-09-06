@@ -1514,14 +1514,16 @@ export function initEngineIpc(): void {
     return r;
   });
   ipcMain.handle(ENGINE_CHANNELS.worktreeRemove, async (_e, raw: unknown) => {
-    const { conversationId, force } = z
-      .object({ conversationId: z.string().min(1), force: z.boolean().optional() })
+    const { conversationId, path, force } = z
+      .object({ conversationId: z.string().min(1).optional(), path: z.string().min(1).optional(), force: z.boolean().optional() })
       .parse(raw);
-    const h = getConversation(conversationId);
-    const projectDir = h?.projectDir ?? getActiveProjectDirSafe();
+    const projectDir = getConversation(conversationId ?? "")?.projectDir ?? getActiveProjectDirSafe();
     if (!projectDir) throw new Error("引擎未启动：请先选择项目");
-    const { removeWorktree } = await import("../worktree/worktree-service");
-    const r = await removeWorktree(projectDir, conversationId, { force });
+    const { removeWorktree, removeManagedWorktreeByPath } = await import("../worktree/worktree-service");
+    // 两种口径：带 path = 设置「工作树」页孤儿对账的按路径回收（realpath 守卫托管目录）；带 conversationId = 按对话回收
+    const r = path
+      ? await removeManagedWorktreeByPath(projectDir, path, { force })
+      : await removeWorktree(projectDir, conversationId ?? "", { force });
     if (r.ok) send("ui:notify", { message: "工作树已回收", type: "success" });
     return r;
   });

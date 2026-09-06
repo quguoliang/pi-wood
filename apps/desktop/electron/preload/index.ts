@@ -193,6 +193,9 @@ const api = {
     ipcRenderer.invoke("session:export", { defaultFileName, markdown }),
   engineSwitchSession: (file: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:switchSession", { file }),
+  worktreeList: (): Promise<unknown> => ipcRenderer.invoke("engine:worktreeList"),
+  worktreeRemove: (opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown> =>
+    ipcRenderer.invoke("engine:worktreeRemove", opts),
   debugStress: (count: number): Promise<number> => ipcRenderer.invoke("debug:stress", { count }),
   debugCapture: (file: string): Promise<boolean> => ipcRenderer.invoke("debug:capture", { file }),
   // T2.1 文件域

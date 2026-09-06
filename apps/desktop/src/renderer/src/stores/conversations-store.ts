@@ -49,6 +49,24 @@ interface ConversationsState {
   resolvePendingClose(mode: "suspend" | "abort"): Promise<void>;
 }
 
+/**
+ * engineReady 已按对话切片（T8.3 重构），但置 true 的路径只有 activateProject（engineStart 成功）——
+ * 用户从左栏树切到任何既有对话时，目标切片是新建的（engineReady=false），Composer 的
+ * 模型/思考/审批控件会整体禁用且永不恢复。这里按注册表状态同步：
+ * 非 dead 即视为可用（suspended 的对话在发送时会自动复活）；spawning 期间不动，
+ * 以 activateProject 的权威置位为准，避免「控件亮了但引擎还没起来」。
+ */
+function syncEngineReadyFor(id: string | null, rows: ConversationRow[]): void {
+  if (!id) return;
+  const row = rows.find((r) => r.id === id);
+  if (!row) {
+    useSessionStore.getState().setEngineReady(false, id);
+    return;
+  }
+  if (row.status === "spawning") return;
+  useSessionStore.getState().setEngineReady(row.status !== "dead", id);
+}
+
 export const useConversationsStore = create<ConversationsState>((set, get) => ({
   rows: [],
   unreadIds: new Set<string>(),
@@ -58,7 +76,10 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
   async refresh() {
     try {
       const r = (await window.pi.listConversations?.()) as { conversations?: ConversationRow[] } | undefined;
-      if (r?.conversations) set({ rows: r.conversations });
+      if (r?.conversations) {
+        set({ rows: r.conversations });
+        syncEngineReadyFor(useSessionStore.getState().activeConversationId, r.conversations);
+      }
     } catch {
       /* 引擎未起时静默 */
     }
@@ -68,6 +89,7 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
     const st = useSessionStore.getState();
     if (projectDir && st.activeProject !== projectDir) st.setActiveProject(projectDir);
     st.setActiveConversation(id);
+    syncEngineReadyFor(id, get().rows);
   },
 
   startDraft(projectDir) {

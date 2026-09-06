@@ -268,12 +268,6 @@ export function useSidebarProjects() {
     return true;
   }, [activeSessionFile, refreshProjects]);
 
-  /** 恢复归档会话：清归档标记 + 直接打开（回到活跃列表并续写） */
-  const restoreSession = useCallback(async (project: ProjectRecord, session: SessionItem) => {
-    await setSessionMeta(session.file, { archived: false });
-    await selectSession(project, session);
-  }, [selectSession, setSessionMeta]);
-
   /**
    * 注册表对话按项目归组 → ConversationTreeItem（标题/未读/树标）。
    * 隐藏「空草稿」对话：还没发过任何用户消息的对话不算一个任务（配合「+」不预建，避免凭空多行）。
@@ -297,7 +291,7 @@ export function useSidebarProjects() {
     return map;
   }, [convRows, firstUserById, unreadIds, metaMap]);
 
-  /** 磁盘会话列表：被活跃对话认领的不重复展示；归档的移入 archivedSessionsByProject */
+  /** 磁盘会话列表：被活跃对话认领的不重复展示；已归档的不在树里展示（设置「归档」页统一管理，T8.11-R2） */
   const activeSessionsByProject = useMemo(() => {
     const claimed = new Set(convRows.map((r) => r.sessionFile).filter(Boolean) as string[]);
     const next: Record<string, SessionItem[]> = {};
@@ -315,17 +309,6 @@ export function useSidebarProjects() {
     return next;
   }, [convRows, sessionsByProject, metaMap]);
 
-  const archivedSessionsByProject = useMemo(() => {
-    const claimed = new Set(convRows.map((r) => r.sessionFile).filter(Boolean) as string[]);
-    const next: Record<string, SessionItem[]> = {};
-    for (const [path, sessions] of Object.entries(sessionsByProject)) {
-      next[path] = sessions
-        .filter((s) => !claimed.has(s.file) && metaMap[s.file]?.archived)
-        .sort((a, b) => b.modified.localeCompare(a.modified));
-    }
-    return next;
-  }, [convRows, sessionsByProject, metaMap]);
-
   const selectConversation = useCallback((row: ConversationRow) => {
     useConversationsStore.getState().switchTo(row.id, row.projectDir);
   }, []);
@@ -334,7 +317,6 @@ export function useSidebarProjects() {
     projects,
     conversationsByProject,
     sessionsByProject: activeSessionsByProject,
-    archivedSessionsByProject,
     metaMap,
     expandedProjects,
     activeProject,
@@ -357,6 +339,5 @@ export function useSidebarProjects() {
     setSessionPinned,
     setSessionArchived,
     deleteSession,
-    restoreSession,
   };
 }

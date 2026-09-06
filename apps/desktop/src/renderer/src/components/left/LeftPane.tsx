@@ -14,7 +14,6 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
     projects,
     conversationsByProject,
     sessionsByProject,
-    archivedSessionsByProject,
     metaMap,
     expandedProjects,
     activeProject,
@@ -37,7 +36,6 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
     setSessionPinned,
     setSessionArchived,
     deleteSession,
-    restoreSession,
   } = useSidebarProjects();
 
   return (
@@ -68,7 +66,6 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
               project={project}
               conversations={conversationsByProject[project.path] ?? []}
               sessions={sessionsByProject[project.path] ?? []}
-              archivedSessions={archivedSessionsByProject[project.path] ?? []}
               metaMap={metaMap}
               isActiveProject={activeProject === project.path}
               isExpanded={expandedProjects.has(project.path)}
@@ -91,7 +88,6 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
               onToggleSessionPin={setSessionPinned}
               onArchiveSession={setSessionArchived}
               onDeleteSession={deleteSession}
-              onRestoreSession={(session) => void restoreSession(project, session)}
             />
           ))}
           {projects.length === 0 && (

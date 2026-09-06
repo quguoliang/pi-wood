@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/time";
-import { Archive, ArchiveRestore, ChevronRight, MoreHorizontal, Pencil, Pin, PinOff, Trash2, X } from "lucide-react";
+import { Archive, MoreHorizontal, Pencil, Pin, PinOff, Trash2, X } from "lucide-react";
 import { Icon } from "../ui/Icon";
 import { badgeFor, tabTitle } from "../../stores/conversation-badge";
 import type { SessionMeta } from "../../stores/session-meta-store";
@@ -96,7 +96,6 @@ export function ProjectGroup({
   project,
   conversations,
   sessions,
-  archivedSessions,
   metaMap,
   isActiveProject,
   isExpanded,
@@ -119,12 +118,10 @@ export function ProjectGroup({
   onToggleSessionPin,
   onArchiveSession,
   onDeleteSession,
-  onRestoreSession,
 }: {
   project: ProjectRecord;
   conversations: ConversationTreeItem[];
   sessions: SessionItem[];
-  archivedSessions: SessionItem[];
   metaMap: Record<string, SessionMeta>;
   isActiveProject: boolean;
   isExpanded: boolean;
@@ -147,13 +144,11 @@ export function ProjectGroup({
   onToggleSessionPin(file: string, pinned: boolean): void;
   onArchiveSession(file: string, archived: boolean): void;
   onDeleteSession(file: string): Promise<boolean>;
-  onRestoreSession(session: SessionItem): void;
 }): React.JSX.Element {
   const [editing, setEditing] = useState<Editing>(null);
   const [editValue, setEditValue] = useState("");
   const [pendingDeleteFile, setPendingDeleteFile] = useState<string | null>(null);
   const [pendingRemoveProject, setPendingRemoveProject] = useState(false);
-  const [archivedOpen, setArchivedOpen] = useState(false);
 
   const commitEdit = (): void => {
     if (!editing) return;
@@ -173,11 +168,10 @@ export function ProjectGroup({
   const sessionTitle = (session: SessionItem): string =>
     metaMap[session.file]?.alias ?? session.name ?? session.firstMessage ?? "空会话";
 
-  const renderSessionRow = (session: SessionItem, archived: boolean): React.JSX.Element => {
+  const renderSessionRow = (session: SessionItem): React.JSX.Element => {
     const meta = metaMap[session.file];
     const title = sessionTitle(session);
-    const isEditing = editing?.kind === "session" && editing.file === session.file;
-    if (isEditing) {
+    if (editing?.kind === "session" && editing.file === session.file) {
       return (
         <div key={session.file} className="flex items-center px-1 py-0.5">
           <Input
@@ -201,7 +195,7 @@ export function ProjectGroup({
           className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:text-sidebar-foreground"
           type="button"
           title={session.firstMessage || title}
-          onClick={() => (archived ? onRestoreSession(session) : onSelectSession(session))}
+          onClick={() => onSelectSession(session)}
         >
           {meta?.pinned && <Pin className="size-3 shrink-0 rotate-45 text-primary" aria-label="已置顶" />}
           <span className={cn("min-w-0 flex-1 truncate", activeSessionFile === session.file && "font-medium text-sidebar-foreground")}>
@@ -210,25 +204,17 @@ export function ProjectGroup({
           <span className="shrink-0 text-[11px] text-muted-foreground/70">{formatRelativeTime(session.modified)}</span>
         </button>
         <RowMenu label={`${title} 的操作`}>
-          {archived ? (
-            <MenuItem icon={<ArchiveRestore className="size-3.5" />} label="恢复会话" onSelect={() => onArchiveSession(session.file, false)} />
-          ) : (
-            <MenuItem
-              icon={<Pencil className="size-3.5" />}
-              label="重命名"
-              onSelect={() => beginEdit({ kind: "session", file: session.file }, meta?.alias ?? "")}
-            />
-          )}
-          {!archived && (
-            <MenuItem
-              icon={meta?.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-              label={meta?.pinned ? "取消置顶" : "置顶"}
-              onSelect={() => onToggleSessionPin(session.file, !meta?.pinned)}
-            />
-          )}
-          {!archived && (
-            <MenuItem icon={<Archive className="size-3.5" />} label="归档" onSelect={() => onArchiveSession(session.file, true)} />
-          )}
+          <MenuItem
+            icon={<Pencil className="size-3.5" />}
+            label="重命名"
+            onSelect={() => beginEdit({ kind: "session", file: session.file }, meta?.alias ?? "")}
+          />
+          <MenuItem
+            icon={meta?.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+            label={meta?.pinned ? "取消置顶" : "置顶"}
+            onSelect={() => onToggleSessionPin(session.file, !meta?.pinned)}
+          />
+          <MenuItem icon={<Archive className="size-3.5" />} label="归档" onSelect={() => onArchiveSession(session.file, true)} />
           <MenuItem icon={<Trash2 className="size-3.5" />} label="删除…" destructive onSelect={() => setPendingDeleteFile(session.file)} />
         </RowMenu>
       </div>
@@ -366,24 +352,9 @@ export function ProjectGroup({
             );
           })}
 
-          {sessions.map((session) => renderSessionRow(session, false))}
+          {sessions.map((session) => renderSessionRow(session))}
 
-          {archivedSessions.length > 0 && (
-            <>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] text-muted-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-                onClick={() => setArchivedOpen((v) => !v)}
-                aria-expanded={archivedOpen}
-              >
-                <ChevronRight className={cn("size-3 transition-transform", archivedOpen && "rotate-90")} />
-                已归档（{archivedSessions.length}）
-              </button>
-              {archivedOpen && archivedSessions.map((session) => renderSessionRow(session, true))}
-            </>
-          )}
-
-          {conversations.length === 0 && sessions.length === 0 && archivedSessions.length === 0 && (
+          {conversations.length === 0 && sessions.length === 0 && (
             <div className="px-2 py-1 text-[11px] text-muted-foreground/60">还没有会话</div>
           )}
 

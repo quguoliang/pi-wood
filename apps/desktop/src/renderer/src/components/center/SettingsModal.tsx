@@ -11,6 +11,8 @@ import { PluginsPanel } from "./PluginsPanel";
 import { SubagentPermissionsPanel } from "./SubagentPermissionsPanel";
 import { MemorySettingsPanel } from "./MemorySettingsPanel";
 import { UsageSettingsPanel } from "./UsageSettingsPanel";
+import { ArchiveSettingsPanel } from "./ArchiveSettingsPanel";
+import { WorktreeSettingsPanel } from "./WorktreeSettingsPanel";
 
 /**
  * T3.2/T3.3 设置弹窗：Providers 密钥（safeStorage 钥匙串）/ 模型默认 / 审批策略 / 主题。
@@ -33,6 +35,8 @@ const sections = [
   { id: "subagent", label: "子代理" },
   { id: "memory", label: "记忆" },
   { id: "usage", label: "用量" },
+  { id: "archive", label: "归档" },
+  { id: "worktree", label: "工作树" },
 ] as const;
 
 const approvalOptions: Array<[string, string]> = [
@@ -61,7 +65,7 @@ function ListRow({ primary, secondary }: { primary: React.ReactNode; secondary?:
 }
 
 export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ui" | "ext" | "plugins" | "subagent" | "memory" | "usage">("providers");
+  const [tab, setTab] = useState<"providers" | "model" | "approval" | "theme" | "ui" | "ext" | "plugins" | "subagent" | "memory" | "usage" | "archive" | "worktree">("providers");
   const ui = useSettingsStore((s) => s.settings.ui);
   const patchUi = useSettingsStore((s) => s.patch);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -385,6 +389,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }): React.JSX.E
             {tab === "memory" && <MemorySettingsPanel />}
 
             {tab === "usage" && <UsageSettingsPanel />}
+            {tab === "archive" && <ArchiveSettingsPanel />}
+            {tab === "worktree" && <WorktreeSettingsPanel />}
           </div>
         </div>
       </DialogContent>

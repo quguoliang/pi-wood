@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import {
+  WORKTREE_BRANCH_PREFIX,
   WORKTREE_DIRNAME,
   branchFor,
   isManagedWorktree,
@@ -177,6 +178,41 @@ export async function removeWorktree(
 ): Promise<RemoveResult> {
   const path = worktreePathFor(projectDir, conversationId);
   const branch = branchFor(conversationId);
+  return removeWorktreeAt(projectDir, path, branch, opts);
+}
+
+/** T8.11-R2：按路径回收托管工作树（设置「工作树」页的孤儿对账视图用）。
+ * 路径必须真实落在 <projectDir>/.pi-wood/worktrees/ 之下（realpath 口径），否则拒绝。 */
+export async function removeManagedWorktreeByPath(
+  projectDir: string,
+  path: string,
+  opts: { force?: boolean } = {},
+): Promise<RemoveResult> {
+  let realPath = path;
+  try {
+    realPath = await realpath(path);
+  } catch {
+    return { ok: false, reason: "工作树路径不存在（可能已被回收）" };
+  }
+  let managedBase = join(projectDir, WORKTREE_DIRNAME);
+  try {
+    managedBase = await realpath(managedBase);
+  } catch {
+    return { ok: false, reason: "该项目没有托管工作树目录" };
+  }
+  if (!realPath.startsWith(managedBase.endsWith("/") ? managedBase : managedBase + "/")) {
+    return { ok: false, reason: "目标不在托管工作树目录内，拒绝删除" };
+  }
+  const shortId = realPath.slice(managedBase.length + 1).split("/")[0];
+  return removeWorktreeAt(projectDir, realPath, `${WORKTREE_BRANCH_PREFIX}${shortId}`, opts);
+}
+
+async function removeWorktreeAt(
+  projectDir: string,
+  path: string,
+  branch: string,
+  opts: { force?: boolean } = {},
+): Promise<RemoveResult> {
   if (!existsSync(join(path, ".git"))) {
     // 树已不在：仍收尾 prune + 删分支（幂等）
     await git(["worktree", "prune"], projectDir);

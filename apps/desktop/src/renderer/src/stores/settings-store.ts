@@ -7,6 +7,8 @@ export interface PiWoodSettings {
   editor: { fontSize: number; tabSize: number };
   ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean };
   recentProjects: string[];
+  /** T8.6/T8.11：工作树开关（设置「工作树」页可改；主进程 conversation-registry 读同一段配置） */
+  worktree: { enabled: boolean; keepAfterClose: boolean };
   /** per-对话 Agent 权限档（conversationId → mode）；未列出的对话回退全局 approval.mode（主进程裁决）。 */
   approvalByConversation: Record<string, "auto" | "highRisk" | "allAsk" | "denyAll">;
   /** T7.2（已废弃）：旧「按会话自动接受」开关，仅历史数据兼容，裁决链不再消费。 */
@@ -21,6 +23,7 @@ const defaults: PiWoodSettings = {
   editor: { fontSize: 14, tabSize: 2 },
   ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false },
   recentProjects: [],
+  worktree: { enabled: true, keepAfterClose: false },
   approvalByConversation: {},
   autoAcceptSessions: {},
 };
@@ -42,6 +45,7 @@ const merge = (raw: Partial<PiWoodSettings> | undefined): PiWoodSettings => ({
   theme: { ...defaults.theme, ...raw?.theme },
   editor: { ...defaults.editor, ...raw?.editor },
   ui: { ...defaults.ui, ...raw?.ui },
+  worktree: { ...defaults.worktree, ...raw?.worktree },
   approvalByConversation: { ...defaults.approvalByConversation, ...raw?.approvalByConversation },
   autoAcceptSessions: { ...defaults.autoAcceptSessions, ...raw?.autoAcceptSessions },
 });
