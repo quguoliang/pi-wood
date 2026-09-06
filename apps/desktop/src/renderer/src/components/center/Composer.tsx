@@ -7,6 +7,8 @@ import { greeting } from "../../lib/time";
 import { isLargePaste } from "../../lib/utils";
 import { useComposerController, type ComposerController } from "../../hooks/use-composer-controller";
 import { useGoalStore } from "../../stores/goal-store";
+import { usePendingContextStore } from "../../stores/pending-context-store";
+import { openWorkbenchFile } from "../../stores/workbench-store";
 
 const quickPrompts = [
   "检查这个项目当前的状态和主要问题",
@@ -15,17 +17,43 @@ const quickPrompts = [
   "解释这个项目的结构和核心流程",
 ];
 
-/** 输入框本体：透明，只承载附件条与文本框，落在亮灰输入卡内。 */
+/** 输入框本体：透明，承载附件条/片段芯片与文本框，落在亮灰输入卡内。 */
 function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
+  const snippets = usePendingContextStore((s) => s.items);
+  const removeSnippet = usePendingContextStore((s) => s.remove);
   return (
     <div>
-      {c.attachments.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto px-3 pt-2.5" aria-label="已添加的文件">
+      {(c.attachments.length > 0 || snippets.length > 0) && (
+        <div className="flex gap-1.5 overflow-x-auto px-3 pt-2.5" aria-label="已添加的上下文">
           {c.attachments.map((item) => (
             <span key={item.path} title={item.path} className="flex h-7 max-w-48 shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground">
               <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5" />
               <span className="truncate">{item.name}</span>
               <button type="button" onClick={() => c.removeAttachment(item.path)} aria-label={`移除 ${item.name}`} className="grid size-4 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground">
+                <Icon name="x" className="size-3" />
+              </button>
+            </span>
+          ))}
+          {/* 「添加到对话」片段芯片：点击回跳文件面板对应行，× 移除 */}
+          {snippets.map((s) => (
+            <span
+              key={s.id}
+              title={`${s.path}:${s.start}-${s.end}（点击在文件面板中打开）`}
+              className="flex h-7 max-w-52 shrink-0 items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-xs text-foreground"
+            >
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-1.5"
+                onClick={() => openWorkbenchFile(s.path, s.start)}
+                aria-label={`打开 ${s.name}`}
+              >
+                <Icon name="file" className="size-3.5 shrink-0 text-primary" />
+                <span className="truncate">
+                  {s.name}
+                  <span className="ml-1 font-mono text-muted-foreground">{s.start}-{s.end}</span>
+                </span>
+              </button>
+              <button type="button" onClick={() => removeSnippet(s.id)} aria-label={`移除 ${s.name} 片段`} className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground">
                 <Icon name="x" className="size-3" />
               </button>
             </span>

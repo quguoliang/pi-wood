@@ -50,7 +50,11 @@ function resolveShell(preferred?: string): { file: string; args: string[] } {
     const root = process.env["ProgramFiles"] ?? "C:\\Program Files";
     return { file: `${root}\\Git\\bin\\bash.exe`, args: ["-i", "-l"] };
   }
-  return { file: "powershell.exe", args: ["-NoLogo"] };
+  if (preferred === "powershell") return { file: "powershell.exe", args: ["-NoLogo"] };
+  if (process.platform === "win32") return { file: "powershell.exe", args: ["-NoLogo"] };
+  // darwin/Linux：用户登录 shell（$SHELL 缺省 zsh/bash），-l 保登录态（profile/PATH 已加载）
+  const sh = process.env["SHELL"] || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
+  return { file: sh, args: ["-l"] };
 }
 
 export function initTerminalIpc(send: (channel: string, data: unknown) => void): void {

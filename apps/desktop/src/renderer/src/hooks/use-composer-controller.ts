@@ -9,12 +9,22 @@ import { countLines } from "../lib/utils";
 import { readDraft, writeDraft, clearDraft } from "../lib/chat-draft-persistence";
 import { useSettingsStore, type ConversationApprovalMode } from "../stores/settings-store";
 import { useConversationsStore } from "../stores/conversations-store";
+import { usePendingContextStore, type PendingSnippet } from "../stores/pending-context-store";
 
 export interface AttachmentItem {
   path: string;
   name: string;
   size: number;
   kind: "file" | "image";
+}
+
+/** 「添加到对话」片段 → 消息尾部引用块（path:起-止 头 + 代码块），agent 侧零协议改动 */
+function appendSnippetQuotes(text: string, snippets: PendingSnippet[]): string {
+  if (snippets.length === 0) return text;
+  const blocks = snippets
+    .map((s) => `${s.path}:${s.start}-${s.end}\n\`\`\`\n${s.snippet}\n\`\`\``)
+    .join("\n\n");
+  return `${text}\n\n---\n引用片段：\n\n${blocks}`;
 }
 
 /**
@@ -162,8 +172,11 @@ export function useComposerController() {
 
   const send = useCallback(
     async (mode: "prompt" | "followUp" = "prompt"): Promise<void> => {
-      const text = input.trim();
-      if (!text || !canCompose) return;
+      const raw = input.trim();
+      if (!raw || !canCompose) return;
+      // 「添加到对话」片段：发送时展开为带 path:起-止 头的代码块拼进消息（agent 零协议改动）
+      const snippets = usePendingContextStore.getState().items;
+      const text = appendSnippetQuotes(raw, snippets);
 
       // T7.6：/btw 前缀 → 走侧边问答的独立第二会话，绝不进主会话（主会话流式进行中也可用）
       if (mode === "prompt" && /^\/btw(\s|$)/.test(text)) {
@@ -177,6 +190,7 @@ export function useComposerController() {
         const parentId = activeSlice().currentSessionId;
         useWorkbenchStore.getState().openTab("btw");
         void useBtwStore.getState().ask(parentId ?? "", question, buildContextBlock(items));
+        usePendingContextStore.getState().clear();
         return;
       }
 
@@ -190,6 +204,7 @@ export function useComposerController() {
         setInput("");
         setError("");
         void useGoalStore.getState().set(currentSessionId ?? "", text);
+        usePendingContextStore.getState().clear();
         return;
       }
       setInput("");
@@ -210,6 +225,7 @@ export function useComposerController() {
         }
         // T7.11：已发出 → 清除该会话草稿（liveRef 也已随 setInput("") 归零，防抖不再复活）
         clearDraft(currentSessionId ?? "");
+        usePendingContextStore.getState().clear();
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
       } finally {

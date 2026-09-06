@@ -10,6 +10,7 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "paths": {
       "@/*": ["./src/renderer/src/*"],
       "@pi-wood/engine": ["../../packages/engine/src/index.ts"],

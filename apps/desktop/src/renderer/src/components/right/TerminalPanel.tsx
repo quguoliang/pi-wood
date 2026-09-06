@@ -38,9 +38,9 @@ export function TerminalPanel(): React.JSX.Element {
         if (inst.termId === tid) void inst.term.write(data);
       }
     });
-    const offExit = window.pi.onTermExit(({ id: tid }) => {
+    const offExit = window.pi.onTermExit(({ id: tid, exitCode }) => {
       for (const inst of instancesRef.current.values()) {
-        if (inst.termId === tid) inst.term.writeln(`\r\n[进程退出]`);
+        if (inst.termId === tid) inst.term.writeln(`\r\n[进程退出 code=${exitCode}]`);
       }
     });
     offRefsRef.current = [offData, offExit];
@@ -81,7 +81,7 @@ export function TerminalPanel(): React.JSX.Element {
       }
       const term = new Terminal({
         fontSize: 12,
-        fontFamily: "Consolas, monospace",
+        fontFamily: "Consolas, Menlo, monospace",
         theme: useThemeStore.getState().terminalTheme ?? {
           background: "#16171f",
           foreground: "#c0caf5",
@@ -100,6 +100,9 @@ export function TerminalPanel(): React.JSX.Element {
         .then((created) => {
           inst!.termId = created;
           term.writeln(`pi-wood 终端（对话 ${activeConversationId ? activeConversationId.slice(-6) : "全局"}）\r\n`);
+          // 创建是异步的：resolve 前 fit.fit() 已把 xterm 调到面板真实宽度，须补同步给 pty——
+          // 否则 shell 按创建时默认 80 列渲染，zsh promptcr 的整行空格填充折行后会留下反色 % 残影
+          void window.pi.termResize(created, term.cols, term.rows);
         })
         .catch((err) => term.writeln(`终端创建失败: ${String(err)}`));
     }
@@ -122,6 +125,20 @@ export function TerminalPanel(): React.JSX.Element {
         if (cur?.termId) void window.pi.termWrite(cur.termId, data);
       });
     }
+
+    // 面板尺寸变化时重排 xterm 并把新尺寸同步给 pty（尺寸脱钩 = % 残影/换行错位的同类病灶）
+    const ro = new ResizeObserver(() => {
+      const cur = instancesRef.current.get(key);
+      if (!cur) return;
+      try {
+        cur.fit.fit();
+        if (cur.termId) void window.pi.termResize(cur.termId, cur.term.cols, cur.term.rows);
+      } catch {
+        /* 面板暂时量不出尺寸（隐藏/0 宽）时跳过本次 */
+      }
+    });
+    ro.observe(host);
+    return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId, activeProject]);
 

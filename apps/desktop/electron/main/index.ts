@@ -76,6 +76,8 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      // 浏览器面板用 <webview> 渲染真实可交互页面（截图流方案已弃用）
+      webviewTag: true,
     },
   });
   mainWindowRef = win;

@@ -2,6 +2,19 @@
 import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult, MemoryItem, MemoryListResult, UsageView } from "@pi-wood/ipc-schema";
 export {};
 
+/** Electron <webview> 标签的 JSX 声明（浏览器面板用；事件经 addEventListener 挂，不进 React props） */
+declare module "react" {
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        src?: string;
+        partition?: string;
+        allowpopups?: string;
+      };
+    }
+  }
+}
+
 /**
  * T8.2 engine:event 归属 meta：preload 把 envelope 归一化后随事件一起回调。
  * legacy=true = 旧裸事件（无归属信息），两个 id 字段为 null，渲染层按当前对话处理。
