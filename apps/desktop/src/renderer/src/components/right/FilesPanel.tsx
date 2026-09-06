@@ -88,6 +88,12 @@ export function FilesPanel(): React.JSX.Element {
   const [treeRoot, setTreeRoot] = useState<FsEntry[]>([]);
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | undefined>();
+  // 树选中高亮与编辑器激活分离：点击即时高亮（selectedPath），内容加载完成后才切换编辑器（activeFile）——
+  // 否则 activeFile 先行、openFiles 还没有该文件 → 编辑器整块卸载成「打开文件」占位再重挂，表现为点击后整体抖动一次
+  const [selectedPath, setSelectedPath] = useState<string | undefined>();
+  // 已加载/进行中的文件去重（openFiles 只增不减，无关 tab 入口，ref 判定即可）：双击同一文件不加重复 tab、不重复 fsRead
+  const inflightLoads = useRef<Set<string>>(new Set());
+  const loadedPaths = useRef<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ path: string }> | null>(null);
   const [status, setStatus] = useState("");
@@ -117,6 +123,12 @@ export function FilesPanel(): React.JSX.Element {
     if (!engineReady) {
       setTreeRoot([]);
       loadedDirs.current = new Set();
+      // 项目切换/引擎重启：已打开文件与新项目无关，全部作废（含去重 ref，防跨项目残留）
+      setOpenFiles([]);
+      setActiveFile(undefined);
+      setSelectedPath(undefined);
+      loadedPaths.current.clear();
+      inflightLoads.current.clear();
       return;
     }
     void loadChildren(undefined)
@@ -149,21 +161,23 @@ export function FilesPanel(): React.JSX.Element {
   }, [treeW]);
 
   const openFile = useCallback((entry: FileEntry): void => {
-    setOpenFiles((files) => {
-      if (files.some((f) => f.path === entry.path)) {
+    setSelectedPath(entry.path);
+    if (inflightLoads.current.has(entry.path)) return;
+    if (loadedPaths.current.has(entry.path)) {
+      setActiveFile(entry.path);
+      return;
+    }
+    inflightLoads.current.add(entry.path);
+    void window.pi
+      .fsRead(entry.path)
+      .then((r) => {
+        loadedPaths.current.add(entry.path);
+        // 内容到位后一次性提交：追加 tab + 切激活（React 18 自动批处理，同帧渲染，无占位闪烁）
+        setOpenFiles((fs) => (fs.some((f) => f.path === entry.path) ? fs : [...fs, { path: entry.path, content: r.content, dirty: false }]));
         setActiveFile(entry.path);
-        return files;
-      }
-      void window.pi
-        .fsRead(entry.path)
-        .then((r) => {
-          setOpenFiles((fs) => [...fs, { path: entry.path, content: r.content, dirty: false }]);
-          setActiveFile(entry.path);
-        })
-        .catch((err) => setStatus(String(err?.message ?? err)));
-      return files;
-    });
-    setActiveFile(entry.path);
+      })
+      .catch((err) => setStatus(String(err?.message ?? err)))
+      .finally(() => inflightLoads.current.delete(entry.path));
   }, []);
 
   useEffect(() => {
@@ -467,7 +481,7 @@ export function FilesPanel(): React.JSX.Element {
                       rowHeight={ROW_HEIGHT}
                       indent={INDENT}
                       openByDefault={false}
-                      selection={activeFile}
+                      selection={selectedPath}
                       disableDrag
                       disableDrop
                       disableEdit

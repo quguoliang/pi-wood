@@ -1295,12 +1295,42 @@ B: N=6 总增 RSS=0MB heap=0MB
 
 > **本批全 ✅ 的剩余条件**：①一轮「GUI 人手 + 真模型」验收（4 对话并行改代码→审 diff→回流、并发审批、切换手感、并发=1 A/B 对照、真模型三路体感）；②**度量缺口经 T8.9+T8.10 后只剩两条**：在飞 prompt/子代理峰值计数（需真模型灌流，`--concurrency-probe` ④⑤ 设计上不做）与真模型负载下的体感复核——**红线数字一律要绑负载形状**（同一份代码 16ms 节流下第二跳 p95 1.87ms、无间隔突发下 261ms，后者是排队延迟不是产品慢）；③**探针类工具已全部齐备**（作用域 `--workspace-scope-probe` 14/14、安全底线 `--approval-probe` 9/9、度量 `--latency-probe` 7/7 + `--ui-latency-probe` 5/5，均已进门禁第 4 步）；④Windows 侧零残留硬断言（⑦ 只在 win32 有效）与 T5.3 的安装/签名/三平台（环境阻塞）。
 
+## 7.10 上下文缩略树（T9.1 · 参考 Codex 生态 chattree）
+
+> **调研结论（2026-09-06）**：官方 Codex IDE 侧栏**没有**对话树（侧栏=任务列表/Git 检查点/上下文胶囊，见 developers.openai.com/codex/ide）；「左侧对话缩略树」是社区项目 [another-workbench](https://github.com/Reekin/another-workbench) 的招牌 chattree（源码已研读，快照在 `apps/desktop/scratch/awb-research/`，调研后删除）。要点：
+> - **节点=每 turn（用户消息一轮）一个**，`parentNodeId` 链即分支；label=引擎侧 summary 截 48 字符；数据走 Codex app-server RPC（`chatTree/read`/`setCurrent`/`updated` 事件 + `revision` 乐观并发）——**分支逻辑在引擎侧，前端只有布局+过滤**；
+> - **布局**：d3-hierarchy `tree()`，nodeSize `[34,74]`（纵向=深度时间轴、横向=分叉），padding 26/20；节点=20px 圆点 button，SVG 贝塞尔连线 1.2px；
+> - **交互**：**双击**节点跳转（jump→按 `revision` 乐观并发→重载 transcript 窗口）；当前节点实心 accent；transcript 按 currentLeaf 回溯路径过滤（`visibleTurnIds`）——跳到旧分支后只显示该分支历史；
+> - **动效（极简）**：节点 `border/bg/transform 160ms ease`、hover `scale(1.08)`、当前节点实心 accent 色；**无**面板滑入/折叠动画/脉冲 keyframes；
+> - **显隐**：常驻 aside（flex-1、min-height 220px），无开关无阈值；不支持 jump 或无节点时显示 "Chat tree unavailable" 卡片。
+>
+> **pi-wood 映射**：pi 0.84.4 `SessionManager` 天然 append-only 树（entry id/parentId + leaf + `getBranch`/`buildSessionContext`）——v2 真分支树有现成引擎底座；**v1 渲染层零引擎改动**：从线性 slice（groupToolRows 后的 DisplayRow[]）派生大纲。
+
+### T9.1 v1：对话大纲缩略树（渲染层，纯函数 + 事件跳转）
+
+- **节点模型**（`lib/context-outline.ts` 纯函数，输入 `DisplayRow[]`）：
+  - `user` 行 → 主节点 `{id, kind:"user", no:序号, title:首行去空白截 48}`；
+  - user 与下一 user 之间的 `tool_group`/`tool` 行 → 该主节点 children `{id, kind:"tool", title:"工具名 ×n"|单名, status}`，**默认折叠**；
+  - `system` 行 → 标记节点 `{kind:"system", tone}`；
+  - streaming 时追加 `{kind:"live"}` 伪节点（pulse 圆点）。
+- **交互**：单击节点 = 跳转（`piwood:outline-jump {itemId}` CustomEvent；v1 只滚动不切上下文，故单击即可，无需 awb 的双击确认）；MessageList 监听 → `displayRows` 找 index → `virtualizer.scrollToIndex(index,{align:"center"})` → 该行 flash 高亮 1.2s（ring，不用 animate-in——虚拟列表行禁进场动画约定）。反向 **scroll spy**：MessageList onScroll 取可见首行向上找最近 user 行，dispatch `piwood:outline-active {itemId}`，树内对应节点左缘 accent 竖条高亮。
+- **显隐规则（细致版）**：
+  1. 开关：ConversationHeader 加 list-tree 按钮（active 态同 panelTop），写 `settings.ui.contextTreeEnabled`（默认 **true**），settingsSet 深合并持久化；
+  2. 空对话：Onboarding 空态本就无 MessageList，树栏不渲染；
+  3. 内容少（主节点 <2 且非 streaming）：栏内显示「继续对话以生成大纲」弱提示，不自动收起（按钮点了必须有响应）；
+  4. 宽度自适应（**v2**）：中栏容器 <720px 自动收起并禁用按钮（需容器测量，v1 不做）；
+  5. 会话切换：树数据由 activeConversationId 派生，直接切换不做过渡。
+- **布局/动效（全 CSS，遵守项目动效约定）**：中栏改为 `[树栏][消息列]` 水平两列（ConversationHeader 顶栏与 Composer 全宽不动）；树栏 w-56，进场 `animate-in fade-in-0 slide-in-from-left-2 duration-150 [animation-fill-mode:both]`，折叠=卸载；节点行=无边框正文行 + hover 轻高亮（审美约定，全宽行不加 active:scale）；当前节点实心 accent 圆点，live 节点 animate-pulse；子行缩进 + 左缘参考线（对齐文件树参考线语言），展开时 chevron rotate-90 + 子行 `slide-in-from-left-1`；树行本体不加进场动画（随流式增长会重播闪烁）。
+- **v2（另行立项，不随本批）**：接 pi `SessionManager` 树结构（leaf 切换/`forkFrom` RPC，对应 §7.9 fork 语义与 T7.10 备选）→ 真分叉图（纵深横叉布局）+ transcript 按路径过滤 + 双击切分支。
+- **验收**：`context-outline` 纯函数单测（user 分节/工具归组/序号/截断/空输入）；`--capture` 空态不回归；真机点节点跳转+scroll spy 高亮目检。
+
 ## 8. 变更与决策日志（持续追加，倒序）
 
 > 格式：`日期 | 任务号 | 类别(偏差/决策/风险) | 内容 | 影响`
 
 | 日期 | 任务号 | 类别 | 内容 | 影响 |
 |---|---|---|---|---|
+| 2026-09-06（晚 3） | T9.1（§7.10）+ bug 修复 | 新功能+修 bug+完成 | **① 修「点文件树整体抖动一次」**：根因是 FilesPanel.openFile 两阶段提交——先 setActiveFile 再异步 fsRead，内容未到时 `active` 为 undefined → 编辑器整块卸载成「打开文件」占位再重挂 Monaco；修法=树选中高亮（新 `selectedPath`）与编辑器激活（`activeFile`）分离，内容到位后单次 setState 提交；顺带修双击同文件重复 fsRead 会加重复 tab（`inflightLoads`/`loadedPaths` ref 去重，项目切换时清空）。**② 上下文缩略树 v1（§7.10 调研先行）**：官方 Codex IDE 无对话树，参考 another-workbench chattree（源码研读，快照在 scratch/awb-research 已删）——节点=每 turn、双击跳转、d3-hierarchy 布局、动效极简、常驻 aside；pi 映射=pi SessionManager 天然 append-only 树留作 v2 分支底座，v1 渲染层零引擎改动：`lib/context-outline.ts` 纯函数把 DisplayRow[] 压成大纲（user 主节点序号+首行截 48 剥 md 前缀、tool_group 归 children 默认折叠、system 标记节点、streaming 追加 live 伪节点）+8 例单测；`ContextTree.tsx` 中栏左缘 w-56 树栏（无边框正文行、hover 轻高亮、当前节点实心 accent 序号圆点、live pulse、子行参考线+slide-in）；单击跳转=`piwood:outline-jump`→MessageList `virtualizer.scrollToIndex(center)`+行 flash ring 1.2s；反向 scroll spy=可见首行向上找最近 user 行派发 `piwood:outline-active`；显隐=Header listTree 按钮（active 态同 panelTop）写 `settings.ui.contextTreeEnabled`（默认 true），空对话不渲染、主节点<2 显示引导文案；**踩坑三则**：①`Extract<OutlineEntry,{kind:"system"}>` 收窄成 never（OutlineNode 的 kind 是联合）→ 断言用 OutlineNode；②测试造的 3 个连续工具会被 groupToolRows 归成一组（符合语义）→ 用 assistant 打断连续段；③测试期望剥 Markdown `#` 前缀而实现漏了 → outlineTitle 补 `replace(/^#{1,6}\s+/,"")`。门禁：`pnpm -r typecheck` / `-r test`（desktop 含新 8 例）/ `electron-vite build` 全绿（scripts/t91-gate.out）；真机 `--ui-chat` EXIT=0（`docs/proofs/ui-v3/ui-chat-t91.png`：树栏/开关高亮/单轮引导文案/布局无回归同帧可查） | 文件树点击抖动修复；对话导航有了缩略树；v2（pi 树结构接 forkFrom/leaf 切换做真分支）另行立项 |
 | 2026-09-06（晚 2） | T8.2 后续/契约 | 小修+完成 | **SDK 0.84.4 会话事件入契约**：把上一行登记的观察项闭掉——`entry_appended`（`{entry: SessionEntry}`，SessionManager 每追加一条会话条目即发）与同批的 `session_info_changed`（`{name}`）补进 `EngineEventSchema`（`.passthrough()`，载荷不校验，消费方按需取）；对 SDK `agent-session.d.ts` 事件全集做差集，确认契约仅缺这两条（防再次漏）。`engine-envelope.test.ts` 增回归例（schema 命中 + envelope 归一 + **不得标 legacy**；不引 `@pi-wood/engine` 防反向依赖成环）。门禁：`pnpm -r typecheck` / `-r test`（含新例）/ `electron-vite build` 全绿（`scripts/t811b-gate.out`） | event-bridge 对这两个事件不再告警；渲染层后续可消费 entry/会话名（如左栏改名即时刷新） |
 | 2026-09-06（晚） | T8.11（§7.9） | 门禁复跑+修探针+踩坑 | **Windows 真机全量门禁复跑：19/19 EXIT=0 + `--ui-chat` EXIT=0，T8.11 最后欠账闭账**。① 环境：Windows 机首跑 `t88-verify.sh`（Git Bash 全路径，`pkill` 缺失被 `\|\| true` 容忍、步骤 0 杀进程改由 PowerShell 预执行）；**首跑 typecheck 即挂**——上一批 2bff728 的 monaco/arborist/iconify 依赖只在 Mac 装过，Windows node_modules 缺失 → `pnpm install` 后复跑（⚠ pnpm 又往 pnpm-workspace.yaml 写 `electron: set this to true or false` 假占位，已清）。② 第二轮 `--concurrency-probe` FAIL（4/5）：⑦「引擎子进程零残留」用**全局绝对计数**（`node.exe==0` 无基线），在开发机被无关软件的 node.exe（3 个，与 pi-wood 无关）打穿；同族探针 conversation-probe C4.2 / engine-process-probe P1-e 均为「基线 Δ≤0」口径 → **修 concurrency-probe ⑦ 为基线回归 Δ**（新增 `countEngineish` 同款实现，注释钉死教训：**残留断言必须绑基线，绝对零只在干净门禁机成立**）→ 第三轮 5/5（基线=0 Δ=0）。③ 全绿明细：typecheck / test / build / 产物符号断言、五探针、concurrency 5/5、latency 7/7、workspace-scope 14/14、approval 9/9、ui-latency 5/5、package:dir（本地 electronDist 指引生效）+ **packaged conversation-probe 21/21（Windows 首证）**；`--ui-chat` 真模型 EXIT=0（`ui-chat-t811.png`：引擎 cwd=worktrees\455acda7、读取工具完成、deepseek-v4-flash 思考+markdown 全渲染；**密钥来自 `~/.pi-wood/settings.json` 而非 .env**——Windows 侧口径与脚本注释不同，ui-chat 不依赖 DEEPSEEK_API_KEY 环境变量）。④ 观察项（登记不修）：SDK 0.84.4 新事件 `entry_appended` 未进 EngineEventSchema，event-bridge 按 unknown 透传（每对话一条警告，无害但应入契约，挂 T8.4 后续）；打包/收尾态 child code=0 仍记「子进程异常退出」（T8.8 观察项 (a) 既有）。⑤ 仓库卫生：工作区 97 个文件 CRLF 假改动（上一批 Mac 提交为 LF、Windows 侧被重写）→ `git diff --ignore-cr-at-eol` 鉴别后 restore，只留 22 个真实改动文件；`scripts/t811-gate.out` 为控制台转录（PowerShell Tee 出 UTF-16），不入库。证据：`docs/proofs/T8.8/` 全量刷新 + 新增 `ui-chat-t811.{png,log}`。 | T8.11 ✅ 收口（T8 批任务级全部完成）；门禁在 Windows 机可复现（剩余人手项：T8.4 PromptTray 目检、T8.7 三项 GUI、真模型灌流 2 行红线） |
 | 2026-09-06 | T8.11（§7.9） | 修复+用户反馈 | **用户真机四问题全修并 GUI 实测**：①② Composer 控件不可点/项目「+」无效——根因是 engineReady 按对话切片后只有 activateProject 置 true，切到既有对话的切片恒 false → `conversations-store.syncEngineReadyFor`（switchTo + 1.5s 轮询同步，spawning 不抢置位权）；③ 归档按用户裁定移出目录树 → 设置「归档」页统一管理（恢复/删除）；④ toast 指向的「设置 → 工作树」页自 T8.0 起从未存在 → WorktreeSettingsPanel 补齐（enabled/keepAfterClose 开关 + 孤儿树回收，`removeManagedWorktreeByPath` realpath 守卫，脏树拒绝后升级强制）。**dev 实例实测：切对话控件全亮、「+」进草稿、孤儿树实际回收一棵、归档页列出正确**。typecheck 全绿 240/240 | T8.11 GUI 目检欠账就此闭账；门禁复跑仍欠 |

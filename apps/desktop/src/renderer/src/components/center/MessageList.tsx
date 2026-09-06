@@ -139,6 +139,11 @@ export function MessageList(): React.JSX.Element | null {
   const toolGroupsEnabled = useSettingsStore((s) => s.settings.ui.toolGroupsEnabled);
   const displayRows = useMemo(() => groupToolRows(items, toolGroupsEnabled), [items, toolGroupsEnabled]);
   const lastRowId = displayRows.length > 0 ? displayRows[displayRows.length - 1].id : undefined;
+  // T9.1 缩略树联动：rowsRef 供 onScroll 闭包读最新行表；flashId=被跳转行的高亮
+  const rowsRef = useRef<DisplayRow[]>(displayRows);
+  rowsRef.current = displayRows;
+  const spyRef = useRef<string | undefined>(undefined);
+  const [flashId, setFlashId] = useState<string | undefined>();
 
   const virtualizer = useVirtualizer({
     count: displayRows.length,
@@ -158,7 +163,19 @@ export function MessageList(): React.JSX.Element | null {
     const s = useSessionStore.getState();
     s.setScrollTop(el.scrollTop);
     s.setFollowBottom(bottom);
-  }, []);
+    // T9.1 scroll spy：可见首行向上找最近 user 行，通知缩略树高亮（仅变更时派发）
+    const first = virtualizer.getVirtualItems()[0];
+    const rows = rowsRef.current;
+    if (first && rows.length > 0) {
+      let idx = Math.min(first.index, rows.length - 1);
+      while (idx >= 0 && rows[idx] && rows[idx].kind !== "user") idx -= 1;
+      const anchor = idx >= 0 ? rows[idx] : undefined;
+      if ((anchor?.id ?? undefined) !== spyRef.current) {
+        spyRef.current = anchor?.id;
+        window.dispatchEvent(new CustomEvent("piwood:outline-active", { detail: { itemId: anchor?.id } }));
+      }
+    }
+  }, [virtualizer]);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -167,6 +184,28 @@ export function MessageList(): React.JSX.Element | null {
     atBottomRef.current = true;
     setAtBottom(true);
   }, []);
+
+  // T9.1 缩略树单击节点 → 跳到对应行（虚拟列表定位 + 短暂高亮；离开底部后不再自动跟底）
+  useEffect(() => {
+    if (!flashId) return;
+    const t = setTimeout(() => setFlashId(undefined), 1200);
+    return () => clearTimeout(t);
+  }, [flashId]);
+
+  useEffect(() => {
+    const onJump = (e: Event): void => {
+      const itemId = (e as CustomEvent<{ itemId?: string }>).detail?.itemId;
+      if (!itemId) return;
+      const idx = rowsRef.current.findIndex((r) => r.id === itemId);
+      if (idx < 0) return;
+      atBottomRef.current = false;
+      setAtBottom(false);
+      virtualizer.scrollToIndex(idx, { align: "center" });
+      setFlashId(itemId);
+    };
+    window.addEventListener("piwood:outline-jump", onJump);
+    return () => window.removeEventListener("piwood:outline-jump", onJump);
+  }, [virtualizer]);
 
   // 新内容/流式增长时若在底部则跟随（live 尾块在 DOM 流末尾，滚到 scrollHeight 即可）
   useLayoutEffect(() => {
@@ -215,7 +254,7 @@ export function MessageList(): React.JSX.Element | null {
                 className="absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${row.start}px)` }}
               >
-                <div className={tight ? "mb-0.5" : "mb-3"}>
+                <div className={cn("rounded-lg", tight ? "mb-0.5" : "mb-3", r.id === flashId && "ring-1 ring-ring/50 transition-shadow")}>
                   <ConversationRow item={r} isLast={r.id === lastRowId} />
                 </div>
               </div>
