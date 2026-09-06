@@ -63,6 +63,22 @@ test("宿主自造事件（user_message / model_changed）也是合法载荷", (
   }
 });
 
+test("SDK 0.84.4 会话事件（entry_appended / session_info_changed）在契约内", () => {
+  // 回归：entry_appended 在 2026-09-06 Windows 门禁真机走 unknown 透传（event-bridge 告警），
+  // session_info_changed 与它同批加入 SDK 事件联合但当时同样漏在契约外。
+  // event-bridge 用 EngineEventSchema.safeParse 归一：进了契约 = 不再折叠成 unknown（engine 包侧无独立断言，
+  // 该包依赖本包，反向 import 会成环）。
+  for (const ev of [
+    { type: "entry_appended", entry: { id: "e1", parentId: null, type: "message" } },
+    { type: "session_info_changed", name: "对话 2" },
+  ]) {
+    assert.ok(EngineEventSchema.safeParse(ev).success, `${ev.type} 应在事件契约内`);
+    const out = unwrapEnginePayload(makeEngineEnvelope("c", "/p", ev));
+    assert.equal(out.event?.type, ev.type);
+    assert.equal(out.legacy, false, "新契约事件不得被标为 legacy");
+  }
+});
+
 test("seq/active 是可选项，缺省不污染信封", () => {
   const env = ConversationEventEnvelopeSchema.parse(makeEngineEnvelope("c", "/p", { type: "agent_end" }));
   assert.equal("seq" in env, false);

@@ -88,6 +88,12 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("summarization_retry_attempt_start") }).passthrough(),
   z.object({ type: z.literal("summarization_retry_finished") }).passthrough(),
   z.object({ type: z.literal("model_select") }).passthrough(),
+  // SDK 0.84.4 起新增的两个会话事件（2026-09-06 Windows 门禁真机首次观察到 entry_appended
+  // 走 unknown 透传，见 §8 当日行④）：entry_appended = SessionManager 每追加一条会话条目
+  // （{entry: SessionEntry}）；session_info_changed = 会话名变化（{name}）。载荷细节不校验，
+  // passthrough 保留原字段，消费方按需取。
+  z.object({ type: z.literal("entry_appended") }).passthrough(),
+  z.object({ type: z.literal("session_info_changed") }).passthrough(),
   // ⚠ 下面两条不是 Pi 事件，而是**宿主自造**并沿同一通道推的（T8.2 起要过 envelope 严格校验，故必须进契约）：
   //   user_message = 压测钩子/本地回显（debug:stress）；model_changed = 选定模型后主进程主动通知渲染层换标签。
   z.object({ type: z.literal("user_message") }).passthrough(),
