@@ -19,7 +19,7 @@ interface PluginState {
   setEnabled: (id: string, enabled: boolean) => Promise<void>;
   restart: (id: string) => Promise<void>;
   reload: () => Promise<void>;
-  demo: (kind: "crash" | "overreach") => Promise<void>;
+  demo: (kind: "crash" | "overreach" | "kitchen") => Promise<void>;
 }
 
 export const usePluginStore = create<PluginState>((set) => ({

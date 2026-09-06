@@ -46,6 +46,8 @@ export const PROJECT_CHANNELS = {
   list: "project:list",
   add: "project:add",
   remove: "project:remove",
+  /** T8.11：改显示别名（只写 projects.json，目录与磁盘零触碰） */
+  rename: "project:rename",
   trustStatus: "project:trustStatus",
   onChanged: "project:onChanged",
 } as const;
@@ -55,6 +57,30 @@ export const SESSION_CHANNELS = {
   tree: "sessions:tree",
   messages: "sessions:messages",
 } as const;
+
+/**
+ * T8.11 会话元数据域：pi-wood 侧 UI 状态（归档/置顶/别名），以会话文件绝对路径为键，
+ * 落 `~/.pi-wood/session-meta.json`，不写 Pi 会话文件（CLI resume / 互通零影响）。
+ */
+export const SessionMetaSchema = z.object({
+  archived: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+  alias: z.string().optional(),
+});
+export type SessionMeta = z.infer<typeof SessionMetaSchema>;
+export const SessionMetaMapSchema = z.record(z.string(), SessionMetaSchema);
+export type SessionMetaMap = z.infer<typeof SessionMetaMapSchema>;
+
+export const SESSION_META_CHANNELS = {
+  /** 拉全量映射（键数 = 用户手动管理过的会话数，量级很小，不做增量） */
+  get: "sessions:meta",
+  set: "sessions:setMeta",
+  /** 销毁会话文件（CLI 亦不可恢复）：主进程守卫「被活跃对话认领即拒」 */
+  delete: "sessions:delete",
+} as const;
+
+export const SessionMetaPatchSchema = z.object({ file: z.string().min(1), patch: SessionMetaSchema });
+export const ProjectRenameArgSchema = z.object({ id: z.string().min(1), name: z.string().min(1) });
 
 export const SessionMessageItemSchema = z.object({
   role: z.enum(["user", "assistant", "tool"]),

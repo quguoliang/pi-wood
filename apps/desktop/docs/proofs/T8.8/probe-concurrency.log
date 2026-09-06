@@ -1,5 +1,5 @@
 === T8.8 --concurrency-probe ===
-✓ ① 三对话并存且引擎 cwd 各不相同（worktree 隔离） — list=3 cwd 去重=3 [conv-1-edaf31bb:edaf31bb conv-2-4037b153:4037b153 conv-3-5a4b07ec:5a4b07ec]
+✓ ① 三对话并存且引擎 cwd 各不相同（worktree 隔离） — list=3 cwd 去重=3 [conv-1-2a42c663:2a42c663 conv-2-66d761a3:66d761a3 conv-3-c38508e2:c38508e2]
 ✓ ② 切换对话不打断引擎（句柄均存活） — dead=0
 ✓ ⑥ 审批门在位（探针策略=恒拒） — asked=0（无真模型流量时不增长属正常）
 引擎子进程退出中（close）

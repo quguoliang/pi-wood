@@ -7,18 +7,14 @@ import { useGoalStore } from "../stores/goal-store";
 import { useWorkbenchStore } from "../stores/workbench-store";
 import { countLines } from "../lib/utils";
 import { readDraft, writeDraft, clearDraft } from "../lib/chat-draft-persistence";
-import type { ApprovalMode } from "../components/center/ComposerControls";
+import { useSettingsStore, type ConversationApprovalMode } from "../stores/settings-store";
+import { useConversationsStore } from "../stores/conversations-store";
 
 export interface AttachmentItem {
   path: string;
   name: string;
   size: number;
   kind: "file" | "image";
-}
-
-interface ApprovalRule {
-  pattern: string;
-  action: "allow" | "ask" | "deny";
 }
 
 /**
@@ -34,8 +30,6 @@ export function useComposerController() {
   const [models, setModels] = useState<Array<{ provider: string; id: string }>>([]);
   const [thinkingLevels, setThinkingLevels] = useState<string[]>([]);
   const [runtime, setRuntime] = useState<RuntimeInfo | undefined>(undefined);
-  const [approvalMode, setApprovalMode] = useState<ApprovalMode>("highRisk");
-  const [approvalRules, setApprovalRules] = useState<ApprovalRule[]>([]);
   const [sending, setSending] = useState(false);
   const [aborting, setAborting] = useState(false);
   const [error, setError] = useState("");
@@ -52,6 +46,21 @@ export function useComposerController() {
   const liveText = useActiveConversation((c) => c.liveText);
   const currentSessionId = useActiveConversation((c) => c.currentSessionId);
   const hasConversation = items.length > 0 || Boolean(liveText) || streaming;
+  // 「Agent 权限」档（原 T7.2 自动接受与全局 approval.mode 合并后的唯一入口）：
+  // per-对话档 approvalByConversation[conversationId] 优先，未配置回退全局 approval.mode。
+  const conversationId = useSessionStore((s) => s.activeConversationId);
+  const draftProject = useSessionStore((s) => s.draftProject);
+  // 草稿态：点「+」进入，active=null 且 draftProject 有值。此时不建对话、不 fork 引擎，
+  // 只允许输入文本；首次发送才物化（见 send）。引擎相关配置控件（模型/思考/上下文/审批）
+  // 依赖活跃引擎，草稿态下禁用——发送后随对话实体化自动启用。
+  const drafting = conversationId === null && Boolean(draftProject);
+  const canCompose = engineReady || drafting;
+  const approvalByConv = useSettingsStore((s) => s.settings.approvalByConversation);
+  const globalMode = useSettingsStore(
+    (s) => (s.settings as { approval?: { mode?: ConversationApprovalMode } }).approval?.mode,
+  );
+  const approvalMode: ConversationApprovalMode =
+    (conversationId ? approvalByConv[conversationId] : undefined) ?? globalMode ?? "highRisk";
 
   const refreshRuntime = useCallback(async (): Promise<void> => {
     if (!engineReady) {
@@ -71,14 +80,6 @@ export function useComposerController() {
   }, [engineReady]);
 
   useEffect(() => {
-    void window.pi.settingsGet().then((settings) => {
-      const approval = (settings as { approval?: { mode?: ApprovalMode; rules?: ApprovalRule[] } }).approval;
-      if (approval?.mode) setApprovalMode(approval.mode);
-      setApprovalRules(approval?.rules ?? []);
-    });
-  }, []);
-
-  useEffect(() => {
     void refreshRuntime().catch((err) => setError(String((err as Error)?.message ?? err)));
   }, [refreshRuntime, activeProject, streaming]);
 
@@ -89,6 +90,15 @@ export function useComposerController() {
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(200, Math.max(36, textarea.scrollHeight))}px`;
   }, [input]);
+
+  // 「+ 新任务」进入草稿态后聚焦输入框（startDraft 派发此事件）
+  useEffect(() => {
+    const onFocus = (): void => {
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    };
+    window.addEventListener("piwood:composer-focus", onFocus);
+    return () => window.removeEventListener("piwood:composer-focus", onFocus);
+  }, []);
 
   // T5.1：命令面板向输入框注入文本（slash/skill 命令 replace、@文件 追加）
   useEffect(() => {
@@ -153,7 +163,7 @@ export function useComposerController() {
   const send = useCallback(
     async (mode: "prompt" | "followUp" = "prompt"): Promise<void> => {
       const text = input.trim();
-      if (!text || !engineReady) return;
+      if (!text || !canCompose) return;
 
       // T7.6：/btw 前缀 → 走侧边问答的独立第二会话，绝不进主会话（主会话流式进行中也可用）
       if (mode === "prompt" && /^\/btw(\s|$)/.test(text)) {
@@ -188,6 +198,11 @@ export function useComposerController() {
       setSending(true);
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
       try {
+        // 草稿态首次发送：先物化对话（createConversation 建引擎 + 注册 + 设为活跃），再落这条消息。
+        // 「+」不提前建任务，正是靠这一步把「正式创建」推迟到发送这一刻。
+        if (drafting) {
+          await useConversationsStore.getState().createConversation(draftProject ?? undefined);
+        }
         if (mode === "followUp") await window.pi.engineFollowUp(text);
         else {
           useSessionStore.getState().addUserMessage(text);
@@ -202,7 +217,7 @@ export function useComposerController() {
         void refreshRuntime();
       }
     },
-    [input, engineReady, streaming, attachments, items, currentSessionId, refreshRuntime],
+    [input, canCompose, drafting, draftProject, streaming, attachments, items, currentSessionId, refreshRuntime],
   );
 
   const onKeyDown = useCallback(
@@ -246,18 +261,21 @@ export function useComposerController() {
   }, []);
 
   const changeApproval = useCallback(
-    async (mode: ApprovalMode): Promise<void> => {
-      const previous = approvalMode;
+    async (mode: ConversationApprovalMode): Promise<void> => {
+      if (!conversationId) {
+        setError("对话尚未就绪，稍后再调整权限档");
+        return;
+      }
       setError("");
       try {
-        await window.pi.settingsSet({ approval: { mode, rules: approvalRules } });
-        setApprovalMode(mode);
+        await useSettingsStore.getState().patch({ approvalByConversation: { [conversationId]: mode } });
+        // 切到「完全访问」→ 顺手放行该对话在飞的审批/确认卡（与原「自动接受」开关同义）
+        if (mode === "auto") await window.pi.approvalAcceptAll().catch(() => undefined);
       } catch (err) {
-        setApprovalMode(previous);
         setError(String((err as Error)?.message ?? err));
       }
     },
-    [approvalMode, approvalRules],
+    [conversationId],
   );
 
   const changeModel = useCallback(
@@ -316,8 +334,10 @@ export function useComposerController() {
     sending,
     aborting,
     error,
-    canSend: engineReady && !sending && Boolean(input.trim()),
+    canSend: canCompose && !sending && Boolean(input.trim()),
     engineReady,
+    canCompose,
+    drafting,
     activeProject,
     streaming,
     hasConversation,

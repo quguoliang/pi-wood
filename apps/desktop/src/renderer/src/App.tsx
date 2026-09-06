@@ -10,7 +10,6 @@ import { CommandPalette } from "./components/center/CommandPalette";
 import { LeftPane } from "./components/left/LeftPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
-import { ConversationTabs } from "./components/center/ConversationTabs";
 import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
@@ -24,6 +23,7 @@ import { useGoalStore } from "./stores/goal-store";
 import { useToolGroupsStore } from "./stores/tool-groups-store";
 import { useThemeStore } from "./stores/theme-store";
 import { openWorkbench, openWorkbenchFile, useWorkbenchStore } from "./stores/workbench-store";
+import { useConversationsStore, startConversationsPolling } from "./stores/conversations-store";
 import { cycleColumnFocus, focusColumn } from "./hooks/use-column-focus";
 import { noteEventArrival, noteSwitchPainted, startLatencyOutlet, stopLatencyOutlet } from "./lib/latency-outlet";
 
@@ -58,12 +58,34 @@ export default function App() {
       void window.pi.piTheme().then((pi) => useThemeStore.getState().apply(pi));
     });
 
+    startConversationsPolling(); // 对话注册表单一轮询源（左栏树行 + 快捷键共用）
+
     const onKey = (e: KeyboardEvent): void => {
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (mod && e.shiftKey && key === "p") {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+      } else if (mod && e.shiftKey && (e.key === "[" || e.key === "]")) {
+        // 多对话循环切换（原 ConversationTabs 快捷键迁至此）：Ctrl/Cmd+Shift+[ / ]
+        e.preventDefault();
+        const { rows, switchTo } = useConversationsStore.getState();
+        const aid = useSessionStore.getState().activeConversationId;
+        if (rows.length === 0) return;
+        const idx = rows.findIndex((r) => r.id === aid);
+        const next = e.key === "[" ? (idx - 1 + rows.length) % rows.length : (idx + 1) % rows.length;
+        switchTo(rows[next]!.id, rows[next]!.projectDir);
+      } else if (mod && e.shiftKey && key === "n") {
+        // 新任务：进入草稿态（不建对话、不 fork），首次发送才物化
+        e.preventDefault();
+        useConversationsStore.getState().startDraft();
+      } else if (mod && e.shiftKey && key === "w") {
+        // 关闭当前对话（在跑 → 内联二选一，见项目树行）
+        e.preventDefault();
+        const { rows, requestClose } = useConversationsStore.getState();
+        const aid = useSessionStore.getState().activeConversationId;
+        const cur = rows.find((r) => r.id === aid);
+        if (cur) void requestClose(cur);
       } else if (mod && e.shiftKey && key === "b") {
         e.preventDefault();
         openWorkbench("btw");
@@ -230,7 +252,6 @@ export default function App() {
             className="relative flex h-full min-h-0 flex-col bg-surface-app outline-none transition-shadow focus:ring-2 focus:ring-inset focus:ring-ring/60"
             style={{ ["--pk-chat-width" as string]: "48rem" }}
           >
-            <ConversationTabs />
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
             <MessageList />
             <ConversationAssist className="pt-1" />

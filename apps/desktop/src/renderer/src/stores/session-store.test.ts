@@ -105,6 +105,18 @@ test("foreignEventCount 只作可观测指标：事件仍进它自己的切片�
   assert.equal(st().sliceOf("conv-b").streaming, true, "计数不等于丢弃");
 });
 
+test("草稿态：startDraft 置空 active 并记 draftProject；切到真实对话即清草稿", () => {
+  resetAll();
+  useSessionStore.setState({ activeProject: "/proj", draftProject: null });
+  st().startDraft("/proj");
+  assert.equal(st().activeConversationId, null, "草稿态不指向任何真实对话（不预建）");
+  assert.equal(st().draftProject, "/proj");
+  // 切到真实对话 → 退出草稿态
+  st().setActiveConversation("conv-x");
+  assert.equal(st().activeConversationId, "conv-x");
+  assert.equal(st().draftProject, null, "切到真实对话即清草稿");
+});
+
 test("useActiveConversation 的取数路径与 sliceOf 一致（消费者迁移后的等价性）", () => {
   resetAll();
   st().handleEvent({ type: "user_message", text: "hi" }, { conversationId: "conv-a", active: true, legacy: false });

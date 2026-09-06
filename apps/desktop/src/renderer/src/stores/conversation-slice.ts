@@ -80,6 +80,8 @@ export interface ConversationSlice {
   historyLoaded: boolean;
   /** 已应用的最后一个事件帧 seq（对账用；-1 = 还没收到过） */
   lastSeq: number;
+  /** child 世代号（主进程随 envelope 推送；child 重生后 seq 从 0 重计，基线随 epoch 重置） */
+  epoch: number | undefined;
   /** 断号累计（丢帧不许静默） */
   droppedEvents: number;
   /** 后台标签摘要用：本轮已发生的工具调用数 / 正在跑的工具数 */
@@ -108,6 +110,7 @@ export function emptySlice(): ConversationSlice {
     followBottom: true,
     historyLoaded: false,
     lastSeq: -1,
+    epoch: undefined,
     droppedEvents: 0,
     toolCallCount: 0,
     runningToolCount: 0,
@@ -126,6 +129,8 @@ export interface SliceCtx {
   visible?: boolean;
   /** child 帧号（T8.2 envelope 透传；用于乱序/丢帧对账） */
   seq?: number;
+  /** child 世代号（child 重生后 seq 从 0 重计；与 slice.epoch 不同 ⇒ 重置对账基线） */
+  epoch?: number;
 }
 
 export interface SliceResult {
@@ -303,11 +308,19 @@ export function applyEngineEvent(
   // seq 对账（T8.2 把 child 帧号随 envelope 透传上来，断号必须可见）
   const seq = ctx.seq;
   if (typeof seq === "number") {
-    if (seq <= slice.lastSeq) return { slice, changed: false, milestone: false }; // 重复/倒退帧
-    if (slice.lastSeq >= 0 && seq > slice.lastSeq + 1) {
-      slice = { ...slice, droppedEvents: slice.droppedEvents + (seq - slice.lastSeq - 1) };
+    // epoch 变了 = child 重生（崩溃重启/休眠唤醒/恢复），新 child 的 upSeq 从 0 重计。
+    // 旧 lastSeq 会把新流全部判成「重复/倒退帧」静默丢弃（切回来内容丢失的主因）——重置基线，
+    // 已收增量 items 保留（历史对账照常补前段）。无 epoch 戳的旧路径行为不变。
+    const epochChanged = typeof ctx.epoch === "number" && slice.epoch !== undefined && slice.epoch !== ctx.epoch;
+    if (epochChanged) {
+      slice = { ...slice, epoch: ctx.epoch, lastSeq: seq };
+    } else {
+      if (seq <= slice.lastSeq) return { slice, changed: false, milestone: false }; // 重复/倒退帧
+      if (slice.lastSeq >= 0 && seq > slice.lastSeq + 1) {
+        slice = { ...slice, droppedEvents: slice.droppedEvents + (seq - slice.lastSeq - 1) };
+      }
+      slice = { ...slice, lastSeq: seq, ...(typeof ctx.epoch === "number" ? { epoch: ctx.epoch } : {}) };
     }
-    slice = { ...slice, lastSeq: seq };
   }
 
   switch (type) {

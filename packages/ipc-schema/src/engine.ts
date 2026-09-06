@@ -130,6 +130,12 @@ export const ConversationEventEnvelopeSchema = z.object({
    * 缺省 = 未打戳的推送路径，渲染层跳过不记（宁可少样本，也不要错样本）。
    */
   tPush: z.number().finite().optional(),
+  /**
+   * child 世代号（主进程在每次 spawn/恢复/重启 child 时 +1）。child 侧 upSeq 是进程内计数，
+   * 重生后从 0 重计——渲染层据此重置 lastSeq 对账基线，否则新流会被旧 lastSeq 全部静默丢弃
+   * （切标签丢内容的主因之一）。缺席 = 未打戳路径，渲染层维持旧行为。
+   */
+  epoch: z.number().int().nonnegative().optional(),
   event: EngineEventSchema,
 });
 export type ConversationEventEnvelope = z.infer<typeof ConversationEventEnvelopeSchema>;
@@ -138,7 +144,7 @@ export function makeEngineEnvelope(
   conversationId: string,
   projectDir: string,
   event: unknown,
-  extra?: { seq?: number; active?: boolean; tPush?: number },
+  extra?: { seq?: number; active?: boolean; tPush?: number; epoch?: number },
 ): ConversationEventEnvelope {
   return {
     conversationId,
@@ -146,6 +152,7 @@ export function makeEngineEnvelope(
     ...(extra?.seq !== undefined ? { seq: extra.seq } : {}),
     ...(extra?.active !== undefined ? { active: extra.active } : {}),
     ...(extra?.tPush !== undefined ? { tPush: extra.tPush } : {}),
+    ...(extra?.epoch !== undefined ? { epoch: extra.epoch } : {}),
     event: event as ConversationEventEnvelope["event"],
   };
 }

@@ -7,18 +7,37 @@ import { useSidebarProjects } from "./useSidebarProjects";
 /**
  * 左栏（UI v3，参考 ZCode 侧栏）：顶部导航 + 项目分组树 + 底部设置。
  * 数据与交互全部在 useSidebarProjects，本组件只做组合呈现。
+ * 对话导航唯一入口：活跃对话（带状态圆点）归组在项目下，历史会话跟随其后。
  */
 export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): React.JSX.Element {
   const {
     projects,
+    conversationsByProject,
     sessionsByProject,
+    archivedSessionsByProject,
+    metaMap,
     expandedProjects,
     activeProject,
     activeSessionFile,
+    activeConversationId,
+    pendingCloseConversationId,
     toggleProject,
-    createSession,
+    startDraftIn,
+    selectConversation,
+    requestCloseConversation,
+    resolvePendingClose,
+    dismissPendingClose,
     selectSession,
     addProject,
+    removeProject,
+    renameProject,
+    archiveConversation,
+    renameConversation,
+    renameSession,
+    setSessionPinned,
+    setSessionArchived,
+    deleteSession,
+    restoreSession,
   } = useSidebarProjects();
 
   return (
@@ -47,13 +66,32 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
             <ProjectGroup
               key={project.path}
               project={project}
+              conversations={conversationsByProject[project.path] ?? []}
               sessions={sessionsByProject[project.path] ?? []}
+              archivedSessions={archivedSessionsByProject[project.path] ?? []}
+              metaMap={metaMap}
               isActiveProject={activeProject === project.path}
               isExpanded={expandedProjects.has(project.path)}
               activeSessionFile={activeSessionFile}
+              activeConversationId={activeConversationId}
+              pendingCloseConversationId={pendingCloseConversationId}
               onToggle={() => toggleProject(project)}
-              onCreateSession={() => void createSession(project)}
+              onStartDraft={() => void startDraftIn(project)}
+              onSelectConversation={selectConversation}
+              onRequestCloseConversation={requestCloseConversation}
+              onResolveClose={(mode) => void resolvePendingClose(mode)}
+              onDismissClose={dismissPendingClose}
               onSelectSession={(session) => void selectSession(project, session)}
+              onProjectRename={(name) => void renameProject(project, name)}
+              onProjectRemove={() => void removeProject(project)}
+              onRenameConversation={(row, alias) => renameConversation(row, alias)}
+              onToggleConversationPin={(row, pinned) => row.sessionFile && setSessionPinned(row.sessionFile, pinned)}
+              onArchiveConversation={(row) => void archiveConversation(row)}
+              onRenameSession={renameSession}
+              onToggleSessionPin={setSessionPinned}
+              onArchiveSession={setSessionArchived}
+              onDeleteSession={deleteSession}
+              onRestoreSession={(session) => void restoreSession(project, session)}
             />
           ))}
           {projects.length === 0 && (

@@ -13,6 +13,8 @@ export interface EngineEventMeta {
   active?: boolean;
   /** 主进程推送时刻（epoch 毫秒，T8.10 第二跳）；与 preload 的 EngineEventMetaLite 同步 */
   tPush?: number;
+  /** child 世代号（child 重生后 seq 重计，渲染层据此重置 lastSeq 基线）；与 preload 同步 */
+  epoch?: number;
   legacy: boolean;
 }
 
@@ -51,7 +53,7 @@ declare global {
       prompt(text: string, attachments?: string[]): Promise<void>;
       settingsGet(): Promise<Record<string, unknown>>;
       settingsSet(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
-      engineStart(projectDir: string): Promise<boolean>;
+      engineStart(projectDir: string): Promise<{ conversationId: string }>;
       // T8.3 对话域（preload 已实装；声明成可选以免桥与消费者必须同刻改完）
       setActiveConversation?(conversationId: string): Promise<unknown>;
       listConversations?(): Promise<unknown[]>;
@@ -80,11 +82,16 @@ declare global {
       engineCompact(): Promise<void>;
       projectList(): Promise<unknown>;
       projectAdd(path: string): Promise<unknown>;
+      projectRemove(id: string): Promise<boolean>;
       projectPick(): Promise<string | undefined>;
       projectPickAttachments(): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>>;
       stagePastedText(text: string): Promise<{ path: string; name: string; size: number; kind: "file" | "image" }>;
       projectTrust(path: string): Promise<string>;
+      projectRename(id: string, name: string): Promise<unknown>;
       sessionsList(path: string): Promise<unknown>;
+      sessionsMeta(): Promise<unknown>;
+      sessionsSetMeta(file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string }): Promise<unknown>;
+      sessionsDelete(file: string): Promise<{ ok: boolean }>;
       sessionsTree(file: string): Promise<unknown>;
       sessionsMessages(file: string): Promise<unknown>;
       exportSessionMarkdown(defaultFileName: string, markdown: string): Promise<string | undefined>;
@@ -137,7 +144,7 @@ declare global {
       pluginsSetEnabled(id: string, enabled: boolean): Promise<PluginStatus[]>;
       pluginsRestart(id: string): Promise<PluginStatus[]>;
       pluginsReload(): Promise<PluginStatus[]>;
-      pluginsDemo(kind: "crash" | "overreach"): Promise<{ triggered: boolean; kind: string }>;
+      pluginsDemo(kind: "crash" | "overreach" | "kitchen"): Promise<{ triggered: boolean; kind: string }>;
       onPluginStatus(cb: (list: PluginStatus[]) => void): () => void;
       onPluginOpenFile(cb: (d: { path: string; focus?: boolean }) => void): () => void;
       onPluginPanels(cb: (panels: PluginPanelEntry[]) => void): () => void;

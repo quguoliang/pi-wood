@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePluginStore } from "../../stores/plugin-store";
 import { cn } from "@/lib/utils";
 import type { PluginActivity, PluginLifecycleStatus } from "@pi-wood/ipc-schema";
-import { Bug, RefreshCw, RotateCw, ShieldAlert } from "lucide-react";
+import { Bug, ChefHat, RefreshCw, RotateCw, ShieldAlert } from "lucide-react";
 
 const STATUS: Record<PluginLifecycleStatus, { label: string; variant: "success" | "warning" | "destructive" | "secondary" | "outline" }> = {
   running: { label: "运行中", variant: "success" },
@@ -70,6 +70,9 @@ export function PluginsPanel(): React.JSX.Element {
           </Button>
           <Button size="sm" variant="outline" onClick={() => void demo("overreach")}>
             <ShieldAlert /> 演示：越权调用被拒
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void demo("kitchen")}>
+            <ChefHat /> 演示：API 全能力
           </Button>
         </div>
       </section>

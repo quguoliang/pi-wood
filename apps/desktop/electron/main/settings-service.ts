@@ -25,7 +25,13 @@ export interface PiWoodSettings {
     mode: "auto" | "highRisk" | "allAsk" | "denyAll";
     rules: Array<{ pattern: string; action: "allow" | "ask" | "deny" }>;
   };
-  /** T7.2：按会话 id 记录「自动接受审批」开关；缺省（无 key）视为未开启（fail closed）。 */
+  /**
+   * per-对话 Agent 权限档（conversationId → mode），覆盖全局 approval.mode。
+   * 由 composer 盾牌下拉写入（原「自动接受」与「agent 权限」两处 UI 合并后的唯一入口）；
+   * 未列出的对话回退全局 approval.mode（继承）。
+   */
+  approvalByConversation: Record<string, "auto" | "highRisk" | "allAsk" | "denyAll">;
+  /** T7.2（已废弃）：旧「按会话自动接受」开关，仅保留历史数据兼容；裁决链已不再消费。 */
   autoAcceptSessions: Record<string, boolean>;
   /**
    * T7.12：per-provider 月度配额（token/cost）。超限在用量页/环境面板告警（默认只警告不阻断）。
@@ -52,6 +58,7 @@ export function defaultSettings(): PiWoodSettings {
     recentProjects: [],
     model: { provider: "deepseek", id: "deepseek-v4-flash" },
     approval: { mode: "highRisk", rules: [] },
+    approvalByConversation: {},
     autoAcceptSessions: {},
     quota: {},
     workbench: { layout: null },

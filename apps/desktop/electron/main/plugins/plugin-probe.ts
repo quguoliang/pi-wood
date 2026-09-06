@@ -71,7 +71,9 @@ export async function runPluginProbe(): Promise<void> {
     }, 6000);
     line(">", `启动后状态: overreach=${find(host, "demo-overreach")?.status} crash=${find(host, "demo-crash")?.status} kitchen=${find(host, "demo-kitchen")?.status}`);
 
-    // ① 越权被拒：demo-overreach 激活 ~1.2s 后自试 terminal.run；也应看到 kitchen 的 terminal.run 被拒
+    // ① 越权被拒：demo-overreach 已不再「激活即自燃」，探针主动下发 overreach 控制触发一轮越权尝试，
+    //    断言宿主把未声明权限的 terminal.run 拒绝并记入 activity（deny-by-default 的端到端证明）。
+    host.demo("overreach");
     const denied = await waitFor(
       () => (find(host, "demo-overreach")?.activity ?? []).some((a) => a.kind === "denied" && /terminal:run/.test(a.text)),
       9000,

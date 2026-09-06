@@ -94,7 +94,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "permission"} onOpenChange={show("permission")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={cn(controlBtn, "text-warning hover:text-warning")} aria-label="Agent 权限">
+            <Button variant="ghost" size="sm" disabled={!props.engineReady} className={cn(controlBtn, "text-warning hover:text-warning")} aria-label="Agent 权限">
               <Icon name="shield" /><span className="max-w-[9rem] truncate">{permission.label}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>

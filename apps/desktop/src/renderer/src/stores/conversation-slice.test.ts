@@ -15,7 +15,7 @@ import {
  * 每条用例都对应 §7.9 T8.3 的一个验收点或一条不变量，不写「函数能跑」这种废测试。
  */
 
-const ctx = (over: { now?: number; visible?: boolean; seq?: number; prefix?: string } = {}) => ({
+const ctx = (over: { now?: number; visible?: boolean; seq?: number; epoch?: number; prefix?: string } = {}) => ({
   now: over.now ?? 1000,
   nextId: (() => {
     let n = 0;
@@ -24,6 +24,7 @@ const ctx = (over: { now?: number; visible?: boolean; seq?: number; prefix?: str
   })(),
   visible: over.visible,
   seq: over.seq,
+  epoch: over.epoch,
 });
 
 const apply = (slice: ConversationSlice, e: Record<string, unknown>, c = ctx()) => applyEngineEvent(slice, e, c).slice;
@@ -128,6 +129,26 @@ test("seq 对账：倒退/重复帧丢弃，断号计入 droppedEvents", () => {
   const jumped = applyEngineEvent(s, { type: "agent_settled" }, ctx({ seq: 5 }));
   assert.equal(jumped.slice.droppedEvents, 3, "5-1-1 = 3 条缺号");
   assert.equal(jumped.slice.lastSeq, 5);
+});
+
+test("epoch 变了 = child 重生：seq 基线重置，新流不再被旧 lastSeq 静默丢弃（⑤）", () => {
+  let s = emptySlice();
+  s = applyEngineEvent(s, { type: "user_message", text: "旧轮" }, ctx({ seq: 1, epoch: 1 })).slice;
+  s = applyEngineEvent(s, { type: "agent_settled" }, ctx({ seq: 2, epoch: 1 })).slice;
+  assert.equal(s.lastSeq, 2);
+  assert.equal(s.epoch, 1);
+  // child 重启后 upSeq 从 0 重计：同样的 seq 若没有 epoch 重置会被全部丢掉
+  s = applyEngineEvent(s, { type: "agent_start" }, ctx({ seq: 1, epoch: 2 })).slice;
+  assert.equal(s.epoch, 2, "基线随新世代重置");
+  assert.equal(s.lastSeq, 1);
+  assert.equal(s.streaming, true, "新流事件必须照常生效");
+  assert.equal(s.droppedEvents, 0, "世代切换不计断号");
+  // 同世代内倒退帧照旧丢弃
+  const stale = applyEngineEvent(s, { type: "agent_settled" }, ctx({ seq: 1, epoch: 2 }));
+  assert.equal(stale.changed, false);
+  // 无 epoch 戳的旧路径不触发重置（行为不变）
+  const noEpoch = applyEngineEvent(s, { type: "agent_settled" }, ctx({ seq: 9 }));
+  assert.equal(noEpoch.slice.droppedEvents, 7, "9-1-1 = 7（旧行为不变）");
 });
 
 test("里程碑摘要供后台标签显示（工具名 + 结果）", () => {

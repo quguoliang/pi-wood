@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { ipcMain, dialog, BrowserWindow } from "electron";
@@ -6,12 +6,17 @@ import { z } from "zod";
 import {
   PROJECT_CHANNELS,
   SESSION_CHANNELS,
+  SESSION_META_CHANNELS,
   IdArgSchema,
   PathArgSchema,
   FileArgSchema,
+  ProjectRenameArgSchema,
+  SessionMetaPatchSchema,
 } from "@pi-wood/ipc-schema";
 import { ProjectManager, DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
+import { SessionMetaStore } from "../project/session-meta-service.ts";
 import { listSessionsAcrossTrees, openSessionTree, loadSessionMessages } from "../engine/session-service.ts";
+import { listConversations } from "../engine/conversation-registry.ts";
 
 /** T3.4：包管理（实验性，经全局 pi CLI；超时 120s） */
 function piExec(args: string[], timeoutMs = 120000): Promise<string> {
@@ -83,6 +88,10 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
     const { id } = IdArgSchema.parse(raw);
     return pm.remove(id);
   });
+  ipcMain.handle(PROJECT_CHANNELS.rename, (_e, raw: unknown) => {
+    const { id, name } = ProjectRenameArgSchema.parse(raw);
+    return pm.rename(id, name);
+  });
   ipcMain.handle(PROJECT_CHANNELS.trustStatus, (_e, raw: unknown) => {
     const { path } = PathArgSchema.parse(raw);
     return pm.trustStatus(path);
@@ -102,6 +111,26 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
   ipcMain.handle(SESSION_CHANNELS.messages, (_e, raw: unknown) => {
     const { file } = FileArgSchema.parse(raw);
     return loadSessionMessages(file);
+  });
+
+  // ---- T8.11 会话元数据（归档/置顶/别名）+ 会话删除（归档优先模型）----
+  const sessionMeta = new SessionMetaStore(DEFAULT_APP_DATA_DIR);
+  ipcMain.handle(SESSION_META_CHANNELS.get, () => sessionMeta.list());
+  ipcMain.handle(SESSION_META_CHANNELS.set, (_e, raw: unknown) => {
+    const { file, patch } = SessionMetaPatchSchema.parse(raw);
+    return sessionMeta.set(file, patch);
+  });
+  ipcMain.handle(SESSION_META_CHANNELS.delete, (_e, raw: unknown) => {
+    const { file } = FileArgSchema.parse(raw);
+    // 守卫 1：正被任何对话（活跃/休眠/重启中）认领 → 拒绝。删除走的是「先关对话再删会话」，
+    // 直接删会让引擎 child 拿着一个已消失的 sessionFile 继续追加。
+    const claimed = listConversations().some((c) => c.sessionFile === file);
+    if (claimed) throw new Error("该会话正被一条对话占用，请先关闭对应对话再删除");
+    // 守卫 2：只认真实存在的 Pi 会话文件形态（.jsonl），防误删任意路径
+    if (!file.endsWith(".jsonl") || !existsSync(file)) throw new Error("不是有效的会话文件");
+    unlinkSync(file);
+    sessionMeta.clear(file);
+    return { ok: true };
   });
 
   // T7.3：导出会话为 Markdown（渲染层已生成内容，主进程弹保存对话框并落盘）

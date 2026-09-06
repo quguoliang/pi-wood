@@ -14,8 +14,9 @@ import { buildExportFilename, formatSessionAsMarkdown } from "../../lib/export-s
 
 /**
  * 中栏顶部 header：展示当前对话标题（取首条用户消息，与会话列表 firstMessage 同源），
- * 右侧承载视图开关——运行时信息看板（EnvironmentPanel）、右侧工作台、T7.2 会话级「自动接受审批」，
+ * 右侧承载视图开关——运行时信息看板（EnvironmentPanel），
  * 以及 T7.3「…」会话操作菜单（导出为 Markdown）。
+ * （原「自动接受」开关已并入 composer 盾牌「Agent 权限」下拉，见 use-composer-controller.changeApproval。）
  * 右侧工作台按钮遵循"就近"规则：右栏收起时显示在此处最右侧（点开），
  * 右栏展开时改由 RightPane 自身头部提供收起按钮（此处隐藏）。
  */
@@ -32,23 +33,10 @@ export function ConversationHeader({
   });
   const items = useActiveConversation((c) => c.items);
   const activeProject = useSessionStore((s) => s.activeProject);
-  const currentSessionId = useActiveConversation((c) => c.currentSessionId);
-  const engineReady = useActiveConversation((c) => c.engineReady);
   const rightCollapsed = useSettingsStore((s) => Boolean(s.settings.window.rightCollapsed));
-  const autoAccept = useSettingsStore(
-    (s) => Boolean(currentSessionId && s.settings.autoAcceptSessions?.[currentSessionId]),
-  );
 
   const projectName = activeProject?.split(/[\\/]/).filter(Boolean).pop();
   const display = title || projectName || "新任务";
-
-  const onToggleAutoAccept = async (): Promise<void> => {
-    if (!currentSessionId) return;
-    const next = !autoAccept;
-    await useSettingsStore.getState().patch({ autoAcceptSessions: { [currentSessionId]: next } });
-    if (next) await window.pi.approvalAcceptAll().catch(() => undefined);
-    toast(next ? "本会话已开启自动接受审批（denyAll/敏感路径仍拦截）" : "本会话已关闭自动接受审批");
-  };
 
   const onExportMarkdown = async (): Promise<void> => {
     if (items.length === 0) return;
@@ -72,22 +60,6 @@ export function ConversationHeader({
         {display}
       </h1>
       <div className="flex shrink-0 items-center gap-1">
-        {engineReady && currentSessionId && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "gap-1.5 text-muted-foreground hover:text-foreground",
-              autoAccept && "bg-success/15 text-success hover:bg-success/20 hover:text-success",
-            )}
-            onClick={() => void onToggleAutoAccept()}
-            aria-pressed={autoAccept}
-            title="本会话自动接受工具审批；denyAll 策略与敏感路径仍会拦截"
-          >
-            <Icon name="shield" className="size-3.5" />
-            <span className="text-xs">自动接受</span>
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="icon-sm"

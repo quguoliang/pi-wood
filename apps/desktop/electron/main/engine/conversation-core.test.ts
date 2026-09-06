@@ -392,24 +392,27 @@ test("无进程态才值得走恢复路径：dead 与 suspended 可恢复，活�
 
 // ---------- 注册表快照 ----------
 
-test("快照只含文档约定的 6 个字段，pid/lastSeq/restarts 等实现细节不外泄", () => {
+test("快照只含文档约定的字段，pid/lastSeq/restarts/epoch 等实现细节不外泄（sessionFile 除外：左栏树行映射键）", () => {
   const records = [
-    rec({ id: "a", pid: 4321, lastSeq: 9, restarts: 2, sessionFile: "/s.jsonl", worktreePath: "/w" }),
+    rec({ id: "a", pid: 4321, lastSeq: 9, restarts: 2, epoch: 3, sessionFile: "/s.jsonl", worktreePath: "/w" }),
   ];
   const snap = summarizeConversations(records);
   assert.deepEqual(Object.keys(snap[0]).sort(), [
     "droppedEvents",
+    "epoch",
     "id",
     "inFlightPrompt",
     "lastActiveAt",
     "pendingApprovals",
     "projectDir",
+    "sessionFile",
     "status",
     "worktreePath",
   ]);
   assert.equal(snap[0].id, "a");
+  assert.equal(snap[0].sessionFile, "/s.jsonl", "sessionFile 是对话↔会话文件的映射键，必须随快照");
   assert.ok(!("pid" in snap[0]));
-  assert.ok(!("lastSeq" in snap[0]));
+  assert.ok(!("restarts" in snap[0]));
 });
 
 test("快照保序并如实反映各字段值", () => {
@@ -428,6 +431,8 @@ test("快照保序并如实反映各字段值", () => {
     pendingApprovals: 1,
     inFlightPrompt: false,
     worktreePath: undefined,
+    sessionFile: undefined,
+    epoch: undefined,
   });
 });
 

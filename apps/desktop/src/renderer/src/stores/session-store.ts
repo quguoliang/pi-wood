@@ -34,12 +34,19 @@ export interface EventMeta {
   active?: boolean;
   legacy: boolean;
   seq?: number;
+  /** child 世代号（child 重生后 seq 从 0 重计；渲染层据此重置对账基线） */
+  epoch?: number;
 }
 
 interface SessionStoreState {
   slices: Record<string, ConversationSlice>;
   /** 用户正在看的对话；null = 尚未被告知（此时按 FALLBACK 切片工作，行为同 T8.2） */
   activeConversationId: string | null;
+  /**
+   * 草稿目标项目：activeConversationId=null 且此项非空 = 「正在起草一条新任务，
+   * 但还没真正建对话」。点「+」进入此态，首次发送才 createConversation 物化（不提前 fork 引擎）。
+   */
+  draftProject: string | null;
   /** 判给别家对话、未进当前视图的事件计数（丢事件不许静默） */
   foreignEventCount: number;
   /** 当前项目（跨对话共享：左栏/右栏面板/终端都按项目取数） */
@@ -49,8 +56,10 @@ interface SessionStoreState {
   handleEvent(e: Record<string, unknown>, meta?: EventMeta): void;
   /** T8.2 遗留入口：只记归属，不做路由（路由在 handleEvent 内） */
   noteEventOwnership(meta: EventMeta): void;
-  /** 切换可见对话：清 unread、必要时整读历史并与已收增量对账 */
+  /** 切换可见对话：清 unread、必要时整读历史并与已收增量对账；切到真实对话即退出草稿态 */
   setActiveConversation(id: string | null): void;
+  /** 进入草稿态（不建对话、不 fork）：active=null + draftProject=dir */
+  startDraft(projectDir: string): void;
   addUserMessage(text: string, conversationId?: string | null): void;
   loadHistory(items: HistoryMessageItem[], conversationId?: string | null): void;
   markHistoryLoaded(conversationId?: string | null): void;
@@ -65,6 +74,35 @@ interface SessionStoreState {
 
 let itemSeq = 0;
 const nextItemId = (): string => `m${++itemSeq}`;
+
+/** 正在装载历史的对话（防重入：切换抖动不会触发并发整读） */
+const historyLoading = new Set<string>();
+
+/**
+ * 切到某对话时按需整读历史并与已收增量对账（⑤ 修复：此前注释承诺了「未装载先 loadMessages」
+ * 但 setActiveConversation 从不执行——后台对话只有已收增量，历史缺口表现为「切换丢内容」）。
+ * 会话文件缺席（新对话首轮消息未落盘）→ 直接标已装载，避免每次切换空查。
+ */
+async function ensureHistoryLoaded(id: string): Promise<void> {
+  const slice = useSessionStore.getState().slices[id];
+  if (!slice || slice.historyLoaded || historyLoading.has(id)) return;
+  historyLoading.add(id);
+  try {
+    const rows = ((await window.pi.listConversations?.().catch(() => [])) ?? []) as Array<{
+      conversationId?: string;
+      sessionFile?: string;
+    }>;
+    const sessionFile = rows.find((r) => r.conversationId === id)?.sessionFile;
+    if (!sessionFile) {
+      useSessionStore.getState().markHistoryLoaded(id);
+      return;
+    }
+    const messages = (await window.pi.sessionsMessages(sessionFile).catch(() => [])) as HistoryMessageItem[];
+    useSessionStore.getState().loadHistory(messages, id);
+  } finally {
+    historyLoading.delete(id);
+  }
+}
 
 /** 单对话最多在内存里留多少条 item（T8.3 步骤 6：N 路后台对话同时长跑不能吃穿堆） */
 export const MAX_SLICE_ITEMS = 2000;
@@ -91,6 +129,7 @@ const targetKeyOf = (state: { activeConversationId: string | null }, id: string 
 export const useSessionStore = create<SessionStoreState>((set, get) => ({
   slices: { [FALLBACK_SLICE_KEY]: emptySlice() },
   activeConversationId: null,
+  draftProject: null,
   foreignEventCount: 0,
   activeProject: undefined,
 
@@ -103,16 +142,21 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     if (meta) get().noteEventOwnership(meta); // 先采纳归属再路由：漏调 noteEventOwnership 不该导致静默错路由
     const state = get();
     const key = targetKeyOf(state, meta?.conversationId);
-    // legacy 裸事件（无归属）与「主进程盖了 active」都算正被看着；其余按 activeConversationId 比
-    const visible = meta ? meta.active === true || meta.legacy || !meta.conversationId : true;
+    // 可见性以本地 active 为准：主进程的 active 戳在切换瞬间有 stale 窗口（发送时刻算的），
+    // 若拿来当可见判据，旧对话在飞帧会被误判「正被看着」而不计未读。legacy 裸事件按可见处理（同 T8.2）。
+    const visible = meta ? meta.legacy || !meta.conversationId || meta.conversationId === state.activeConversationId : true;
     const current = state.slices[key] ?? emptySlice();
-    const result = applyEngineEvent(current, e, { now: Date.now(), nextId: nextItemId, visible, seq: meta?.seq });
+    const result = applyEngineEvent(current, e, { now: Date.now(), nextId: nextItemId, visible, seq: meta?.seq, epoch: meta?.epoch });
     if (!result.changed) return; // 空转不 set ⇒ 不触发任何重渲染
     set({ slices: { ...state.slices, [key]: guardSliceMemory(result.slice) } });
   },
 
   noteEventOwnership(meta) {
-    if (meta.active === true && meta.conversationId && meta.conversationId !== get().activeConversationId) {
+    // 只在「从未选定」时采纳主进程的 active 戳（启动期 attach 恢复中的对话）。
+    // 用户一旦选定，视图只跟用户走：主进程的 active 是**发送时刻**算的，切换瞬间在飞的
+    // 旧对话帧仍带 active:true——照单全收会把 activeConversationId 拉回旧对话（视图错乱、
+    // 看起来像「切换丢内容」）。
+    if (meta.active === true && meta.conversationId && get().activeConversationId === null) {
       set({ activeConversationId: meta.conversationId });
     }
   },
@@ -125,6 +169,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     const slice = state.slices[key] ?? emptySlice();
     set({
       activeConversationId: id,
+      // 切到真实对话即退出草稿态；显式切到 null 不清（那是 startDraft 的语义）
+      ...(id ? { draftProject: null } : {}),
       // 切过去即清零未读（T8.3 验收：未读计数在切过去时清零）
       slices: { ...state.slices, [key]: { ...slice, unreadCount: 0 } },
     });
@@ -132,7 +178,15 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     // typeof 守卫是必需的：store 的纯状态部分要在 node --test 下可测（那里没有 window）。
     if (typeof window !== "undefined" && key) {
       void window.pi.setActiveConversation?.(key).catch(() => undefined);
+      void ensureHistoryLoaded(key); // ⑤：未装载历史的对话切过去先整读对账，不再只显示已收增量
     }
+  },
+
+  startDraft(projectDir) {
+    // 进入草稿态：不建对话、不 fork 引擎、不注册——只是「准备为该项目写一条新任务」。
+    // activeConversationId=null 让视图走空切片（欢迎/起草屏）；draftProject 记下目标项目，
+    // 首次发送时 conversations-store 才 createConversation 物化它。
+    set({ activeConversationId: null, draftProject: projectDir, activeProject: projectDir });
   },
 
   addUserMessage(text, conversationId) {

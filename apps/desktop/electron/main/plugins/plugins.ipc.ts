@@ -73,7 +73,7 @@ export function initPluginsIpc(sendToRenderer: (channel: string, data: unknown) 
     return host?.statusList() ?? [];
   });
   ipcMain.handle(PLUGIN_CHANNELS.demo, (_e, raw: { kind?: string }) => {
-    const kind = raw?.kind === "overreach" ? "overreach" : "crash";
+    const kind = raw?.kind === "overreach" ? "overreach" : raw?.kind === "kitchen" ? "kitchen" : "crash";
     return { triggered: host ? host.demo(kind) : false, kind };
   });
 

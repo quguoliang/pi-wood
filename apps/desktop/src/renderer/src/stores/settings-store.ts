@@ -7,9 +7,13 @@ export interface PiWoodSettings {
   editor: { fontSize: number; tabSize: number };
   ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean };
   recentProjects: string[];
-  /** T7.2：按会话 id 记录「自动接受审批」开关（与主进程 settings 同源）。 */
+  /** per-对话 Agent 权限档（conversationId → mode）；未列出的对话回退全局 approval.mode（主进程裁决）。 */
+  approvalByConversation: Record<string, "auto" | "highRisk" | "allAsk" | "denyAll">;
+  /** T7.2（已废弃）：旧「按会话自动接受」开关，仅历史数据兼容，裁决链不再消费。 */
   autoAcceptSessions: Record<string, boolean>;
 }
+
+export type ConversationApprovalMode = "auto" | "highRisk" | "allAsk" | "denyAll";
 
 const defaults: PiWoodSettings = {
   window: { layout: [17, 55, 28], leftCollapsed: false, rightCollapsed: false },
@@ -17,6 +21,7 @@ const defaults: PiWoodSettings = {
   editor: { fontSize: 14, tabSize: 2 },
   ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false },
   recentProjects: [],
+  approvalByConversation: {},
   autoAcceptSessions: {},
 };
 
@@ -37,6 +42,7 @@ const merge = (raw: Partial<PiWoodSettings> | undefined): PiWoodSettings => ({
   theme: { ...defaults.theme, ...raw?.theme },
   editor: { ...defaults.editor, ...raw?.editor },
   ui: { ...defaults.ui, ...raw?.ui },
+  approvalByConversation: { ...defaults.approvalByConversation, ...raw?.approvalByConversation },
   autoAcceptSessions: { ...defaults.autoAcceptSessions, ...raw?.autoAcceptSessions },
 });
 

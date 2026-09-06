@@ -35,18 +35,29 @@ const FLUSH_WAIT_MS = 2600; // 渲染层批量上报周期是 2s，多等一点�
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
- * 点第 i 个标签按钮切换对话。**必须走渲染层的点击**：只有
- * `ConversationTabs.switchTo → store.setActiveConversation` 才会记首屏起点（markSwitchStart），
- * 而主进程自己改 active 既不产生 firstPaint 样本、也不会让渲染层的可见性判定跟上。
+ * 切到指定对话（必须经渲染层）：优先点左栏树行（真用户路径），树里没有（探针临时项目
+ * 不在项目列表）→ 落到渲染层调试钩子 `__piwoodSwitchConversation`（同一条 store 路径，
+ * markSwitchStart→首帧的度量段与点击完全一致）。两者都失败才算点不到。
  */
-function clickTab(win: BrowserWindow, i: number): Promise<boolean> {
+async function switchConversation(win: BrowserWindow, conversationId: string): Promise<boolean> {
+  const clicked = await win.webContents
+    .executeJavaScript(
+      `(() => {
+        const row = document.querySelector('[data-conversation-id="${conversationId}"]');
+        if (!row) return false;
+        row.click();
+        return true;
+      })()`,
+    )
+    .then((ok: unknown) => ok === true)
+    .catch(() => false);
+  if (clicked) return true;
   return win.webContents
     .executeJavaScript(
       `(() => {
-        const tabs = document.querySelectorAll('[role="tablist"][aria-label="对话标签条"] [role="tab"]');
-        const el = tabs[${i}] && tabs[${i}].querySelector("button");
-        if (!el) return false;
-        el.click();
+        const sw = window.__piwoodSwitchConversation;
+        if (typeof sw !== "function") return false;
+        sw(${JSON.stringify(conversationId)});
         return true;
       })()`,
     )
@@ -114,10 +125,10 @@ export async function runUiLatencyProbe(): Promise<void> {
     const hosts = convIds.slice(0, 3).map((id) => getConversation(id)?.host);
     if (hosts.some((h) => !h)) throw new Error("有对话的 EngineHost 未就位");
 
-    // 先让渲染层自己选定一条（点标签 = 真用户路径；点不到说明标签条没渲染出来）
+    // 先让渲染层自己选定一条（树行点击/调试钩子 = 真渲染层路径；都失败说明渲染层没就绪）
     const win = BrowserWindow.getAllWindows()[0];
     if (!win) throw new Error("探针需要可见窗口：BrowserWindow 未创建");
-    if (!(await clickTab(win, 0))) throw new Error("点不到对话标签（标签条未渲染？），首屏与第二跳都无从测起");
+    if (!(await switchConversation(win, convIds[0]!))) throw new Error("渲染层切换入口不可用，首屏与第二跳都无从测起");
     await sleep(400);
 
     // ① 三路按接近模型的速率同时灌事件（不 await：切换要在负载进行中做）
@@ -125,14 +136,14 @@ export async function runUiLatencyProbe(): Promise<void> {
       hosts.map((h) => h!.invoke("debugEcho", { events: EVENTS_PER_CONV, approvals: 0, gapMs: PACE_GAP_MS })),
     );
 
-    // ② 负载期间连点标签切换：起点在渲染层 store，首帧提交时配平
+    // ② 负载期间连切对话：起点在渲染层 store，首帧提交时配平
     let clicked = 0;
     for (let i = 0; i < SWITCH_ROUNDS; i += 1) {
-      if (await clickTab(win, i % convIds.length)) clicked += 1;
+      if (await switchConversation(win, convIds[i % convIds.length]!)) clicked += 1;
       await sleep(260);
     }
     await load; // 300 帧 × 16ms ≈ 4.8s/路，三路并发
-    if (clicked < SWITCH_ROUNDS) console.warn(`  · 有 ${SWITCH_ROUNDS - clicked} 次切换没点到标签（标签数 ${convIds.length}？）`);
+    if (clicked < SWITCH_ROUNDS) console.warn(`  · 有 ${SWITCH_ROUNDS - clicked} 次切换没成功（对话数 ${convIds.length}？）`);
     await sleep(FLUSH_WAIT_MS);
 
     const sum = engineLatencySummary();

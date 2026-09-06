@@ -42,6 +42,11 @@ export interface EngineTransport {
 /** 命令级超时：装配/长任务宽松，只读查询收紧（child 卡死时渲染层不该一直转圈） */
 const METHOD_TIMEOUTS: Partial<Record<EngineRpcMethod, number>> = {
   start: 120_000,
+  // newSession/switchSession/fork 与 start 同类：会按 cwd 重建 services（SDK import + jiti 冷
+  // 编译社区扩展），磁盘忙时远超 15s——启动期「子进程无应答」toast 的根因。给足装配窗口。
+  newSession: 120_000,
+  switchSession: 120_000,
+  fork: 120_000,
   shutdown: 15_000,
   compact: 180_000,
   reload: 90_000,

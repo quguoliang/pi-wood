@@ -2,7 +2,9 @@
 /**
  * demo-overreach：manifest 只声明了 notify。演示权限白名单——
  * 调用未声明的能力（terminal.run 需 terminal:run；diff.revert 需 fs:write）会被宿主拒绝并记日志，
- * 而已声明的 notify 正常放行，形成对照。激活后自动跑一轮，也可由管理 UI 的按钮再触发。
+ * 而已声明的 notify 正常放行，形成对照。
+ * ⚠ 不再「激活即自燃」：越权尝试只在收到宿主控制消息 "overreach" 时执行
+ * （由管理 UI「演示：越权调用被拒」按钮或 --plugin-probe 触发），避免每次启动刷一堆 denied 活动。
  */
 const { bootstrap } = require("../_pi-client.cjs");
 
@@ -29,11 +31,10 @@ async function attempt(api, round) {
 
 bootstrap({
   onActivate(api) {
-    api.notify({ title: "越权演示插件已就绪", body: "正自动尝试调用未声明权限…", kind: "info" });
-    setTimeout(() => void attempt(api, 1), 1200);
+    api.notify({ title: "越权演示插件已就绪", body: "点「演示：越权调用被拒」将尝试调用未声明权限", kind: "info" });
   },
   onControl(name, _args, api) {
     if (name !== "overreach") return;
-    void attempt(api, 2);
+    void attempt(api, 1);
   },
 });

@@ -366,6 +366,8 @@ function sendFrame(conversationId: string, projectDir: string, frame: ThrottledF
       // T8.10 度量：推送时刻（epoch 毫秒）。每帧一次减法而已——别换回 Date.now()，
       // 毫秒精度判不了 20ms 的第二跳预算。
       tPush: nowEpochMs(),
+      // child 世代号：child 重生后 upSeq 从 0 重计，渲染层据此重置 lastSeq 基线（⑤ 切换丢内容修复）
+      epoch: getConversation(conversationId)?.record.epoch,
     }),
     conversationId,
   );
@@ -514,8 +516,12 @@ function confirmViaRenderer(conversationId: string, title: string, message: stri
   });
 }
 
-function getPolicy(): ApprovalPolicy {
-  return loadSettings().approval as ApprovalPolicy;
+/** 审批策略解析：per-对话档（approvalByConversation[conversationId]）优先，未配置回退全局 approval.mode。 */
+function getPolicy(conversationId?: string): ApprovalPolicy {
+  const settings = loadSettings();
+  const base = settings.approval as ApprovalPolicy;
+  const perConv = conversationId ? settings.approvalByConversation?.[conversationId] : undefined;
+  return perConv ? { ...base, mode: perConv } : base;
 }
 
 /**
@@ -533,7 +539,7 @@ export async function decideApprovalFor(
   if (!ticket.ok) return { allow: false, reason: ticket.error, auto: true };
   if (p.ticket) consumedApprovalTickets.add(p.ticket);
   const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
-  const decision = decide(getPolicy(), p.toolName, p.input, override);
+  const decision = decide(getPolicy(ctx.conversationId), p.toolName, p.input, override);
   if (decision === "deny") {
     return {
       allow: false,
@@ -559,10 +565,10 @@ export async function decideApprovalFor(
     reservedRun = true;
   }
   try {
-    // T7.2：该对话当前会话开了「自动接受」→ 升级成 allow（deny 分支已经在上面拦住，安全底线不可越）
-    const conv = getConversation(ctx.conversationId);
-    const sessionId = conv?.adapter.getSessionId() ?? conv?.boot?.sessionId;
-    if (sessionId && loadSettings().autoAcceptSessions?.[sessionId] === true) return { allow: true, auto: true };
+    // 「Agent 权限」档裁决（原 T7.2 autoAcceptSessions 已废弃并入此处分档）：
+    // allow → 直接放行不弹卡（auto 全放 / highRisk 的低风险工具 / denyAll 的只读工具）；
+    // deny 分支已在上面拦住（path-guard / denyAll 硬底线不可越）；ask → 走用户卡。
+    if (decision === "allow") return { allow: true, auto: true };
     const { title, message } = describeApprovalCall(p.toolName, p.input);
     const ok = await confirmViaRenderer(ctx.conversationId, p.agentName ? `子代理「${p.agentName}」· ${title}` : title, message, p.toolName);
     if (!ok) {
@@ -758,7 +764,7 @@ function installCapabilitiesOnce(): void {
           if (!guardTicket.ok) return { reason: guardTicket.error };
           if (p.ticket) consumedApprovalTickets.add(p.ticket);
           const override = p.agentName ? loadSettings().subagentPermissions?.[p.agentName] : undefined;
-          const decision = decide(getPolicy(), p.toolName, p.input, override);
+          const decision = decide(getPolicy(ctx.conversationId), p.toolName, p.input, override);
           if (decision === "allow") return { reason: undefined };
           if (decision === "deny") {
             return {
@@ -1226,7 +1232,10 @@ export function initEngineIpc(): void {
     await ensureEngine(projectDir);
     const convId = getActiveConversationId();
     if (convId) targetByConversation.set(convId, _e.sender); // 选项目即绑定推送目标；未绑定的仍走单窗口兜底
-    return true;
+    // 回传活跃对话 id：渲染层据此立刻把视图归属到这条对话，
+    // 不再靠「等 active:true 事件回采」——那条竞态会让首条 addUserMessage 误落兜底切片，
+    // 导致真实对话切片缺首条用户消息 → 被左栏「隐藏空对话」过滤掉（表现为「新建后旧对话消失」）。
+    return { conversationId: convId ?? "" };
   });
 
   ipcMain.removeHandler(ENGINE_CHANNELS.prompt);

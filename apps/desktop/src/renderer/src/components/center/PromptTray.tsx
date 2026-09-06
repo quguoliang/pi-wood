@@ -13,10 +13,9 @@ import { useSessionStore } from "@/stores/session-store";
  * 工具审批（approval:request）与扩展发起的 ctx.ui select/confirm/input（ui:request）。
  * 合并成一个队列，可分页（N/M）、折叠/展开；出现新项自动展开。取代旧的右下角审批浮窗与全局模态。
  *
- * T8.4 多对话归属：每条请求带发起对话（conversationId/projectName）——
- * - 头部来源行「来自对话：… · 项目名」，队列按对话分组；
- * - **应答者必须是发起对话**：非当前对话的请求只读展示 + 「去应答」切换，不抢当前视图、不自动展开；
- * - 全局请求（插件发起，conversationId=null）任何对话下都可应答。
+ * 多对话归属（④修订）：**只展示当前对话的请求与全局请求**——后台对话的挂起审批不再在中栏
+ * 展示横幅/来源行，改由左栏项目树的黄色呼吸圆点标示；切到该对话后其审批卡才出现在这里。
+ * （主进程侧「应答者必须是发起对话」的校验保持不变。）
  */
 type TrayItem =
   | {
@@ -27,13 +26,6 @@ type TrayItem =
       key: string; type: "select" | "confirm" | "input"; id: number; conversationId: string | null; projectName?: string;
       title: string; options?: string[]; message?: string; placeholder?: string;
     };
-
-/** 对话短标签：`conv-3-abc12345` → 「对话 3」（正式标题随 T8.8 标签条一起接入） */
-function conversationLabel(conversationId: string | null): string | undefined {
-  if (!conversationId) return undefined;
-  const m = conversationId.match(/^conv-(\d+)-/);
-  return m ? `对话 ${m[1]}` : conversationId.slice(-6);
-}
 
 function approvalIcon(toolName?: string) {
   switch (toolName) {
@@ -158,8 +150,13 @@ export function PromptTray(): React.JSX.Element | null {
     [],
   );
 
-  // 展示序：按对话分组（组内保持到达顺序），分页游标作用于展示序
-  const grouped = useMemo(() => groupByConversation(items), [items]);
+  // 展示序：按对话分组（组内保持到达顺序），分页游标作用于展示序。
+  // ④：后台对话的请求不进中栏——只展示当前对话的与全局的（切过去后其卡片自动出现）。
+  const visible = useMemo(
+    () => items.filter((i) => i.conversationId === null || i.conversationId === activeId),
+    [items, activeId],
+  );
+  const grouped = useMemo(() => groupByConversation(visible), [visible]);
   const current = grouped[Math.min(idx, grouped.length - 1)];
   useEffect(() => setDraft(""), [current?.key]);
   // 队列长度变化时把游标夹到有效范围。
@@ -169,15 +166,9 @@ export function PromptTray(): React.JSX.Element | null {
 
   const remove = (key: string): void => setItems((prev) => prev.filter((i) => i.key !== key));
 
-  /** 是否可在当前视图应答：全局请求可以；对话请求必须正是当前对话（主进程会做同款校验兜底） */
+  /** 展示面内的请求都归属当前对话（或全局），一律可应答（主进程会做同款归属校验兜底） */
   const canAnswerNow = (item: TrayItem | undefined): boolean =>
     !item || item.conversationId === null || item.conversationId === activeId;
-
-  /** 「去应答」：切到发起对话（store 会同步 IPC setActiveConversation → 主进程恢复该对话 pending 的计时） */
-  const focusConversation = (conversationId: string): void => {
-    useSessionStore.getState().setActiveConversation(conversationId);
-    void window.pi.approvalFocusRequested?.(conversationId).catch(() => undefined);
-  };
 
   const decideApproval = (id: number, allow: boolean): void => {
     void window.pi.approvalDecide(id, allow, current?.conversationId ?? null);
@@ -190,9 +181,6 @@ export function PromptTray(): React.JSX.Element | null {
 
   const Icon = current?.type === "approval" ? approvalIcon(current.toolName) : ListChecks;
   const answerable = canAnswerNow(current);
-  const sourceLabel = current?.conversationId
-    ? [conversationLabel(current.conversationId), current.projectName].filter(Boolean).join(" · ")
-    : undefined;
 
   const total = grouped.length;
   const position = useMemo(() => (total ? Math.min(idx + 1, total) : 0), [idx, total]);
@@ -211,9 +199,6 @@ export function PromptTray(): React.JSX.Element | null {
           >
             <span className="relative grid size-5 shrink-0 place-items-center rounded bg-primary/10 text-primary">
               <Icon className="size-3" />
-              {!answerable && (
-                <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-destructive" aria-label="来自其他对话" />
-              )}
             </span>
             <span className="min-w-0 flex-1 truncate">{current ? current.title : "待处理"} · {total} 项待处理</span>
             <ChevronUp className="size-3.5 shrink-0" />
@@ -256,23 +241,7 @@ export function PromptTray(): React.JSX.Element | null {
           </button>
         </div>
 
-        {/* T8.4 来源行：来自对话：对话 N · 项目名（点它切到该对话再应答） */}
-        {current && (
-          <div className="mt-1 flex items-center gap-1.5 px-0.5 text-[11px] text-muted-foreground">
-            <span className="truncate">
-              {sourceLabel ? `来自对话：${sourceLabel}` : "来自对话：当前对话（全局请求）"}
-            </span>
-            {!answerable && current.conversationId && (
-              <button
-                type="button"
-                onClick={() => focusConversation(current.conversationId as string)}
-                className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
-              >
-                去应答（切到该对话）
-              </button>
-            )}
-          </div>
-        )}
+        {/* T8.4 来源行（④修订撤除）：后台对话的审批改由左栏树黄色呼吸点标示，此处只留当前对话/全局 */}
 
         {/* 正文 */}
         {current && (

@@ -38,6 +38,12 @@ export interface ConversationRecord {
   restarts: number;
   sessionFile?: string;
   pid?: number;
+  /**
+   * child 世代号：每次 spawnHandle（首建/休眠唤醒/崩溃重启）+1。
+   * child 侧 upSeq 是进程内计数，重生后从 0 重计——主进程把它随 envelope 推给渲染层，
+   * 渲染层据此重置 lastSeq 对账基线（否则新事件流被旧 lastSeq 全部静默丢弃 = 切换丢内容）。
+   */
+  epoch?: number;
 }
 
 /** 还占着一个引擎进程（= 计入 MAX_LIVE_ENGINES）的状态 */
@@ -190,6 +196,10 @@ export function summarizeConversations(records: readonly ConversationRecord[]): 
   inFlightPrompt: boolean;
   /** T8.8：该对话的引擎 cwd（worktree 启用 = 独占树；标签「树」角标 + 悬浮路径） */
   worktreePath?: string;
+  /** 该对话当前 Pi 会话文件（左栏树行 ↔ 对话注册表的映射键；首轮消息落盘前可能缺席） */
+  sessionFile?: string;
+  /** child 世代号（事件流重置对账用；渲染层 seq 基线随它重置） */
+  epoch?: number;
 }> {
   return records.map((r) => ({
     id: r.id,
@@ -200,6 +210,8 @@ export function summarizeConversations(records: readonly ConversationRecord[]): 
     pendingApprovals: r.pendingApprovals,
     inFlightPrompt: r.inFlightPrompt,
     worktreePath: r.worktreePath,
+    sessionFile: r.sessionFile,
+    epoch: r.epoch,
   }));
 }
 

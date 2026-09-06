@@ -330,9 +330,9 @@ export class PluginHost {
     setTimeout(() => this.fork(rt), 150);
   }
 
-  /** 触发演示：向目标插件下发控制消息（crash → 自我硬崩；overreach → 越权调用）。 */
-  demo(kind: "crash" | "overreach"): boolean {
-    const target = kind === "crash" ? "demo-crash" : "demo-overreach";
+  /** 触发演示：向目标插件下发控制消息（crash → 自我硬崩；overreach → 越权调用；kitchen → API 全能力展示）。 */
+  demo(kind: "crash" | "overreach" | "kitchen"): boolean {
+    const target = kind === "crash" ? "demo-crash" : kind === "kitchen" ? "demo-kitchen" : "demo-overreach";
     const rt = this.runtimes.get(target);
     if (!rt) return false;
     if (rt.status !== "running") {

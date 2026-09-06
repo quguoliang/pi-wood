@@ -303,6 +303,9 @@ async function spawnHandle(
   resumeSessionFile?: string,
 ): Promise<ConversationHandle> {
   const c = needCaps();
+  // child 世代号：spawnHandle 是「新 child 诞生」的唯一入口（首建/休眠唤醒/崩溃重启都走这里）。
+  // 每次 +1，渲染层据此重置 seq 对账基线（child 侧 upSeq 是进程内计数，重生后从 0 重计）。
+  record.epoch = (record.epoch ?? 0) + 1;
   const baseline = await countEngineishProcesses();
   // ---- T8.6 worktree：引擎 cwd = 该对话独占树（惰性建，T8.0 实测 151~180ms 不卡 UI）----
   // 降级（非 git / detached / 路径过长）→ 显式提示后共享主树，不静默。

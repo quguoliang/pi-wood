@@ -104,9 +104,22 @@ export class ProjectManager {
     const reg = this.read();
     const id = projectIdFor(idOrPath);
     const before = reg.projects.length;
-    reg.projects = reg.projects.filter((p) => p.id !== id && p.path !== idOrPath);
+    // 匹配口径：规范化 id / 原始 id / path 三者任一（IPC 传的是注册表 id，不能对 id 再哈希一次）
+    reg.projects = reg.projects.filter((p) => p.id !== id && p.id !== idOrPath && p.path !== idOrPath);
     this.write(reg);
     return reg.projects.length < before;
+  }
+
+  /** T8.11：改显示别名。只写注册表 name，目录与磁盘零触碰；空名回落目录名 */
+  rename(idOrPath: string, name: string): ProjectRecord {
+    const reg = this.read();
+    const id = projectIdFor(idOrPath);
+    const record = reg.projects.find((p) => p.id === id || p.path === idOrPath);
+    if (!record) throw new Error(`project not registered: ${idOrPath}`);
+    const trimmed = name.trim();
+    record.name = trimmed || (record.path.split(/[\\/]/).filter(Boolean).pop() ?? record.path);
+    this.write(reg);
+    return record;
   }
 
   touch(path: string): ProjectRecord {

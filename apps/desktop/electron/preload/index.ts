@@ -10,6 +10,8 @@ interface EngineEventMetaLite {
   active?: boolean;
   /** 主进程推送时刻（epoch 毫秒，T8.10 第二跳度量）；未打戳的推送路径为 undefined */
   tPush?: number;
+  /** child 世代号（child 重生后 seq 重计，渲染层据此重置对账基线）；未打戳的推送路径为 undefined */
+  epoch?: number;
   legacy: boolean;
 }
 
@@ -34,6 +36,7 @@ const unwrapEnginePayloadLite = (
       ...(typeof r.seq === "number" ? { seq: r.seq } : {}),
       ...(typeof r.active === "boolean" ? { active: r.active } : {}),
       ...(typeof r.tPush === "number" ? { tPush: r.tPush } : {}), // ⚠ 与 ipc-schema envelope 同步：漏这里 = 第二跳永远没样本
+      ...(typeof r.epoch === "number" ? { epoch: r.epoch } : {}), // ⚠ 同步点：漏这里 = child 重生后渲染层丢整段新流
       legacy: false,
     };
     return { event: r.event as Record<string, unknown>, meta };
@@ -130,7 +133,7 @@ const api = {
   settingsSet: (patch: Record<string, unknown>): Promise<Record<string, unknown>> =>
     ipcRenderer.invoke("settings:set", patch),
   // T1.3/T1.4 引擎与数据域
-  engineStart: (projectDir: string): Promise<boolean> =>
+  engineStart: (projectDir: string): Promise<{ conversationId: string }> =>
     ipcRenderer.invoke("engine:start", { projectDir }),
   // T8.3 对话域：切可见对话（主进程据此做可见性节流）+ 注册表面板
   setActiveConversation: (conversationId: string): Promise<unknown> =>
@@ -170,13 +173,19 @@ const api = {
   engineCompact: (): Promise<void> => ipcRenderer.invoke("engine:compact"),
   projectList: (): Promise<unknown> => ipcRenderer.invoke("project:list"),
   projectAdd: (path: string): Promise<unknown> => ipcRenderer.invoke("project:add", { path }),
+  projectRemove: (id: string): Promise<boolean> => ipcRenderer.invoke("project:remove", { id }),
   projectPick: (): Promise<string | undefined> => ipcRenderer.invoke("project:pickDialog"),
   projectPickAttachments: (): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>> =>
     ipcRenderer.invoke("project:pickAttachments"),
   stagePastedText: (text: string): Promise<{ path: string; name: string; size: number; kind: "file" | "image" }> =>
     ipcRenderer.invoke("engine:stagePastedText", { text }),
   projectTrust: (path: string): Promise<string> => ipcRenderer.invoke("project:trustStatus", { path }),
+  projectRename: (id: string, name: string): Promise<unknown> => ipcRenderer.invoke("project:rename", { id, name }),
   sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
+  sessionsMeta: (): Promise<unknown> => ipcRenderer.invoke("sessions:meta"),
+  sessionsSetMeta: (file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string }): Promise<unknown> =>
+    ipcRenderer.invoke("sessions:setMeta", { file, patch }),
+  sessionsDelete: (file: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("sessions:delete", { file }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
   sessionsMessages: (file: string): Promise<unknown> =>
     ipcRenderer.invoke("sessions:messages", { file }),
@@ -281,7 +290,7 @@ const api = {
     ipcRenderer.invoke("plugins:setEnabled", { id, enabled }),
   pluginsRestart: (id: string): Promise<unknown[]> => ipcRenderer.invoke("plugins:restart", { id }),
   pluginsReload: (): Promise<unknown[]> => ipcRenderer.invoke("plugins:reload"),
-  pluginsDemo: (kind: "crash" | "overreach"): Promise<{ triggered: boolean; kind: string }> =>
+  pluginsDemo: (kind: "crash" | "overreach" | "kitchen"): Promise<{ triggered: boolean; kind: string }> =>
     ipcRenderer.invoke("plugins:demo", { kind }),
   onPluginStatus: (cb: (runs: unknown[]) => void): (() => void) => {
     const h = (_e: unknown, runs: unknown[]): void => cb(runs);

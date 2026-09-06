@@ -58,7 +58,7 @@ RUN build      pnpm --filter @pi-wood/desktop exec electron-vite build
 (
   set -e
   cd apps/desktop
-  for sym in "approval:focus-requested" "agent_start 排队" "engineMaxPrompts" "quotaOverLimitAction" "runConcurrencyProbe\|concurrency-probe" "debugEcho" "对话标签条\|aria-label=\"对话标签条\""; do
+  for sym in "approval:focus-requested" "agent_start 排队" "engineMaxPrompts" "quotaOverLimitAction" "runConcurrencyProbe\|concurrency-probe" "debugEcho" "conversation-dot\|任务进行中"; do
     grep -q "$sym" out/main/index.js out/renderer/assets/index-*.js 2>/dev/null \
       || { echo "产物缺符号: $sym"; exit 1; }
   done
