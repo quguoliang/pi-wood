@@ -32,7 +32,23 @@ export const SessionTreeRowSchema = z.object({
   depth: z.number(),
   activeBranch: z.boolean(),
   timestamp: z.string(),
+  /**
+   * T9.2 上下文缩略树 v2：消息条目的角色与首行摘要（非 message 条目缺席）。
+   * 渲染层给「旁支节点」出题面用；只做展示投影，不参与引擎语义。
+   */
+  role: z.enum(["user", "assistant", "tool", "other"]).optional(),
+  textHead: z.string().optional(),
 });
+
+/**
+ * T9.2：`sessions:messages` 入参。`leafId` 给出时主进程只返回 root→leaf 路径上的消息
+ * （transcript 按分支过滤）；缺席 = 旧行为（文件序全量）。
+ */
+export const SessionMessagesArgSchema = z.object({
+  file: z.string().min(1),
+  leafId: z.string().min(1).optional(),
+});
+export type SessionMessagesArg = z.infer<typeof SessionMessagesArgSchema>;
 
 export const SessionTreeResultSchema = z.object({
   sessionId: z.string().optional(),

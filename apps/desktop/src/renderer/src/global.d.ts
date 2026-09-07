@@ -106,9 +106,14 @@ declare global {
       sessionsSetMeta(file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string }): Promise<unknown>;
       sessionsDelete(file: string): Promise<{ ok: boolean }>;
       sessionsTree(file: string): Promise<unknown>;
-      sessionsMessages(file: string): Promise<unknown>;
+      sessionsMessages(file: string, leafId?: string): Promise<unknown>;
       exportSessionMarkdown(defaultFileName: string, markdown: string): Promise<string | undefined>;
       engineSwitchSession(file: string): Promise<boolean>;
+      /** T9.2 上下文缩略树 v2：同文件内切分支（navigateTree）；目标为 user 消息时回填原文到 editorText */
+      engineNavigateTree(
+        conversationId: string,
+        targetId: string,
+      ): Promise<{ editorText?: string; cancelled: boolean }>;
       worktreeList(): Promise<unknown>;
       worktreeRemove(opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown>;
       debugStress(count: number): Promise<number>;

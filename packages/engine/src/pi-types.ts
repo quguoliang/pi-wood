@@ -26,6 +26,11 @@ export interface AgentSessionLike {
   setModel(model: { provider: string; id: string }): Promise<void>;
   setThinkingLevel(level: string): Promise<void>;
   compact(customInstructions?: string): Promise<void>;
+  /** T9.2 缩略树 v2：SDK navigateTree（切 leaf；返回 editorText/cancelled/aborted，summaryEntry 不消费）。假会话可缺省 → 可选 */
+  navigateTree?(
+    targetId: string,
+    options?: { summarize?: boolean; customInstructions?: string; replaceInstructions?: boolean; label?: string },
+  ): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean }>;
   bindExtensions(bindings: Record<string, unknown>): Promise<void>;
   reload(options?: Record<string, unknown>): Promise<void>;
   dispose?(): void;

@@ -12,6 +12,7 @@ import type {
   EngineSessionRef,
   EngineStartInfo,
   EngineStartOptions,
+  NavigateTreeResult,
 } from "./adapter";
 
 /**
@@ -155,6 +156,11 @@ export class RemoteEngineAdapter implements EngineAdapter {
     const ref = await this.call<EngineSessionRef>("fork", { entryId, position: pos });
     if (ref?.sessionId) this.sessionId = ref.sessionId;
     return ref;
+  }
+
+  /** T9.2：同文件内切会话树 leaf（帧参数经 NavigateTreeParamsSchema 校验；child 卡死时按默认 15s 兜底） */
+  async navigateTree(targetId: string, opts?: { summarize?: boolean }): Promise<NavigateTreeResult> {
+    return this.call<NavigateTreeResult>("navigateTree", { targetId, summarize: opts?.summarize });
   }
 
   async getState(): Promise<SessionState> {

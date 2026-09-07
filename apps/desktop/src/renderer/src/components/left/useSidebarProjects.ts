@@ -4,6 +4,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useRuntimeStore } from "../../stores/runtime-store";
 import { useConversationsStore, type ConversationRow } from "../../stores/conversations-store";
 import { useSessionMetaStore } from "../../stores/session-meta-store";
+import { useContextTreeStore } from "../../stores/context-tree-store";
 import { conversationTreeTitle, type ConversationTreeItem } from "./ProjectGroup";
 
 export interface ProjectRecord {
@@ -125,9 +126,14 @@ export function useSidebarProjects() {
   const selectSession = useCallback(async (project: ProjectRecord, session: SessionItem) => {
     if (activeProject !== project.path) await activateProject(project);
     setActiveSessionFile(session.file);
-    const messages = (await window.pi.sessionsMessages(session.file)) as { role: string; text: string }[];
-    loadHistory(messages);
+    // T9.2：先切引擎（主进程会把新会话文件同步回注册表），再刷上下文树拿「当前视图叶」，
+    // 历史按 root→leaf 路径过滤装载——分叉过的会话不会把旁支文本混进主视图。
     await window.pi.engineSwitchSession(session.file);
+    const convId = useSessionStore.getState().activeConversationId;
+    if (convId) await useContextTreeStore.getState().refresh(convId, session.file, { force: true });
+    const leafId = convId ? useContextTreeStore.getState().byConv[convId]?.leafId : undefined;
+    const messages = (await window.pi.sessionsMessages(session.file, leafId)) as { role: string; text: string }[];
+    loadHistory(messages);
     void refreshRuntime();
     void useSessionStore.getState().refreshSessionId();
   }, [activeProject, activateProject, loadHistory, refreshRuntime]);

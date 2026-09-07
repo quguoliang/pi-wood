@@ -32,6 +32,7 @@ import type {
   EngineSessionRef,
   EngineStartInfo,
   EngineStartOptions,
+  NavigateTreeResult,
 } from "./adapter";
 import type { EngineCommand, EngineEvent, PromptCommand, RuntimeInfo, SessionState } from "@pi-wood/ipc-schema";
 
@@ -312,6 +313,18 @@ export class SdkAdapter implements EngineAdapter {
     this.rebindSession();
     await this.bindExtensions();
     return this.sessionRef();
+  }
+
+  /**
+   * T9.2 缩略树 v2：同文件内切会话树 leaf。SDK 语义（agent-session.js navigateTree）：
+   * 流式进行中抛错（渲染层已先判）；目标是 user 消息时 leaf 挪到其父并回填原文（editorText）；
+   * 完成后自动刷新 agent 状态并广播 session_tree——宿主不必重建 runtime，也不必 rebind 扩展。
+   */
+  async navigateTree(targetId: string, opts?: { summarize?: boolean }): Promise<NavigateTreeResult> {
+    const s = this.session();
+    if (typeof s.navigateTree !== "function") throw new Error("当前 Pi SDK 不支持 navigateTree");
+    const r = await s.navigateTree(targetId, { summarize: opts?.summarize === true });
+    return { editorText: r.editorText, cancelled: r.cancelled === true };
   }
 
   private sessionRef(): EngineSessionRef {

@@ -4,6 +4,7 @@ import {
   buildSessionTree,
   defaultLeaf,
   flattenTree,
+  pathToLeafIds,
   type SessionTreeNode,
   type TreeEntry,
 } from "@pi-wood/engine";
@@ -34,6 +35,10 @@ export interface SessionTreeRow {
   depth: number;
   activeBranch: boolean;
   timestamp: string;
+  /** T9.2：message 条目的角色（toolResult 归一为 "tool"）；非 message 条目缺席 */
+  role?: "user" | "assistant" | "tool" | "other";
+  /** T9.2：首行摘要（user/assistant 取文本、tool 取工具名），渲染层分支节点题面用 */
+  textHead?: string;
 }
 
 export interface SessionTreeResult {
@@ -104,6 +109,7 @@ export async function openSessionTree(file: string): Promise<SessionTreeResult> 
   const tree = buildSessionTree(entries);
   const leaf = defaultLeaf(tree);
   const rows = flattenTree(tree, leaf?.id);
+  const byId = new Map(entries.map((e) => [e.id, e]));
   return {
     sessionId: entries.find((e) => e.type === "session")?.id,
     totalEntries: entries.length,
@@ -114,9 +120,46 @@ export async function openSessionTree(file: string): Promise<SessionTreeResult> 
       depth: r.depth,
       activeBranch: r.activeBranch,
       timestamp: r.timestamp,
+      ...treeEntryFace(r.id, byId),
     })) satisfies SessionTreeRow[],
     defaultLeafId: leaf?.id,
   };
+}
+
+/**
+ * T9.2：给树行补「题面」——message 条目的角色与首行摘要（user/assistant 取文本首行、tool 取工具名）。
+ * 只做投影级容错（拿不到就缺席，不影响 HistoryPane 老消费方）。截 160 字符足够缩略树出题。
+ */
+function treeEntryFace(id: string, byId: Map<string, TreeEntry>): { role?: SessionTreeRow["role"]; textHead?: string } {
+  const e = byId.get(id);
+  if (!e || e.type !== "message") return {};
+  const msg = (e as { message?: Record<string, unknown> }).message;
+  const role = typeof msg?.role === "string" ? msg.role : "";
+  const content = msg?.content;
+  const firstLine = (t: string): string => t.trim().split("\n", 1)[0]?.replace(/\s+/g, " ").trim().slice(0, 160) ?? "";
+  const textFromParts = (): string => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+      .map((p) => (p && typeof p === "object" && typeof (p as { text?: unknown }).text === "string" ? (p as { text: string }).text : ""))
+      .filter(Boolean)
+      .join(" ");
+  };
+  if (role === "user") return { role: "user", textHead: firstLine(textFromParts()) };
+  if (role === "assistant") {
+    // assistant 的 content 混排 text/toolCall：题面取首个 text；纯工具轮回落首个工具名
+    const t = firstLine(textFromParts());
+    if (t) return { role: "assistant", textHead: t };
+    const call = Array.isArray(content)
+      ? content.find((p) => p && typeof p === "object" && (p as { type?: unknown }).type === "toolCall") as { name?: unknown } | undefined
+      : undefined;
+    return { role: "assistant", textHead: typeof call?.name === "string" ? call.name : undefined };
+  }
+  if (role === "toolResult") {
+    const name = typeof msg?.toolName === "string" ? msg.toolName : "";
+    return { role: "tool", textHead: name || undefined };
+  }
+  return { role: "other" };
 }
 
 export type { SessionTreeNode };
@@ -130,10 +173,23 @@ export interface SessionMessageItem {
   isError?: boolean;
 }
 
-/** 读取会话历史消息（点击会话续写时加载到 UI），保留 assistant 的 toolCall 与 toolResult 配对 */
-export async function loadSessionMessages(file: string): Promise<SessionMessageItem[]> {
+/**
+ * 读取会话历史消息（点击会话续写时加载到 UI），保留 assistant 的 toolCall 与 toolResult 配对。
+ * T9.2：`leafId` 给出时只返回 root→leaf 路径上的条目（分支树的 transcript 过滤）；
+ * leafId 不在条目集内 → 降级为不过滤（宁可多显示，不可把历史清没）。
+ */
+export async function loadSessionMessages(file: string, leafId?: string): Promise<SessionMessageItem[]> {
   const { SessionManager } = await loadPi();
   const manager = SessionManager.open(file);
+  const all = manager.getEntries() as unknown as TreeEntry[];
+  let entries: TreeEntry[] = all;
+  if (leafId) {
+    const path = pathToLeafIds(all, leafId);
+    if (path) {
+      const onPath = new Set(path);
+      entries = all.filter((e) => onPath.has(e.id));
+    }
+  }
   const out: SessionMessageItem[] = [];
   const pendingCalls = new Map<string, { name: string; input?: Record<string, unknown> }>();
 
@@ -141,7 +197,7 @@ export async function loadSessionMessages(file: string): Promise<SessionMessageI
     if (text.trim()) out.push({ role, text });
   };
 
-  for (const entry of manager.getEntries()) {
+  for (const entry of entries) {
     if (entry.type !== "message") continue;
     const msg = (entry as { message?: unknown }).message as Record<string, unknown> | undefined;
     if (!msg || typeof msg.role !== "string") continue;

@@ -94,6 +94,9 @@ export const EngineEventSchema = z.discriminatedUnion("type", [
   // passthrough 保留原字段，消费方按需取。
   z.object({ type: z.literal("entry_appended") }).passthrough(),
   z.object({ type: z.literal("session_info_changed") }).passthrough(),
+  // T9.2：navigateTree（同文件内切分支）完成后 SDK 广播的树事件
+  // （{newLeafId, oldLeafId, summaryEntry?, fromExtension?}）。渲染层缩略树 v2 靠它即时刷新。
+  z.object({ type: z.literal("session_tree") }).passthrough(),
   // ⚠ 下面两条不是 Pi 事件，而是**宿主自造**并沿同一通道推的（T8.2 起要过 envelope 严格校验，故必须进契约）：
   //   user_message = 压测钩子/本地回显（debug:stress）；model_changed = 选定模型后主进程主动通知渲染层换标签。
   z.object({ type: z.literal("user_message") }).passthrough(),
@@ -470,6 +473,8 @@ export const ENGINE_CHANNELS = {
   closeConversation: "engine:closeConversation",
   /** 渲染层告知「用户正在看这条」：主进程据此做可见性节流（T8.3）与命令缺省归属 */
   setActiveConversation: "engine:setActiveConversation",
+  /** T9.2 上下文缩略树 v2：在该对话的会话树内把 leaf 挪到某条目（navigateTree，不截断不写新文件） */
+  navigateTree: "engine:navigateTree",
   // ---- T8.6 worktree 域（设置「工作树」页与回流按钮；UI 随 T8.8 接线）----
   /** 列出本项目管辖范围内的未回收工作树（孤儿对账视图） */
   worktreeList: "engine:worktreeList",

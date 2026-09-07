@@ -241,13 +241,9 @@ const updateTool = (base: ConversationSlice, toolCallId: string, patch: Partial<
   return { ...base, items, runningToolCount };
 };
 
-/** 历史装载 + 与已收增量对账去重（T8.3 步骤 4：切到后台对话时不出现双份历史） */
-export function mergeHistory(
-  base: ConversationSlice,
-  history: HistoryMessageItem[],
-  ctx: SliceCtx,
-): { slice: ConversationSlice; deduped: number } {
-  const built: ConversationItem[] = history.map((m): ConversationItem => {
+/** 历史条目 → 视图 items（纯映射；mergeHistory 与 rebaseFromHistory 共用的构建段） */
+export function historyToItems(history: HistoryMessageItem[], ctx: SliceCtx): ConversationItem[] {
+  return history.map((m): ConversationItem => {
     if (m.role === "tool") {
       return {
         id: ctx.nextId(),
@@ -263,6 +259,15 @@ export function mergeHistory(
     if (m.role === "assistant") return { id: ctx.nextId(), kind: "assistant", text: m.text };
     return { id: ctx.nextId(), kind: "system", tone: "info", text: m.text };
   });
+}
+
+/** 历史装载 + 与已收增量对账去重（T8.3 步骤 4：切到后台对话时不出现双份历史） */
+export function mergeHistory(
+  base: ConversationSlice,
+  history: HistoryMessageItem[],
+  ctx: SliceCtx,
+): { slice: ConversationSlice; deduped: number } {
+  const built: ConversationItem[] = historyToItems(history, ctx);
   // 对账键：kind + 文本/工具调用号。已收增量（live 落地的尾巴）优先保留，历史只补前段。
   const keyOf = (i: ConversationItem): string =>
     i.kind === "tool" ? `tool:${i.toolCallId}` : i.kind === "system" ? `sys:${i.text}` : `${i.kind}:${i.text}`;
@@ -289,6 +294,36 @@ export function mergeHistory(
       runningToolCount: items.filter((i) => i.kind === "tool" && i.status === "running").length,
     },
     deduped,
+  };
+}
+
+/**
+ * T9.2 切分支后的**整体重挂载**：与 mergeHistory 相反，这里不与旧增量对账——
+ * 旁支条目本就该消失，路径历史整体替换 items。保留 seq/epoch/engineReady 等记账字段
+ * （事件流没断，只是视图换底），回到「跟底」态让用户看到分支尾部。
+ */
+export function rebaseFromHistory(
+  base: ConversationSlice,
+  history: HistoryMessageItem[],
+  ctx: SliceCtx,
+): ConversationSlice {
+  const items = historyToItems(history, ctx);
+  return {
+    ...base,
+    items,
+    liveText: "",
+    liveThinking: "",
+    thinkingStartedAt: undefined,
+    streaming: false,
+    queue: { steering: [], followUp: [] },
+    unreadCount: 0,
+    historyLoaded: true,
+    headTrimmed: 0,
+    scrollTop: 0,
+    followBottom: true,
+    lastMilestone: undefined,
+    toolCallCount: items.filter((i) => i.kind === "tool").length,
+    runningToolCount: items.filter((i) => i.kind === "tool" && i.status === "running").length,
   };
 }
 

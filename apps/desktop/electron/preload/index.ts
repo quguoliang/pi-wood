@@ -187,12 +187,18 @@ const api = {
     ipcRenderer.invoke("sessions:setMeta", { file, patch }),
   sessionsDelete: (file: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("sessions:delete", { file }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
-  sessionsMessages: (file: string): Promise<unknown> =>
-    ipcRenderer.invoke("sessions:messages", { file }),
+  sessionsMessages: (file: string, leafId?: string): Promise<unknown> =>
+    ipcRenderer.invoke("sessions:messages", { file, leafId }),
   exportSessionMarkdown: (defaultFileName: string, markdown: string): Promise<string | undefined> =>
     ipcRenderer.invoke("session:export", { defaultFileName, markdown }),
   engineSwitchSession: (file: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:switchSession", { file }),
+  /** T9.2 缩略树 v2：在该对话的会话树内切分支（不截断；目标为 user 消息时回执 editorText 供回填输入框） */
+  engineNavigateTree: (
+    conversationId: string,
+    targetId: string,
+  ): Promise<{ editorText?: string; cancelled: boolean }> =>
+    ipcRenderer.invoke("engine:navigateTree", { conversationId, targetId }),
   worktreeList: (): Promise<unknown> => ipcRenderer.invoke("engine:worktreeList"),
   worktreeRemove: (opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown> =>
     ipcRenderer.invoke("engine:worktreeRemove", opts),

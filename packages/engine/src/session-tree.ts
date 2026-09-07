@@ -100,3 +100,27 @@ export function flattenTree(
 export function defaultLeaf(tree: SessionTree): SessionTreeNode | undefined {
   return tree.leafCandidates[tree.leafCandidates.length - 1];
 }
+
+/**
+ * T9.2 上下文缩略树 v2：沿 parentId 链从 leaf 回溯到 root，返回 **root→leaf** 的条目 id 序列。
+ * 用于「transcript 按分支路径过滤」（loadSessionMessages(file, leafId)）。
+ * - append-only 树的父条目必在子条目之前落盘 ⇒ 文件序 = 任意链的 root→leaf 序，调用方可按原序取。
+ * - `visited` 防环（parentId 数据异常时不死循环）。
+ * - leafId 不在条目集内 → 返回 null（调用方按「不过滤」降级，绝不返回空路径把历史清没）。
+ */
+export function pathToLeafIds(entries: Array<Pick<TreeEntry, "id" | "parentId">>, leafId: string): string[] | null {
+  const byId = new Map<string, Pick<TreeEntry, "id" | "parentId">>();
+  for (const e of entries) if (typeof e?.id === "string" && e.id) byId.set(e.id, e);
+  const cur = byId.get(leafId);
+  if (!cur) return null;
+  const ids: string[] = [];
+  const visited = new Set<string>();
+  let node: Pick<TreeEntry, "id" | "parentId"> | undefined = cur;
+  while (node && !visited.has(node.id)) {
+    visited.add(node.id);
+    ids.push(node.id);
+    node = node.parentId ? byId.get(node.parentId) : undefined;
+  }
+  ids.reverse();
+  return ids;
+}

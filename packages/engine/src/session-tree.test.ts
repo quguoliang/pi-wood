@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildSessionTree, defaultLeaf, flattenTree, type TreeEntry } from "./session-tree.ts";
+import { buildSessionTree, defaultLeaf, flattenTree, pathToLeafIds, type TreeEntry } from "./session-tree.ts";
 
 const e = (id: string, parentId: string | null, ts: string, type = "message"): TreeEntry => ({
   type,
@@ -66,4 +66,33 @@ test("同父子节点按时间戳排序，畸形条目跳过", () => {
     ["early", "late"],
   );
   assert.equal(tree.nodes.size, 3);
+});
+
+/* ---------- T9.2 pathToLeafIds（transcript 按分支路径过滤的底座） ---------- */
+
+test("pathToLeafIds：线性链返回 root→leaf 全序列", () => {
+  const ids = pathToLeafIds([e("a", null, "01"), e("b", "a", "02"), e("c", "b", "03")], "c");
+  assert.deepEqual(ids, ["a", "b", "c"]);
+});
+
+test("pathToLeafIds：分叉树只取选中叶的祖先链，不含旁支", () => {
+  const entries = [
+    e("root", null, "01"),
+    e("u1", "root", "02"),
+    e("main", "u1", "03"),
+    e("main2", "main", "04"),
+    e("branch", "u1", "05"),
+  ];
+  assert.deepEqual(pathToLeafIds(entries, "branch"), ["root", "u1", "branch"]);
+  assert.deepEqual(pathToLeafIds(entries, "main2"), ["root", "u1", "main", "main2"]);
+});
+
+test("pathToLeafIds：leaf 不存在返回 null（调用方降级为不过滤）", () => {
+  assert.equal(pathToLeafIds([e("a", null, "01")], "nope"), null);
+});
+
+test("pathToLeafIds：parentId 成环不死循环，回到已访问即截断", () => {
+  const cyclic = [e("x", "y", "01"), e("y", "x", "02")];
+  const ids = pathToLeafIds(cyclic, "x");
+  assert.deepEqual(ids, ["y", "x"]);
 });

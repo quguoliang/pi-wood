@@ -37,6 +37,8 @@ export const ENGINE_RPC_METHODS = [
   "newSession",
   "switchSession",
   "fork",
+  /** T9.2：同文件内切会话树 leaf（SDK navigateTree），上下文缩略树 v2 的「切分支」 */
+  "navigateTree",
   "reload",
   "getState",
   "getSessionId",
@@ -97,6 +99,8 @@ export const SetModelParamsSchema = z.object({ provider: z.string().min(1), mode
 export const SetThinkingParamsSchema = z.object({ level: z.string().min(1) });
 export const SwitchSessionParamsSchema = z.object({ file: z.string().min(1) });
 export const ForkParamsSchema = z.object({ entryId: z.string().min(1), position: z.enum(["before", "at"]) });
+/** T9.2 缩略树 v2：切分支 leaf。summarize 恒留给后续（v1 不做「弃枝摘要」，零模型成本） */
+export const NavigateTreeParamsSchema = z.object({ targetId: z.string().min(1), summarize: z.boolean().optional() });
 export const NewSessionParamsSchema = z.object({ parentSession: z.string().optional() });
 export const CompactParamsSchema = z.object({ custom: z.string().optional() });
 export const TextParamsSchema = z.object({ text: z.string() });
@@ -394,6 +398,7 @@ export const ENGINE_RPC_PARAM_SCHEMAS: Record<EngineRpcMethod, z.ZodTypeAny> = {
   newSession: NewSessionParamsSchema,
   switchSession: SwitchSessionParamsSchema,
   fork: ForkParamsSchema,
+  navigateTree: NavigateTreeParamsSchema,
   reload: VOID_PARAMS,
   getState: VOID_PARAMS,
   getSessionId: VOID_PARAMS,

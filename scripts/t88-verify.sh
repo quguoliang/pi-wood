@@ -81,10 +81,14 @@ RUN probe-concurrency     pnpm exec electron . --concurrency-probe
 RUN probe-latency         pnpm exec electron . --latency-probe
 RUN probe-workspace-scope pnpm exec electron . --workspace-scope-probe
 RUN probe-approval        pnpm exec electron . --approval-probe
+# T9.2 上下文缩略树 v2：树投影/按叶过滤/坏叶降级/navigateTree 真 child 活链路（无模型）
+RUN probe-context-tree    pnpm exec electron . --context-tree-probe
 
 # 4b) T8.10 带窗红线探针（第二跳 / 切换首屏 / 掉帧 / 主进程 CPU）——需要可见窗口，会抢焦点
 if [ "${SKIP_GUI:-0}" != "1" ]; then
   RUN probe-ui-latency    pnpm exec electron . --ui-latency-probe
+  # T9.2 带窗交互探针：真 dblclick 切分支（旁支可见/换底/回填/回到最新）
+  RUN probe-context-tree-ui pnpm exec electron . --context-tree-ui-probe
 fi
 
 # 5) 真模型对话链路（密钥在 apps/desktop/.env → loadPrivateEnv；含审批/工具往返）

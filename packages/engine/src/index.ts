@@ -7,6 +7,7 @@ export type {
   EngineStartOptions,
   DesktopUiBridge,
   AvailableModel,
+  NavigateTreeResult,
 } from "./adapter";
 export type { EngineEvent } from "@pi-wood/ipc-schema";
 export type {
@@ -18,6 +19,7 @@ export {
   buildSessionTree,
   defaultLeaf,
   flattenTree,
+  pathToLeafIds,
 } from "./session-tree.ts";
 // T6.5：主进程归一 child 会话原始事件用（纯函数，无 Node 依赖）。
 export { normalizeEngineEvent } from "./event-bridge";

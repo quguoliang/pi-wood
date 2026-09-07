@@ -3,12 +3,14 @@ import {
   applyEngineEvent,
   emptySlice,
   mergeHistory,
+  rebaseFromHistory,
   type ConversationItem,
   type ConversationSlice,
   type DiffStat,
   type HistoryMessageItem,
   type ToolStatus,
 } from "./conversation-slice.ts";
+import { useContextTreeStore } from "./context-tree-store.ts";
 import { markSwitchStart } from "../lib/latency-outlet.ts";
 
 /**
@@ -62,6 +64,8 @@ interface SessionStoreState {
   startDraft(projectDir: string): void;
   addUserMessage(text: string, conversationId?: string | null): void;
   loadHistory(items: HistoryMessageItem[], conversationId?: string | null): void;
+  /** T9.2：切分支后按「当前视图叶」重读路径历史并整体换底（旁支条目消失，视图回到分支尾部） */
+  rebaseToBranch(conversationId?: string | null): Promise<void>;
   markHistoryLoaded(conversationId?: string | null): void;
   setScrollTop(top: number, conversationId?: string | null): void;
   setFollowBottom(follow: boolean, conversationId?: string | null): void;
@@ -88,16 +92,23 @@ async function ensureHistoryLoaded(id: string): Promise<void> {
   if (!slice || slice.historyLoaded || historyLoading.has(id)) return;
   historyLoading.add(id);
   try {
-    const rows = ((await window.pi.listConversations?.().catch(() => [])) ?? []) as Array<{
-      conversationId?: string;
-      sessionFile?: string;
-    }>;
-    const sessionFile = rows.find((r) => r.conversationId === id)?.sessionFile;
+    // ⚠ engine:listConversations 的载荷是 { conversations, capacity }（对象），行主键字段是 `id`——
+    // 旧代码当数组按 r.conversationId 查，每切一条对话都静默 TypeError（ensureHistoryLoaded 被 void 吞），
+    // 「切到后台对话整读对账」实际从未生效（T9.2 带窗探针首捕）。这里按真实形状解包。
+    const payload = (await window.pi.listConversations?.().catch(() => undefined)) as
+      | { conversations?: Array<{ id?: string; sessionFile?: string }> }
+      | undefined;
+    const rows = payload?.conversations ?? [];
+    const sessionFile = rows.find((r) => r.id === id)?.sessionFile;
     if (!sessionFile) {
       useSessionStore.getState().markHistoryLoaded(id);
       return;
     }
-    const messages = (await window.pi.sessionsMessages(sessionFile).catch(() => [])) as HistoryMessageItem[];
+    // T9.2：先刷树（sessions:tree）拿「当前视图叶」，历史按 root→leaf 路径过滤。
+    // 树读取失败不拦历史装载（leafId=undefined → 主进程回旧行为全量文件序）。
+    await useContextTreeStore.getState().refresh(id, sessionFile);
+    const leafId = useContextTreeStore.getState().byConv[id]?.leafId;
+    const messages = (await window.pi.sessionsMessages(sessionFile, leafId).catch(() => [])) as HistoryMessageItem[];
     useSessionStore.getState().loadHistory(messages, id);
   } finally {
     historyLoading.delete(id);
@@ -163,7 +174,19 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
   setActiveConversation(id) {
     const state = get();
-    if (state.activeConversationId === id) return;
+    if (state.activeConversationId === id) {
+      // 重复切到同一对话通常是 no-op；但若这条切片从未装载过历史/压根不存在——常见于引擎启动期
+      // noteEventOwnership 采纳 active:true 戳直接置了 id、没走本函数的装载分支（T9.2 带窗探针首捕）——
+      // 补建切片并装载（ensureHistoryLoaded 内部有 historyLoaded/loading 双闸，重复调用零成本）。
+      if (id) {
+        const s = state.slices[id];
+        if (typeof window !== "undefined") {
+          if (!s) set({ slices: { ...state.slices, [id]: emptySlice() } });
+          if (!s || !s.historyLoaded) void ensureHistoryLoaded(id);
+        }
+      }
+      return;
+    }
     markSwitchStart(); // T8.10：首屏计时起点（App 在切换 effect 的下一帧配平）
     const key = id ?? FALLBACK_SLICE_KEY;
     const slice = state.slices[key] ?? emptySlice();
@@ -203,6 +226,18 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     const current = state.slices[key] ?? emptySlice();
     const { slice } = mergeHistory(current, items, { now: Date.now(), nextId: nextItemId });
     set({ slices: { ...state.slices, [key]: slice } });
+  },
+
+  async rebaseToBranch(conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const tree = useContextTreeStore.getState().byConv[key];
+    if (!tree?.file) return; // 还没有会话文件（空对话）：无分支可换，静默返回
+    const messages = (await window.pi.sessionsMessages(tree.file, tree.leafId).catch(() => [])) as HistoryMessageItem[];
+    const s2 = get();
+    const cur = s2.slices[key] ?? emptySlice();
+    const slice = rebaseFromHistory(cur, messages, { now: Date.now(), nextId: nextItemId });
+    set({ slices: { ...s2.slices, [key]: slice } });
   },
 
   markHistoryLoaded(conversationId) {

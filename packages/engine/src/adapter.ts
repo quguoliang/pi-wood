@@ -73,6 +73,16 @@ export interface EngineSessionRef {
   sessionFile?: string;
 }
 
+/**
+ * T9.2 缩略树 v2：navigateTree 的回执。
+ * editorText = 目标是 user 消息时 SDK 回填的原文（leaf 挪到其父，渲染层塞回输入框实现「改后重发」）；
+ * cancelled = 被扩展的 session_before_tree 取消（本项目目前无此类处理器，理论不触发）。
+ */
+export interface NavigateTreeResult {
+  editorText?: string;
+  cancelled: boolean;
+}
+
 export interface EngineAdapter {
   start(opts: EngineStartOptions): Promise<EngineStartInfo>;
   stop(): Promise<void>;
@@ -100,6 +110,12 @@ export interface EngineAdapter {
   newSession(opts?: { parentSession?: string }): Promise<EngineSessionRef | void>;
   switchSession(file: string): Promise<EngineSessionRef | void>;
   fork(entryId: string, pos: "before" | "at"): Promise<EngineSessionRef | void>;
+
+  /**
+   * T9.2：同文件内把会话树 leaf 挪到 targetId（SDK AgentSession.navigateTree）。
+   * 不截断、不建新文件；流式进行中 SDK 直接抛错（渲染层须先判 !streaming）。
+   */
+  navigateTree(targetId: string, opts?: { summarize?: boolean }): Promise<NavigateTreeResult>;
 
   getState(): Promise<SessionState>;
 

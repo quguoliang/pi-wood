@@ -1200,7 +1200,13 @@ export function initEngineIpc(): void {
 
   ipcMain.handle("engine:switchSession", async (_e, raw: unknown) => {
     const { file } = z.object({ file: z.string().min(1) }).parse(raw);
-    await (await requireAdapter()).switchSession(file);
+    const convId = await requireActiveConversationId();
+    const ref = await (await requireAdapter()).switchSession(file);
+    // T9.2：把新会话文件同步回注册表。此前 record.sessionFile 停在旧值也不致命
+    // （historyLoaded 门 + 引擎内存态指向正确文件），但缩略树/按叶过滤按**文件**取数，必须一致。
+    const handle = getConversation(convId);
+    const nextFile = (ref as { sessionFile?: string } | void)?.sessionFile ?? file;
+    if (handle && handle.record.sessionFile !== nextFile) handle.record.sessionFile = nextFile;
     return true;
   });
   // ---- T1.3 压测钩子：注入 N 条消息事件验证虚拟列表（保留为 dev 工具）----
@@ -1410,6 +1416,19 @@ export function initEngineIpc(): void {
       .parse(raw);
     await (await requireAdapter()).fork(entryId, position);
     return true;
+  });
+
+  // T9.2 上下文缩略树 v2：同文件内切分支（SDK navigateTree，只挪 leaf、不截断不建新文件）。
+  // 与 fork 不同：fork 是「另起新会话文件」，本通道改变**当前会话**的活跃分支。
+  // 只在对话引擎活着时可用（渲染层入口本来就长在「看着这条对话」的树上）；休眠/dead 一律显式拒绝，
+  // 绝不在这里惰性拉起引擎——拉起要走对话激活链路（含 worktree 接回、扩展重挂），不该由切分支旁路。
+  ipcMain.handle(ENGINE_CHANNELS.navigateTree, async (_e, raw: unknown) => {
+    const { conversationId, targetId } = z
+      .object({ conversationId: z.string().min(1), targetId: z.string().min(1) })
+      .parse(raw);
+    const a = getConversation(conversationId)?.adapter;
+    if (!a) throw new Error("该对话的引擎当前未在运行，无法切换分支（先切回该对话让它恢复）");
+    return a.navigateTree(targetId, { summarize: false });
   });
 
   // ---- T8.2/T8.3 对话域（多对话标签条的 UI 接线在 T8.8）----

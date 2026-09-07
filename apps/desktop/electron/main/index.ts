@@ -18,7 +18,9 @@ import { runConcurrencyProbe } from "./engine/concurrency-probe";
 import { runLatencyProbe } from "./engine/latency-probe";
 import { runWorkspaceScopeProbe } from "./engine/workspace-scope-probe";
 import { isApprovalProbeMode, runApprovalProbe } from "./engine/approval-probe";
+import { isContextTreeProbeMode, runContextTreeProbe } from "./engine/context-tree-probe";
 import { isUiLatencyProbeMode, runUiLatencyProbe } from "./engine/latency-ui-probe";
+import { isContextTreeUiProbeMode, runContextTreeUiProbe } from "./engine/context-tree-ui-probe";
 import { initFileIpc } from "./workbench/file-service";
 import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service";
 import { initBrowserIpc, configureBrowserScope } from "./workbench/browser-service";
@@ -136,6 +138,11 @@ function createWindow(): void {
     win.webContents.once("did-finish-load", () => setTimeout(() => void runUiLatencyProbe(), 1500));
   }
 
+  // T9.2 缩略树 v2 带窗交互探针：真窗口里对人元素派发 dblclick，验「切分支换底」渲染层闭环
+  if (isContextTreeUiProbeMode()) {
+    win.webContents.once("did-finish-load", () => setTimeout(() => void runContextTreeUiProbe(), 1500));
+  }
+
   // T1.2 无干扰视觉验收：--capture <file> 渲染完成后截窗口内容（不需前台）
   const captureIdx = process.argv.indexOf("--capture");
   if (captureIdx !== -1 && process.argv[captureIdx + 1]) {
@@ -218,6 +225,11 @@ if (!gotLock) {
     // T8.4 安全底线探针：真裁决路径断言 deny-by-default / 票据一次性 / 应答归属 / 后台不静默拒
     if (isApprovalProbeMode()) {
       await runApprovalProbe();
+      return;
+    }
+    // T9.2 上下文缩略树 v2 探针：构造带分叉的会话 jsonl，断言树行投影/按叶过滤/坏叶降级/RPC 帧契约
+    if (isContextTreeProbeMode()) {
+      await runContextTreeProbe();
       return;
     }
     ipcMain.handle("app:ping", () => ({

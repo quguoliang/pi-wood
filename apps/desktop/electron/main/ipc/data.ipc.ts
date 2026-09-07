@@ -12,6 +12,7 @@ import {
   FileArgSchema,
   ProjectRenameArgSchema,
   SessionMetaPatchSchema,
+  SessionMessagesArgSchema,
 } from "@pi-wood/ipc-schema";
 import { ProjectManager, DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
 import { SessionMetaStore } from "../project/session-meta-service.ts";
@@ -109,8 +110,9 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
     return openSessionTree(file);
   });
   ipcMain.handle(SESSION_CHANNELS.messages, (_e, raw: unknown) => {
-    const { file } = FileArgSchema.parse(raw);
-    return loadSessionMessages(file);
+    // T9.2：leafId = 上下文缩略树 v2 的「看这条分支的历史」；缺席 = 文件序全量（旧行为）
+    const { file, leafId } = SessionMessagesArgSchema.parse(raw);
+    return loadSessionMessages(file, leafId);
   });
 
   // ---- T8.11 会话元数据（归档/置顶/别名）+ 会话删除（归档优先模型）----
