@@ -1,0 +1,23 @@
+[plugin:demo-crash] [crash] activate（等待 crash 控制消息）
+=== T9.2 --context-tree-ui-probe（带窗：旁支可见 / 双击换底 / 回填 / 回到最新） ===
+✓ U0 真对话起活且会话文件已知 — conv=conv-1-0 file=--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-ctxui-a-9A79y7-.pi-wood-worktrees-0c42b09e--/2026-09-07T07-22-19-486Z_01a07abf-19de-7abe-a22f-d76906db5893.jsonl
+✓ U0.1 engineSwitchSession 经渲染层链路成功（注册表同步） — switched=true
+[ctx-ui] diag={"hook":"function","list":{},"listConvs":["conv-1-0c42b09e:idle:2026-09-07T07-22-19-486Z_01a07abf-19de-7abe-a22f-d76906db5893.jsonl"],"mineFile":"2026-09-07T07-22-19-486Z_01a07abf-19de-7abe-a22f-d76906db5893.jsonl","msgCount":6,"msgHeads":["user:第一个问题 PROBE_","assistant:两分支共同的第一答","user:主干追问 PROBE_M","assistant:主干回答 MAIN_RE","user:换个思路的旁支问题 PR","assistant:旁支回答 BRANCH_"]}
+✓ U1.1 树栏渲染且旁支（主干）折叠可见 — treeHasMainBranch=true
+✓ U1.2 transcript=默认叶路径：见旁支答、不见主干答 — branch=true main=false
+✓ U2.0 找到旁支「主干追问」行并可派发 dblclick
+Error occurred in handler for 'engine:getRuntimeInfo': Error: Cannot read properties of undefined (reading 'input')
+    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1257:24)
+    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1168:38)
+    at ForkUtilityProcess.emit (node:events:519:28)
+    at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
+✓ U2.1 双击后换底到提问之前：公共前缀在、两支线文本消失、原问题回填、出现「回到最新」、旁支反向可见 — {"common":true,"bodyHasMain":false,"bodyHasBranch":false,"prefill":true,"backBar":true,"branchListFlipped":true}
+✓ U3.0 「回到最新」按钮可点
+✓ U3.1 回到最新：transcript 回默认叶、指示条消失 — {"bodyHasBranch":true,"bodyHasMain":false,"backGone":true}
+[ctx-ui] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/ui-v3/context-tree-ui.png
+[ctx-ui] 8/8 通过 · 结论 ALL PASS
+[plugin:demo-crash] crashed code=0 uptime=6229ms restarts=0
+[engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
+[plugin:demo-kitchen] crashed code=0 uptime=6228ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=6228ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-0c42b09e）

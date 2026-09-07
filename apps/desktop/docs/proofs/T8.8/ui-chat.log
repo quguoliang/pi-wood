@@ -1,12 +1,22 @@
 [plugin:demo-crash] [crash] activate（等待 crash 控制消息）
-[engine] 项目 /Users/admin/Desktop/personal/pi-wood/apps/desktop/scratch/test-project 发现 7 个未回收的工作树（可能来自上次会话）
-[engine:conv-1-6] (node:62357) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
-[engine:conv-1-6] (Use `Electron Helper --trace-warnings ...` to show where the warning was created)
-(node:62112) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+[engine] 项目 /Users/admin/Desktop/personal/pi-wood/apps/desktop/scratch/test-project 发现 12 个未回收的工作树（可能来自上次会话）
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--Users-admin-Desktop-personal-pi-wood-apps-desktop-scratch-test-project-.pi-wood-worktrees-bd5642a5--/2026-09-07T07-22-26-843Z_01a07abf-369b-7f4b-94df-ea7abd0d1687.jsonl'
+    at readFileSync (node:fs:441:20)
+    at t.readFileSync (node:electron/js2c/node_init:2:11013)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/admin/.pi/agent/sessions/--Users-admin-Desktop-personal-pi-wood-apps-desktop-scratch-test-project-.pi-wood-worktrees-bd5642a5--/2026-09-07T07-22-26-843Z_01a07abf-369b-7f4b-94df-ea7abd0d1687.jsonl'
+}
+[engine:conv-1-b] (node:62024) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+[engine:conv-1-b] (Use `Electron Helper --trace-warnings ...` to show where the warning was created)
+(node:61782) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
 (Use `Electron --trace-warnings ...` to show where the warning was created)
 [ui-chat] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/ui-v3/ui-chat.png
-[plugin:demo-crash] crashed code=0 uptime=38240ms restarts=0
+[plugin:demo-crash] crashed code=0 uptime=16071ms restarts=0
 [engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
-[plugin:demo-kitchen] crashed code=0 uptime=38240ms restarts=0
-[plugin:demo-overreach] crashed code=0 uptime=38239ms restarts=0
-[engine] 子进程异常退出（code=0, conv=conv-1-6988d82d）
+[plugin:demo-kitchen] crashed code=0 uptime=16072ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=16071ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-bd5642a5）

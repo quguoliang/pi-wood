@@ -1,27 +1,22 @@
-
 === T8.7 --workspace-scope-probe（作用域归属：fs/git/snapshot/memory/term/sessions） ===
-✓ W1 getActiveWorkspaceDir 跟着 active 对话走且三棵树互不相同 — C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\bdd3fd91 / C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\8fa6d3b6 / C:\Users\1\AppData\Local\Temp\piwood-scope-b-lboHBh\.pi-wood\worktrees\e8947714
-✓ W1b 同项目两对话：projectDir 相同、工作树不同（隔离前提） — C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\bdd3fd91 vs C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\8fa6d3b6
+✓ W1 getActiveWorkspaceDir 跟着 active 对话走且三棵树互不相同 — 60a08cfc / c41551ac / 01220d06
+✓ W1b 同项目两对话：projectDir 相同、工作树不同（隔离前提） — 60a08cfc vs c41551ac
 ✓ W2 fs 写盘只落 active 那棵树（其余树与主项目都不见） — marker 仅在 A1 树
-✓ W3a A1 的分支就是 piwood/<shortId>（与 worktree-naming 同一判据） — piwood/bdd3fd91 == piwood/bdd3fd91
+✓ W3a A1 的分支就是 piwood/<shortId>（与 worktree-naming 同一判据） — piwood/60a08cfc == piwood/60a08cfc
 ✓ W3b A1 改文件不污染 A2 / 主工作树（git status 互不含对方） — A1 脏=2 项 · A2 脏=0 · 主树脏=1
 ✓ W4 快照按对话树归集（A1 的变更不进 A2 的服务，A2 树内容未被污染） — A1 1 条(README.md) · A2 0 条 · A2 README 原样=true
-✓ W5a mainProjectRootOf 把树路径归到主项目 — C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\bdd3fd91 → C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp
+✓ W5a mainProjectRootOf 把树路径归到主项目 — 60a08cfc → piwood-scope-a-C0DtVt
 ✓ W5b 两条对话的记忆都落主项目同一文件、都不丢 — project.json 2 条
 ✓ W6 八路并发 memory_save 一条不丢（写队列串行化生效） — 10 条（期望 10）
 ✓ W7a 聚合覆盖主项目 + 每条对话的树 — 3 棵树
 ✓ W7b 同 id 去重、按 modified 新→旧（CLI↔桌面互通的左栏硬证据） — s-new@2026-09-05 → s-dup@2026-02-01 → s-old@2026-01-01
-✓ W8 终端 cwd = 该对话的树；无对话 id / 查不到树时保留请求值 — A1 → C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\bdd3fd91
+✓ W8 终端 cwd = 该对话的树；无对话 id / 查不到树时保留请求值 — A1 → 60a08cfc
 ✓ W9 非 git 目录显式降级（worktreePath = 主项目，作用域不悬空） — worktreePath== 主项目
-[engine:conv-2-8] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
-✓ W10 关闭对话后作用域不悬空（不指向已回收的树） — active → C:\Users\1\AppData\Local\Temp\piwood-scope-a-mGT5xp\.pi-wood\worktrees\bdd3fd91
-[engine:conv-1-b] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
+✓ W10 关闭对话后作用域不悬空（不指向已回收的树） — active → 60a08cfc
 引擎子进程退出中（close）
-[engine] 对话 conv-1-bdd3fd91 的工作树未回收：工作树有未提交改动（未跟踪 1 项）。请先回流，或确认丢弃后强制删除。
-[engine:conv-3-e] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
+[engine] 对话 conv-1-60a08cfc 的工作树未回收：工作树有未提交改动（未跟踪 1 项）。请先回流，或确认丢弃后强制删除。
 引擎子进程退出中（close）
-[engine:conv-4-1] [event-bridge] 未识别的引擎事件 type="entry_appended"，已按 unknown 透传
 引擎子进程退出中（close）
 
 === 结论：14/14 条通过 ===

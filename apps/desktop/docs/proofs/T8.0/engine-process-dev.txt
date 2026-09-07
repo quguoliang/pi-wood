@@ -1,60 +1,64 @@
 === T8.0 P1 探针（form=dev，node=22.21.1，electron=37.10.3）===
-项目目录（探针 cwd 基准）：C:\Users\1\Desktop\pi-wood\apps\desktop
+项目目录（探针 cwd 基准）：/Users/admin/Desktop/personal/pi-wood/apps/desktop
 凭据：已注入（可真发 prompt）
-基线进程数：electron.exe=2 node.exe=3 总=277
+! tasklist 失败：spawnSync tasklist ENOENT
+基线进程数：electron.exe=0 node.exe=0 总=0
 
 --- P1-d child 入口可解析性 ---
-✓ P1-d child 入口在当前形态下可解析 — form=dev → C:\Users\1\Desktop\pi-wood\apps\desktop\electron\main\engine\engine-child.mjs
+✓ P1-d child 入口在当前形态下可解析 — form=dev → /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
 
 --- P1-a utilityProcess 内装载 SDK + 扩展 ---
-  主进程内基线：boot=656ms tools=14 [read, bash, edit, write, ask_user_question, todo, web_search, source_check, fetch_content, get_search_content, mcpScript, mcp, plan_mode_question, plan_mode_complete]
-  [c1] child 入口解析（form=dev）：C:\Users\1\Desktop\pi-wood\apps\desktop\electron\main\engine\engine-child.mjs
-✓ P1-a fork→ready 子进程存活 — ready=73ms pid=37060
-    c1·milestone│ sdk-import 581ms @615 {"rssMB":131,"heapMB":41,"extMB":4}
-  child 装配：services=437ms session=16ms bind=5ms 合计 boot=1074ms
-  child 工具（15）：[read, bash, edit, write, ask_user_question, todo, web_search, source_check, fetch_content, get_search_content, mcpScript, mcp, plan_mode_question, plan_mode_complete, probe_host_echo]
-  child 扩展数=5 skills=[mcp-scripting] diagnostics=[]
+  主进程内基线：boot=25ms tools=4 [read, bash, edit, write]
+  [c1] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
+✓ P1-a fork→ready 子进程存活 — ready=58ms pid=52127
+    c1·milestone│ sdk-import 317ms @366 {"rssMB":176,"heapMB":37,"extMB":4}
+  child 装配：services=15ms session=9ms bind=0ms 合计 boot=390ms
+  child 工具（5）：[read, bash, edit, write, probe_host_echo]
+  child 扩展数=0 skills=[code-review-expert,code-review-skill,find-skills,markstream-vue,semi-design-guide,sigma,skill-forge,weread-skills] diagnostics=[]
 ✓ P1-a child 内 diagnostics 无 error — 0 条
-✓ P1-a child 内工具数 ≥ 内置 4 — 15
-✓ P1-a child 工具集与主进程内基线一致（同口径，剔除探针自注册工具） — 14 个全等（含社区包 10 个）
-✓ P1-a 已装社区包的工具在 child 内出现 — ask_user_question,todo,web_search,source_check,fetch_content,get_search_content
+✓ P1-a child 内工具数 ≥ 内置 4 — 5
+✓ P1-a child 工具集与主进程内基线一致（同口径，剔除探针自注册工具） — 4 个全等（含社区包 0 个）
+✓ P1-a 已装社区包的工具在 child 内出现 — （未装社区包，跳过）
 
 --- P1-b 双向 RPC 三链路 ---
 ✓ P1-b 反向 tool:execute 闭环（child→main→child） — host-ok-1，宿主侧计数 1
 ✓ P1-b 反向 ui:confirm/select/input 闭环 — {"confirm":true,"select":"a","input":"probe-answer","uiHits":3}
-✓ P1-b 事件流（prompt 期间 child→main 有引擎事件帧到达） — 事件帧 12，首帧 @1076ms，本轮 1075ms
-  首 token 前事件到达：1076ms；本轮 settle：1075ms
-    c1·milestone│ slow-prompt-started ms @2151 {}
-    c1·milestone│ aborted ms @6156 {}
+    c1·err│ (node:52127) Warning: Setting the NODE_TLS_REJECT_UNAUTHORIZED environment variable to '0' makes TLS connections and HTTPS requests insecure by disabling certificate verification.
+(Use `Electron Helpe
+✓ P1-b 事件流（prompt 期间 child→main 有引擎事件帧到达） — 事件帧 12，首帧 @392ms，本轮 1381ms
+  首 token 前事件到达：392ms；本轮 settle：1381ms
+    c1·milestone│ slow-prompt-started ms @1773 {}
+    c1·milestone│ aborted ms @5782 {}
 ✓ P1-b cancel 帧可中止在跑的一轮 — outcome=settled，abort 后仍收帧=true
-  [crashx] child 入口解析（form=dev）：C:\Users\1\Desktop\pi-wood\apps\desktop\electron\main\engine\engine-child.mjs
-    crashx·milestone│ sdk-import 583ms @613 {"rssMB":134,"heapMB":41,"extMB":4}
+  [crashx] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
+    crashx·milestone│ sdk-import 311ms @338 {"rssMB":176,"heapMB":38,"extMB":4}
     crashx·log│ [info] 按控制指令硬崩（P1-b 崩溃隔离对照组）
-    crashx·err│ [43172:0906/231647.387:ERROR:third_party\crashpad\crashpad\client\crashpad_client_win.cc:869] not connected
-✓ P1-b child 崩溃能被观测到（exit 事件） — code=18446744073709515000
-✓ P1-b child 崩溃不波及主进程与其它对话 — c1 pid 37060 仍在响应 RPC
+✓ P1-b child 崩溃能被观测到（exit 事件） — code=11
+✓ P1-b child 崩溃不波及主进程与其它对话 — c1 pid 52127 仍在响应 RPC
 
 --- P1-c 1/2/3 个 child 的成本与残留 ---
-  [c2] child 入口解析（form=dev）：C:\Users\1\Desktop\pi-wood\apps\desktop\electron\main\engine\engine-child.mjs
-    c2·milestone│ sdk-import 583ms @627 {"rssMB":134,"heapMB":41,"extMB":4}
-  #2 ready=73ms load=1087ms childRSS=197MB pidRSS=0MB
-  [c3] child 入口解析（form=dev）：C:\Users\1\Desktop\pi-wood\apps\desktop\electron\main\engine\engine-child.mjs
-    c3·milestone│ sdk-import 570ms @596 {"rssMB":136,"heapMB":41,"extMB":4}
-  #3 ready=76ms load=1058ms childRSS=199MB pidRSS=0MB
-  起 3 个后进程数：electron.exe=6 node.exe=3 python.exe=0 总=280
-  c1 runtime.dispose=1ms
-  c2 runtime.dispose=2ms
+  [c2] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
+    c2·milestone│ sdk-import 292ms @338 {"rssMB":176,"heapMB":38,"extMB":4}
+  #2 ready=61ms load=359ms childRSS=184MB pidRSS=0MB
+  [c3] child 入口解析（form=dev）：/Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-child.mjs
+    c3·milestone│ sdk-import 294ms @340 {"rssMB":176,"heapMB":37,"extMB":4}
+  #3 ready=58ms load=362ms childRSS=184MB pidRSS=0MB
+! tasklist 失败：spawnSync tasklist ENOENT
+  起 3 个后进程数：electron.exe=0 node.exe=0 python.exe=0 总=0
+  c1 runtime.dispose=0ms
+  c2 runtime.dispose=1ms
   c3 runtime.dispose=1ms
-  关停后：electron.exe Δ1 node.exe Δ0 python.exe Δ0 总数 Δ0
+! tasklist 失败：spawnSync tasklist ENOENT
+  关停后：electron.exe Δ0 node.exe Δ0 python.exe Δ0 总数 Δ0
 ✓ P1-c 探针起过的子进程全部退出（含崩溃对照组） — 4 个全部离场
-✓ P1-c 扩展/MCP 子进程零残留（node/python 计数回到基线） — node Δ0 python Δ0（electron Δ1 为硬崩对照组的 crashpad 副作用，单独记录）
+✓ P1-c 扩展/MCP 子进程零残留（node/python 计数回到基线） — node Δ0 python Δ0（electron Δ0 为硬崩对照组的 crashpad 副作用，单独记录）
 
 --- 计量汇总（回填 §7.9 性能红线表用） ---
   n  ready ms   load ms   child RSS  pid RSS  事件帧     
-  1  73         1074      194MB      0MB      222     
-  2  73         1087      197MB      0MB      0       
-  3  76         1058      199MB      0MB      0       
-  每多一个对话的 child 净增 RSS ≈ 3MB（不含其扩展子进程；含扩展的真值看上面进程数增量）
+  1  58         390       184MB      0MB      175     
+  2  61         359       184MB      0MB      0       
+  3  58         362       184MB      0MB      0       
+  每多一个对话的 child 净增 RSS ≈ 0MB（不含其扩展子进程；含扩展的真值看上面进程数增量）
 
 === 结论 ===
 14/14 条通过

@@ -1,0 +1,13 @@
+[context-tree-probe] ✓ A1.1 默认叶=时间戳最新末梢（旁支尾 ab） — defaultLeafId=e0000ab1
+[context-tree-probe] ✓ A1.2 activeBranch 只标默认路径（旁支在路径上、主干不在） — u2=false ab=true
+[context-tree-probe] ✓ A1.3 题面投影：user 文本 / assistant 文本 / tool 工具名 — ub="换个思路的旁支问题" t=tool/bash
+[context-tree-probe] ✓ A2 旁枝叶过滤：只剩 root→旁支路径，主干文本消失 — n=4 texts=第一个问题|第一个回答|换个思路的旁支问题|旁支回答
+[context-tree-probe] ✓ A3 主干枝叶过滤：含追问+工具+回答、不含旁支 — n=5
+[context-tree-probe] ✓ A4 未知 leafId 降级=不过滤（历史不清空） — fallback=7 all=7
+[context-tree-probe] ✓ A5 navigateTree RPC 帧契约（targetId 必填） — ok=true bad=false
+[context-tree-probe] ✓ B0 引擎 child 起活并完成装配 — transport=undefined
+[context-tree-probe] ✓ B1 navigateTree(user 条目) → editorText 回填旁支问题、未取消 — editorText="换个思路的旁支问题"
+[context-tree-probe] ✓ B2 navigateTree(assistant 条目) → 不回填、未取消（从这里继续聊） — editorText=null
+[context-tree-probe] ✓ B3 navigateTree 零写盘（会话文件字节不变） — 1538 → 1538
+引擎子进程退出中（quit）
+[context-tree-probe] = 11/11 通过 · 结论 ALL PASS

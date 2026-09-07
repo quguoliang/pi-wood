@@ -1,5 +1,4 @@
-
-[memory-probe] ✓ global 保存 — id=mem-mtpyftg1-vkpjbk reviewed=false
+[memory-probe] ✓ global 保存 — id=mem-mtqwwhus-cqowdn reviewed=false
 [memory-probe] ✓ project 保存 + 落项目内文件 — projectCount=1
 [memory-probe] ✓ 确认→reviewed — 
 [memory-probe] ✓ 同标题 upsert 不新增、内容更新、reviewed 复位 — globalCount=1
