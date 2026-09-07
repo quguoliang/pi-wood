@@ -475,6 +475,8 @@ export const ENGINE_CHANNELS = {
   setActiveConversation: "engine:setActiveConversation",
   /** T9.2 上下文缩略树 v2：在该对话的会话树内把 leaf 挪到某条目（navigateTree，不截断不写新文件） */
   navigateTree: "engine:navigateTree",
+  /** T9.2 v2.1：从该对话某条消息分叉**另开一条新对话**（createBranchedSession 生成只含 root→该条目路径的新会话文件；源对话不动） */
+  forkToNewConversation: "engine:forkToNewConversation",
   // ---- T8.6 worktree 域（设置「工作树」页与回流按钮；UI 随 T8.8 接线）----
   /** 列出本项目管辖范围内的未回收工作树（孤儿对账视图） */
   worktreeList: "engine:worktreeList",
