@@ -9,7 +9,6 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { useConversationsStore } from "../../stores/conversations-store";
 import { useSessionMetaStore } from "../../stores/session-meta-store";
 import { useContextTreeStore } from "../../stores/context-tree-store";
-import { deriveContextTree } from "../../lib/context-tree";
 import { groupToolRows, isToolGroup, type DisplayRow } from "../../lib/tool-groups";
 import { ToolGroup } from "./ToolGroup";
 import { cn } from "@/lib/utils";
@@ -96,9 +95,11 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
     if (lastUser && lastUser.kind === "user") void window.pi.engineFollowUp(lastUser.text);
   }, [item.id]);
   /**
-   * T9.2 v2.1 消息级分叉：把**这条回复之前**的全部对话分叉成一条新对话（新会话停在触发它的
-   * 提问上，可重新发问；源对话不动）。行 ↔ 会话树条目用「第 N 条 user」做序号对齐——
-   * transcript 与会话路径同源（按叶过滤的历史），轮末 minimap 会强刷树保证对齐新鲜。
+   * T9.2 v2.1（同日语义改判）消息级分叉：新对话 = **该回复所在轮结束前**的全部对话
+   * （含被点的这条回复本身），从那里继续聊；源对话不动。
+   * 渲染层只数「这是第几条用户消息之后」（user 行 ↔ user 条目天然 1:1），
+   * 条目/路径定位全部交主进程 pathToLeafIds 同源完成——assistant 一轮可能裂成多个
+   * 气泡/条目，按轮传序号是唯一不错位的锚法（旧版按 entryId 直传即为此坑）。
    */
   const forkHere = useCallback(async () => {
     const convId = useSessionStore.getState().activeConversationId;
@@ -113,18 +114,13 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
       return;
     }
     const tree = useContextTreeStore.getState().byConv[convId];
-    const entryId = tree ? deriveContextTree(tree.rows, tree.leafId).pathUserEntryIds[ordinal - 1] : undefined;
-    if (!tree?.file || !entryId) {
-      toast.info("会话树还没就绪——等本轮回答落盘后再试");
-      return;
-    }
     try {
-      const res = await window.pi.engineForkToNewConversation(convId, entryId);
+      const res = await window.pi.engineForkToNewConversation(convId, ordinal, tree?.leafId);
       const sourceTitle = ((useConversationsStore.getState().firstUserById[convId] ?? "").replace(/\s+/g, " ").trim().slice(0, 24)) || "原对话";
-      await useSessionMetaStore.getState().set(res.sessionFile, { alias: `Fork of ${sourceTitle}`, forkedFrom: tree.file });
+      await useSessionMetaStore.getState().set(res.sessionFile, { alias: `Fork of ${sourceTitle}`, forkedFrom: res.sourceFile });
       await useConversationsStore.getState().refresh();
       useConversationsStore.getState().switchTo(res.conversationId);
-      toast.success("已分叉出新对话（停在触发这条回复的提问上），已切过去");
+      toast.success("已分叉出新对话（含这条回复），已切过去");
     } catch (err) {
       toast.error(`分叉失败：${err instanceof Error ? err.message : String(err)}`);
     }

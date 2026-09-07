@@ -115,11 +115,12 @@ declare global {
         targetId: string,
         summarize?: boolean,
       ): Promise<{ editorText?: string; cancelled: boolean }>;
-      /** T9.2 v2.1：从某条消息分叉另开一条新对话（源对话不动） */
+      /** T9.2 v2.1：按「第 userOrdinal 轮结束处」分叉另开新对话（含该轮回复；条目定位在主进程同源完成） */
       engineForkToNewConversation(
         conversationId: string,
-        entryId: string,
-      ): Promise<{ conversationId: string; sessionFile: string; cwd: string }>;
+        userOrdinal: number,
+        leafId?: string,
+      ): Promise<{ conversationId: string; sessionFile: string; cwd: string; sourceFile: string }>;
       worktreeList(): Promise<unknown>;
       worktreeRemove(opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown>;
       debugStress(count: number): Promise<number>;

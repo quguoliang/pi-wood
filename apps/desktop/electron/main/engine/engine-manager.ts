@@ -36,7 +36,7 @@ import {
 } from "@pi-wood/ipc-schema";
 import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge, EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
-import { normalizeEngineEvent } from "@pi-wood/engine";
+import { normalizeEngineEvent, pathToLeafIds } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { memoryCustomTools } from "../agent-tools/memory-tools";
@@ -1434,12 +1434,20 @@ export function initEngineIpc(): void {
     return a.navigateTree(targetId, { summarize: summarize === true });
   });
 
-  // T9.2 v2.1：从某条消息分叉另开一条新对话（§7.9 fork 语义的落地：源对话不动，只把 root→entryId
-  // 的路径写成新会话文件交给新对话）。与 navigateTree 的分工：navigateTree=本对话换分支；
-  // 本通道=「这条思路拉出去单独开一条」。同项目新对话各自独占 worktree（T8.6），互不互踩。
+  // T9.2 v2.1（同日语义改判）：从某条回复分叉另开一条新对话。**新对话 = 第 1 轮到「被点击回复
+  // 所在轮」结束的完整拷贝**（含该回复本身），从那里继续聊；源对话不动。
+  // 入参刻意收 userOrdinal（渲染层第 N 条用户消息）而不是 entryId：行↔会话树条目的换算
+  // 全部在主进程以 pathToLeafIds 同源完成——assistant 一轮可能裂成多个气泡/条目，只有
+  // 「user 行 ↔ user 条目」是天然 1:1，按轮定位最稳（用户实测「点第4条只 fork 到 2 条」
+  // 的根因就是旧语义停在提问处 + 渲染层传条目 id 易错位）。
+  // 与 navigateTree 的分工：navigateTree=本对话换分支（保留备用）；本通道=「这条思路拉出去单独开一条」。
   ipcMain.handle(ENGINE_CHANNELS.forkToNewConversation, async (_e, raw: unknown) => {
-    const { conversationId, entryId } = z
-      .object({ conversationId: z.string().min(1), entryId: z.string().min(1) })
+    const { conversationId, userOrdinal, leafId } = z
+      .object({
+        conversationId: z.string().min(1),
+        userOrdinal: z.number().int().min(1),
+        leafId: z.string().min(1).optional(),
+      })
       .parse(raw);
     const src = getConversation(conversationId);
     const sourceFile = src?.record.sessionFile;
@@ -1450,19 +1458,40 @@ export function initEngineIpc(): void {
     if (quotaEffect().blockNewConversation) {
       throw new Error("本月用量已超配额，已按设置阻止新建对话（可在用量页调整超限动作）");
     }
-    // 1) 先起新对话（ensureEngine 会设 active；同项目 = 再开一条，独立 worktree）
+    // 0) 定位分叉叶：当前视图路径上「第 userOrdinal 轮」的最后一条条目
+    const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+    const sm = SessionManager.open(sourceFile);
+    const allEntries = sm.getEntries() as unknown as Array<{ id: string; parentId: string | null; type: string; message?: { role?: string } }>;
+    if (!allEntries.length) throw new Error("源会话为空，无法分叉");
+    const tailId = allEntries[allEntries.length - 1].id;
+    const path = pathToLeafIds(allEntries, leafId ?? tailId);
+    if (!path?.length) throw new Error("分叉失败：视图分支在会话树里不存在（刷新后重试）");
+    const byId = new Map(allEntries.map((en) => [en.id, en]));
+    const isUserEntry = (id: string): boolean => {
+      const en = byId.get(id);
+      return en?.type === "message" && en.message?.role === "user";
+    };
+    const userIdx: number[] = [];
+    path.forEach((id, i) => {
+      if (isUserEntry(id)) userIdx.push(i);
+    });
+    if (userIdx.length < userOrdinal) {
+      throw new Error("会话树比界面更旧——等本轮回答结束后再分叉");
+    }
+    // 第 N 轮 = path 上第 N 个 user 条目起、到第 N+1 个 user 条目前（没有下一个就是到叶）
+    const forkLeafId = path[userIdx[userOrdinal] !== undefined ? userIdx[userOrdinal] - 1 : path.length - 1];
+    // 1) 起新对话（ensureEngine 会设 active；同项目 = 再开一条，独立 worktree）
     const adapter = await ensureEngine(src.projectDir, { newConversation: true });
     const newId = getActiveConversationId() ?? "";
     if (!newId) throw new Error("新对话创建失败：注册表没有活跃对话");
     targetByConversation.set(newId, _e.sender);
     const handle = getConversation(newId);
     const targetCwd = handle?.worktreePath ?? handle?.record.worktreePath ?? src.projectDir;
-    // 2) 生成只含 root→entryId 路径的新会话文件（写进源会话目录——T8.7 聚合按项目 ∪ 全部 worktree
-    //    列会话，新对话侧 list/续写都看得见）。header cwd 用新对话的树，工具路径不指回源树。
-    const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+    // 2) 生成只含 root→forkLeafId 路径的新会话文件（写进源会话目录——T8.7 聚合按项目 ∪ 全部
+    //    worktree 列会话，新对话侧 list/续写都看得见）。header cwd 用新对话的树。
     let branchFile: string | undefined;
     try {
-      branchFile = SessionManager.open(sourceFile, undefined, targetCwd).createBranchedSession(entryId);
+      branchFile = SessionManager.open(sourceFile, undefined, targetCwd).createBranchedSession(forkLeafId);
     } catch (err) {
       throw new Error(`分叉会话文件失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -1470,7 +1499,7 @@ export function initEngineIpc(): void {
     // 3) 新对话引擎切到分支文件（会话替换走正规链路：rebind + bindExtensions），并同步注册表
     await adapter.switchSession(branchFile);
     if (handle && handle.record.sessionFile !== branchFile) handle.record.sessionFile = branchFile;
-    return { conversationId: newId, sessionFile: branchFile, cwd: targetCwd };
+    return { conversationId: newId, sessionFile: branchFile, cwd: targetCwd, sourceFile };
   });
 
   // ---- T8.2/T8.3 对话域（多对话标签条的 UI 接线在 T8.8）----

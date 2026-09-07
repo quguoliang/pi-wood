@@ -176,40 +176,39 @@ export async function runContextTreeUiProbe(): Promise<void> {
     const u3 = await js<boolean>(`return !!document.querySelector('[class*="ring-ring"]');`);
     check("U3 点刻度跳转：目标行出现 flash 高亮", u3 === true, "");
 
-    // U4：最后一条回复底部「分叉」→ 新对话停在触发提问（含旁支问题、不含旁支回答）+ Fork of 别名 + 派生 chip；点 chip 回跳
+    // U4（v2.1 语义改判）：最后一条回复底部「分叉」→ 新对话**含被点回复本身**（整条旁支路径
+    // u1/a1/ub/ab1 全量拷贝）+ Fork of 别名 + 派生 chip；点 chip 回跳源对话；再验「轮中分叉」。
     const forkClicked = await js<boolean>(`
       const btns = [...document.querySelectorAll('[aria-label="分叉"]')];
       if (!btns.length) return false;
       btns[btns.length - 1].click();
       return true;`);
     check("U4.0 回复底部「分叉」按钮可点", forkClicked === true, "");
-    let u4 = { convCount: 0, hasQuestion: false, noReply: false, chip: false, aliasOk: false };
+    let u4 = { convCount: 0, hasQuestion: false, hasReply: false, chip: false, aliasOk: false };
     for (let i = 0; i < 24; i += 1) {
       await sleep(1000);
       u4 =
         (await js<typeof u4>(`
-          const out = { convCount: 0, hasQuestion: false, noReply: false, chip: false, aliasOk: false };
+          const out = { convCount: 0, hasQuestion: false, hasReply: false, chip: false, aliasOk: false };
           return window.pi.listConversations().then((r) => {
             out.convCount = ((r && r.conversations) || []).length;
             const body = document.body.innerText;
             out.hasQuestion = body.includes("换个思路的旁支问题");
-            out.noReply = !body.includes("BRANCH_REPLY_Z9");
+            out.hasReply = body.includes("BRANCH_REPLY_Z9");
             out.chip = !!document.querySelector('[data-forked-from]');
             // 左栏项目默认折叠、对话行不渲染——别名断言走数据契约（sessions:meta 落盘值），
             // 「alias ?? 首条消息」的行渲染路径 T8.11 已证。
-            return window.pi.listConversations().then((rr) => {
-              const forkedFile = (((rr && rr.conversations) || []).find((c) => c.id !== ${JSON.stringify(convId)}) || {}).sessionFile;
-              return window.pi.sessionsMeta().then((m) => {
-                out.aliasOk = !!(forkedFile && m[forkedFile] && String(m[forkedFile].alias || "").startsWith("Fork of") && m[forkedFile].forkedFrom);
-                return out;
-              });
+            const forkedFile = (((r && r.conversations) || []).find((c) => c.id !== ${JSON.stringify(convId)}) || {}).sessionFile;
+            return window.pi.sessionsMeta().then((m) => {
+              out.aliasOk = !!(forkedFile && m[forkedFile] && String(m[forkedFile].alias || "").startsWith("Fork of") && m[forkedFile].forkedFrom);
+              return out;
             });
           });`)) ?? u4;
-      if (u4.convCount === 2 && u4.hasQuestion && u4.noReply && u4.chip && u4.aliasOk) break;
+      if (u4.convCount === 2 && u4.hasQuestion && u4.hasReply && u4.chip && u4.aliasOk) break;
     }
     check(
-      "U4.1 分叉出新对话：两条对话、视图停在触发提问（回答不在）、派生 chip + 别名/forkedFrom 谱系已落盘",
-      u4.convCount === 2 && u4.hasQuestion === true && u4.noReply === true && u4.chip === true && u4.aliasOk === true,
+      "U4.1 末尾分叉：新对话含被点回复（整路径拷贝）+ 派生 chip + 别名/forkedFrom 落盘",
+      u4.convCount === 2 && u4.hasQuestion === true && u4.hasReply === true && u4.chip === true && u4.aliasOk === true,
       JSON.stringify(u4),
     );
     const chipClicked = await js<boolean>(`
@@ -218,8 +217,37 @@ export async function runContextTreeUiProbe(): Promise<void> {
       chip.click();
       return true;`);
     await sleep(1800);
-    const u4back = await js<boolean>(`return document.body.innerText.includes("BRANCH_REPLY_Z9");`);
-    check("U4.2 点「从对话中派生」回跳源对话", chipClicked === true && u4back === true, `back=${String(u4back)}`);
+    const u4back = await js<boolean>(`
+      return document.body.innerText.includes("BRANCH_REPLY_Z9") && !document.querySelector('[data-forked-from]');`);
+    check("U4.2 点「从对话中派生」回跳源对话（源对话无 chip）", chipClicked === true && u4back === true, `back=${String(u4back)}`);
+
+    // U4.3 轮中分叉：点第一条回复（a11）的分叉 → 新对话 = 第一轮 Q&A，不含第二轮（含其提问）
+    const forkFirst = await js<boolean>(`
+      const btns = [...document.querySelectorAll('[aria-label="分叉"]')];
+      if (!btns.length) return false;
+      btns[0].click();
+      return true;`);
+    let u43 = { convCount: 0, hasFirst: false, noSecond: false, chip: false };
+    for (let i = 0; i < 24; i += 1) {
+      await sleep(1000);
+      u43 =
+        (await js<typeof u43>(`
+          const out = { convCount: 0, hasFirst: false, noSecond: false, chip: false };
+          return window.pi.listConversations().then((r) => {
+            out.convCount = ((r && r.conversations) || []).length;
+            const body = document.body.innerText;
+            out.hasFirst = body.includes("两分支共同的第一答");
+            out.noSecond = !body.includes("换个思路的旁支问题") && !body.includes("BRANCH_REPLY_Z9");
+            out.chip = !!document.querySelector('[data-forked-from]');
+            return out;
+          });`)) ?? u43;
+      if (u43.convCount === 3 && u43.hasFirst && u43.noSecond && u43.chip) break;
+    }
+    check(
+      "U4.3 轮中分叉：新对话只含第一轮完整 Q&A（含被点回复、不含后续）",
+      forkFirst === true && u43.convCount === 3 && u43.hasFirst === true && u43.noSecond === true && u43.chip === true,
+      JSON.stringify(u43),
+    );
 
     // U5：窄窗自动隐藏（临时放开 minWidth 钳制，测完还原）
     const win = winRef;

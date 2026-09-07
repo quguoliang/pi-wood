@@ -201,12 +201,14 @@ const api = {
     summarize?: boolean,
   ): Promise<{ editorText?: string; cancelled: boolean }> =>
     ipcRenderer.invoke("engine:navigateTree", { conversationId, targetId, summarize }),
-  /** T9.2 v2.1：从某条消息分叉另开一条新对话（源对话不动；返回新对话 id 与其分支会话文件） */
+  /** T9.2 v2.1（语义改判）：按「第 userOrdinal 轮结束处」分叉另开新对话（含该轮回复本身）；
+   *  leafId=当前视图叶（缺省=文件尾）。条目定位在主进程同源完成，源对话不动 */
   engineForkToNewConversation: (
     conversationId: string,
-    entryId: string,
-  ): Promise<{ conversationId: string; sessionFile: string; cwd: string }> =>
-    ipcRenderer.invoke("engine:forkToNewConversation", { conversationId, entryId }),
+    userOrdinal: number,
+    leafId?: string,
+  ): Promise<{ conversationId: string; sessionFile: string; cwd: string; sourceFile: string }> =>
+    ipcRenderer.invoke("engine:forkToNewConversation", { conversationId, userOrdinal, leafId }),
   worktreeList: (): Promise<unknown> => ipcRenderer.invoke("engine:worktreeList"),
   worktreeRemove: (opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown> =>
     ipcRenderer.invoke("engine:worktreeRemove", opts),
