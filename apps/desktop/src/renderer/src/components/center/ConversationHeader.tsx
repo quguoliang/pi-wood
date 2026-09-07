@@ -34,10 +34,6 @@ export function ConversationHeader({
   const items = useActiveConversation((c) => c.items);
   const activeProject = useSessionStore((s) => s.activeProject);
   const rightCollapsed = useSettingsStore((s) => Boolean(s.settings.window.rightCollapsed));
-  const contextTreeEnabled = useSettingsStore((s) => Boolean(s.settings.ui.contextTreeEnabled));
-  const toggleContextTree = (): void => {
-    void useSettingsStore.getState().patch({ ui: { contextTreeEnabled: !contextTreeEnabled } });
-  };
 
   const projectName = activeProject?.split(/[\\/]/).filter(Boolean).pop();
   const display = title || projectName || "新任务";
@@ -64,15 +60,6 @@ export function ConversationHeader({
         {display}
       </h1>
       <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={cn("text-muted-foreground hover:text-foreground", contextTreeEnabled && "bg-accent text-accent-foreground")}
-          onClick={toggleContextTree}
-          aria-label="显示或隐藏上下文缩略树"
-        >
-          <Icon name="listTree" />
-        </Button>
         <Button
           variant="ghost"
           size="icon-sm"

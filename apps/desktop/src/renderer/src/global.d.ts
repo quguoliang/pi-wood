@@ -103,17 +103,23 @@ declare global {
       projectRename(id: string, name: string): Promise<unknown>;
       sessionsList(path: string): Promise<unknown>;
       sessionsMeta(): Promise<unknown>;
-      sessionsSetMeta(file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string }): Promise<unknown>;
+      sessionsSetMeta(file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string; forkedFrom?: string }): Promise<unknown>;
       sessionsDelete(file: string): Promise<{ ok: boolean }>;
       sessionsTree(file: string): Promise<unknown>;
       sessionsMessages(file: string, leafId?: string): Promise<unknown>;
       exportSessionMarkdown(defaultFileName: string, markdown: string): Promise<string | undefined>;
       engineSwitchSession(file: string): Promise<boolean>;
-      /** T9.2 上下文缩略树 v2：同文件内切分支（navigateTree）；目标为 user 消息时回填原文到 editorText */
+      /** T9.2 上下文缩略树 v2：同文件内切分支（navigateTree）；目标为 user 消息时回填原文到 editorText。summarize=弃枝摘要（模型成本） */
       engineNavigateTree(
         conversationId: string,
         targetId: string,
+        summarize?: boolean,
       ): Promise<{ editorText?: string; cancelled: boolean }>;
+      /** T9.2 v2.1：从某条消息分叉另开一条新对话（源对话不动） */
+      engineForkToNewConversation(
+        conversationId: string,
+        entryId: string,
+      ): Promise<{ conversationId: string; sessionFile: string; cwd: string }>;
       worktreeList(): Promise<unknown>;
       worktreeRemove(opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown>;
       debugStress(count: number): Promise<number>;

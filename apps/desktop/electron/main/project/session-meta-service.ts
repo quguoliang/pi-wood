@@ -17,6 +17,8 @@ export interface SessionMeta {
   pinned?: boolean;
   /** 显示别名：覆盖「首条用户消息」标题；不落盘到 Pi 会话 */
   alias?: string;
+  /** T9.2 v2.1：分叉谱系——本会话由哪个会话文件分叉而来（「从对话中派生」回跳用） */
+  forkedFrom?: string;
 }
 
 export type SessionMetaMap = Record<string, SessionMeta>;
@@ -41,7 +43,13 @@ export function applySessionMetaPatch(current: SessionMeta | undefined, patch: S
     if (alias) next.alias = alias;
     else delete next.alias;
   }
-  if (!next.archived && !next.pinned && !next.alias) return undefined;
+  // T9.2 v2.1：分叉谱系（源会话文件路径）；空串视作删键
+  if (patch.forkedFrom !== undefined) {
+    const forkedFrom = patch.forkedFrom.trim();
+    if (forkedFrom) next.forkedFrom = forkedFrom;
+    else delete next.forkedFrom;
+  }
+  if (!next.archived && !next.pinned && !next.alias && !next.forkedFrom) return undefined;
   return next;
 }
 

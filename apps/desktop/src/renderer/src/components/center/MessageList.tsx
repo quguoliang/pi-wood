@@ -1,10 +1,15 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, Check, Copy, OctagonX, RotateCcw } from "lucide-react";
+import { ArrowDown, Check, Copy, GitFork, OctagonX, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Markdown, ThinkingCard, ToolCard } from "@pi-wood/ui-kit";
 import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useConversationsStore } from "../../stores/conversations-store";
+import { useSessionMetaStore } from "../../stores/session-meta-store";
+import { useContextTreeStore } from "../../stores/context-tree-store";
+import { deriveContextTree } from "../../lib/context-tree";
 import { groupToolRows, isToolGroup, type DisplayRow } from "../../lib/tool-groups";
 import { ToolGroup } from "./ToolGroup";
 import { cn } from "@/lib/utils";
@@ -90,6 +95,40 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
     const lastUser = [...items.slice(0, idx)].reverse().find((m) => m.kind === "user");
     if (lastUser && lastUser.kind === "user") void window.pi.engineFollowUp(lastUser.text);
   }, [item.id]);
+  /**
+   * T9.2 v2.1 消息级分叉：把**这条回复之前**的全部对话分叉成一条新对话（新会话停在触发它的
+   * 提问上，可重新发问；源对话不动）。行 ↔ 会话树条目用「第 N 条 user」做序号对齐——
+   * transcript 与会话路径同源（按叶过滤的历史），轮末 minimap 会强刷树保证对齐新鲜。
+   */
+  const forkHere = useCallback(async () => {
+    const convId = useSessionStore.getState().activeConversationId;
+    if (!convId) return;
+    const items = activeSlice().items;
+    const idx = items.findIndex((m) => m.id === item.id);
+    if (idx < 0) return;
+    let ordinal = 0;
+    for (let i = 0; i < idx; i += 1) if (items[i]?.kind === "user") ordinal += 1;
+    if (ordinal === 0) {
+      toast.info("这条回复前没有用户提问，无从分叉");
+      return;
+    }
+    const tree = useContextTreeStore.getState().byConv[convId];
+    const entryId = tree ? deriveContextTree(tree.rows, tree.leafId).pathUserEntryIds[ordinal - 1] : undefined;
+    if (!tree?.file || !entryId) {
+      toast.info("会话树还没就绪——等本轮回答落盘后再试");
+      return;
+    }
+    try {
+      const res = await window.pi.engineForkToNewConversation(convId, entryId);
+      const sourceTitle = ((useConversationsStore.getState().firstUserById[convId] ?? "").replace(/\s+/g, " ").trim().slice(0, 24)) || "原对话";
+      await useSessionMetaStore.getState().set(res.sessionFile, { alias: `Fork of ${sourceTitle}`, forkedFrom: tree.file });
+      await useConversationsStore.getState().refresh();
+      useConversationsStore.getState().switchTo(res.conversationId);
+      toast.success("已分叉出新对话（停在触发这条回复的提问上），已切过去");
+    } catch (err) {
+      toast.error(`分叉失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [item.id]);
   return (
     <div className="group/assistant">
       <AssistantProse text={item.text} />
@@ -102,6 +141,16 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
           onClick={() => void navigator.clipboard.writeText(item.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
         >
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 text-muted-foreground hover:text-foreground"
+          aria-label="分叉"
+          title="把这条回复之前的全部对话分叉成新对话（源对话不受影响）"
+          onClick={() => void forkHere()}
+        >
+          <GitFork className="size-3.5" />
         </Button>
         {isLast && (
           <Button variant="ghost" size="icon-sm" className="size-7 text-muted-foreground hover:text-foreground" aria-label="重试" onClick={retry}>

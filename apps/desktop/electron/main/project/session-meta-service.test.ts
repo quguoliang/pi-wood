@@ -21,6 +21,15 @@ test("applySessionMetaPatch：归档/取消归档只动 archived 位，别的字
   assert.deepEqual(restored, { pinned: true, alias: "修复登录页" });
 });
 
+test("applySessionMetaPatch：forkedFrom 谱系写入/空串删键/单独存在不算空（T9.2 v2.1）", () => {
+  const withFork = applySessionMetaPatch({ alias: "Fork of 甲" }, { forkedFrom: "/tmp/a.jsonl" });
+  assert.deepEqual(withFork, { alias: "Fork of 甲", forkedFrom: "/tmp/a.jsonl" });
+  const onlyFork = applySessionMetaPatch(undefined, { forkedFrom: "/tmp/b.jsonl" });
+  assert.deepEqual(onlyFork, { forkedFrom: "/tmp/b.jsonl" }, "只有 forkedFrom 的条目不能被全空清理误删");
+  const cleared = applySessionMetaPatch(onlyFork, { forkedFrom: "  " });
+  assert.equal(cleared, undefined, "空串=删键；删完全空整条回收");
+});
+
 test("applySessionMetaPatch：空别名视作清除，不落空白串", () => {
   const next = applySessionMetaPatch({ alias: "  修复登录页  " }, { alias: "   " });
   assert.equal(next?.alias, undefined);

@@ -10,6 +10,8 @@ export interface SessionMeta {
   archived?: boolean;
   pinned?: boolean;
   alias?: string;
+  /** T9.2 v2.1：分叉谱系（源会话文件路径，「从对话中派生」回跳用） */
+  forkedFrom?: string;
 }
 
 interface SessionMetaState {
@@ -35,7 +37,11 @@ export const useSessionMetaStore = create<SessionMetaState>((set, get) => ({
     const prev = get().meta;
     const next = { ...prev[file], ...patch };
     // 与主进程 applySessionMetaPatch 同口径：全空即删键
-    if (!next.archived && !next.pinned && !next.alias?.trim()) delete next.alias;
+    const allEmpty = !next.archived && !next.pinned && !next.alias?.trim() && !next.forkedFrom?.trim();
+    if (allEmpty) {
+      delete next.alias;
+      delete next.forkedFrom;
+    }
     set({ meta: { ...prev, [file]: next } });
     try {
       await window.pi.sessionsSetMeta?.(file, patch);

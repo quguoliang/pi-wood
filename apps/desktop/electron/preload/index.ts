@@ -183,7 +183,7 @@ const api = {
   projectRename: (id: string, name: string): Promise<unknown> => ipcRenderer.invoke("project:rename", { id, name }),
   sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
   sessionsMeta: (): Promise<unknown> => ipcRenderer.invoke("sessions:meta"),
-  sessionsSetMeta: (file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string }): Promise<unknown> =>
+  sessionsSetMeta: (file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string; forkedFrom?: string }): Promise<unknown> =>
     ipcRenderer.invoke("sessions:setMeta", { file, patch }),
   sessionsDelete: (file: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("sessions:delete", { file }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),
@@ -193,12 +193,20 @@ const api = {
     ipcRenderer.invoke("session:export", { defaultFileName, markdown }),
   engineSwitchSession: (file: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:switchSession", { file }),
-  /** T9.2 缩略树 v2：在该对话的会话树内切分支（不截断；目标为 user 消息时回执 editorText 供回填输入框） */
+  /** T9.2 缩略树 v2：在该对话的会话树内切分支（不截断；目标为 user 消息时回执 editorText 供回填输入框）。
+   *  summarize=true（T9.2 v2.1 弃枝摘要）：切换前先让模型摘要被放弃分支——有 token 成本、耗时较长 */
   engineNavigateTree: (
     conversationId: string,
     targetId: string,
+    summarize?: boolean,
   ): Promise<{ editorText?: string; cancelled: boolean }> =>
-    ipcRenderer.invoke("engine:navigateTree", { conversationId, targetId }),
+    ipcRenderer.invoke("engine:navigateTree", { conversationId, targetId, summarize }),
+  /** T9.2 v2.1：从某条消息分叉另开一条新对话（源对话不动；返回新对话 id 与其分支会话文件） */
+  engineForkToNewConversation: (
+    conversationId: string,
+    entryId: string,
+  ): Promise<{ conversationId: string; sessionFile: string; cwd: string }> =>
+    ipcRenderer.invoke("engine:forkToNewConversation", { conversationId, entryId }),
   worktreeList: (): Promise<unknown> => ipcRenderer.invoke("engine:worktreeList"),
   worktreeRemove: (opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown> =>
     ipcRenderer.invoke("engine:worktreeRemove", opts),

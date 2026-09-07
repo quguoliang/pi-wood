@@ -1,5 +1,5 @@
 import { app } from "electron";
-import { mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EngineEvent, HostToolResult } from "@pi-wood/ipc-schema";
@@ -151,6 +151,28 @@ export async function runContextTreeProbe(): Promise<void> {
       okFrame.ok === true && badFrame.ok === false,
       `ok=${okFrame.ok} bad=${badFrame.ok}`,
     );
+
+    // A6（T9.2 v2.1）：createBranchedSession——「从某条消息另开新对话」的文件底座：
+    // 新会话文件只含 root→指定叶 的路径，旁支之外的条目整体消失。
+    const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+    const branchDir = mkdtempSync(join(tmpdir(), "piwood-ctx-tree-branch-"));
+    const a6File = SessionManager.open(file, branchDir).createBranchedSession("e0000ab1");
+    const branchOk = Boolean(a6File) && existsSync(a6File as string);
+    const a6Msgs = branchOk ? await loadSessionMessages(a6File as string) : [];
+    const branchJoin = a6Msgs.map((m) => m.text).join("|");
+    check(
+      "A6.1 分支会话文件生成且只含 root→旁支路径",
+      branchOk && a6Msgs.length === 4 && branchJoin.includes("换个思路的旁支问题") && !branchJoin.includes("主干"),
+      `file=${a6File ? "ok" : "✗"} n=${a6Msgs.length}`,
+    );
+    const badBranch = (() => {
+      try {
+        return SessionManager.open(file, branchDir).createBranchedSession("ffffffff") ?? null;
+      } catch {
+        return "throws";
+      }
+    })();
+    check("A6.2 未知 leaf 不产出脏文件（null 或抛错）", badBranch === null || badBranch === "throws", String(badBranch));
 
     // ---------- B：真引擎 child 活链路（switchSession → navigateTree，不碰模型） ----------
     installStubCaps();

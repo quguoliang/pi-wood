@@ -5,7 +5,7 @@ export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
   theme: { fallback: "light" | "dark" | "system"; pi?: string };
   editor: { fontSize: number; tabSize: number };
-  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean; /** T9.1 上下文缩略树栏开关（ConversationHeader 按钮） */ contextTreeEnabled: boolean };
+  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean };
   recentProjects: string[];
   /** T8.6/T8.11：工作树开关（设置「工作树」页可改；主进程 conversation-registry 读同一段配置） */
   worktree: { enabled: boolean; keepAfterClose: boolean };
@@ -21,7 +21,7 @@ const defaults: PiWoodSettings = {
   window: { layout: [17, 55, 28], leftCollapsed: false, rightCollapsed: false },
   theme: { fallback: "dark" },
   editor: { fontSize: 14, tabSize: 2 },
-  ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false, contextTreeEnabled: true },
+  ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false },
   recentProjects: [],
   worktree: { enabled: true, keepAfterClose: false },
   approvalByConversation: {},

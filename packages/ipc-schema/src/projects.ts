@@ -82,6 +82,8 @@ export const SessionMetaSchema = z.object({
   archived: z.boolean().optional(),
   pinned: z.boolean().optional(),
   alias: z.string().optional(),
+  /** T9.2 v2.1：本会话由哪个会话文件分叉而来（「从对话中派生」回跳用；键仍是本会话文件） */
+  forkedFrom: z.string().optional(),
 });
 export type SessionMeta = z.infer<typeof SessionMetaSchema>;
 export const SessionMetaMapSchema = z.record(z.string(), SessionMetaSchema);

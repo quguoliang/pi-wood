@@ -15,7 +15,8 @@ import { Toaster } from "./components/ui/sonner";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
 import { activeSlice, useSessionStore } from "./stores/session-store";
 import { useSettingsStore } from "./stores/settings-store";
-import { ContextTree } from "./components/center/ContextTree";
+import { MessageMinimap } from "./components/center/MessageMinimap";
+import { ForkedFromChip } from "./components/center/ForkedFromChip";
 import { useRuntimeStore } from "./stores/runtime-store";
 import { useBtwStore } from "./stores/btw-store";
 import { useSubagentStore } from "./stores/subagent-store";
@@ -36,7 +37,6 @@ export default function App() {
   const [marketOpen, setMarketOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
-  const contextTreeEnabled = useSettingsStore((s) => Boolean(s.settings.ui.contextTreeEnabled));
   const handleEvent = useSessionStore((s) => s.handleEvent);
   const trackRuntimeEvent = useRuntimeStore((s) => s.trackEvent);
   const addDiff = useWorkbenchStore((s) => s.addDiff);
@@ -256,14 +256,13 @@ export default function App() {
             style={{ ["--pk-chat-width" as string]: "48rem" }}
           >
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
-            {/* T9.1：上下文缩略树栏 + 消息列水平并排（Header/Composer 保持全宽） */}
-            <div className="flex min-h-0 min-w-0 flex-1">
-              {contextTreeEnabled && <ContextTree />}
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <MessageList />
-                <ConversationAssist className="pt-1" />
-                <PromptTray />
-              </div>
+            {/* T9.2 v2.1 改判：缩略导航不再占布局宽度——消息列左缘浮一条竖向刻度条（minimap），窄窗自动隐藏 */}
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+              <MessageList />
+              <MessageMinimap />
+              <ForkedFromChip />
+              <ConversationAssist className="pt-1" />
+              <PromptTray />
             </div>
             <Composer />
             <EnvironmentPanel open={environmentOpen} onOpenChange={setEnvironmentOpen} />

@@ -7,15 +7,15 @@ import { ensureEngine, getActiveConversationIdSafe } from "./engine-manager";
 import { getConversation } from "./conversation-registry";
 
 /**
- * T9.2 上下文缩略树 v2 带窗交互探针 `electron . --context-tree-ui-probe`
- *
- * 无窗探针证到「数据与活链路」（树投影 / 按叶过滤 / navigateTree 真 child）；
- * 本探针补最后一段**渲染层闭环**：真窗口里起一条对话 → 会话文件写入构造的分叉
- * → engineSwitchSession 装载 → 在缩略树上**对人元素派发真 dblclick** →
- * 断言换底（transcript 只剩所选路径）、原文回填输入框、「回到最新」条出现/消失。
+ * T9.2 v2.1 带窗交互探针 `electron . --context-tree-ui-probe`（形态已按用户改判重做）：
+ * 侧栏撤了——验证的是**消息刻度条 minimap** 与**消息级分叉**：
+ *   U1 刻度条出现、每条 user/assistant 一个刻度、旧侧栏不存在；transcript=默认叶路径
+ *   U2 hover 正态重排（目标最长、邻居次之）+「角色+摘要」tooltip
+ *   U3 点刻度 → 跳转并触发目标行 flash 高亮
+ *   U4 回复底部「分叉」→ 新对话（停在触发提问上）+ 左栏「Fork of X」+ 底部「从对话中派生」chip；
+ *      点 chip 回跳源对话
+ *   U5 窄窗（<720px）刻度条自动隐藏、拉宽恢复
  * 截图留档 docs/proofs/ui-v3/context-tree-ui.png。
- *
- * 前提：settings.ui.contextTreeEnabled 默认 true；窗口可见。
  */
 export function isContextTreeUiProbeMode(): boolean {
   return process.argv.includes("--context-tree-ui-probe");
@@ -37,7 +37,7 @@ function makeGitProject(tag: string): string {
   return dir;
 }
 
-/** 与无窗探针同款分叉拓扑（题面带唯一 token，断言只认 token 避免树/正文串扰） */
+/** 分叉拓扑：默认叶=旁支尾（transcript 4 条消息 = 4 个刻度）；token 唯一防串扰 */
 function fixtureLines(cwd: string): string {
   const ts = (n: number): string => new Date(Date.UTC(2026, 8, 7, 0, 0, 0) + n * 60_000).toISOString();
   const header = { type: "session", version: 3, id: "sess-ctxui1", timestamp: ts(0), cwd };
@@ -92,115 +92,158 @@ export async function runContextTreeUiProbe(): Promise<void> {
     results.push({ name, ok, note });
     console.log(`${ok ? "✓" : "✗"} ${name}${note ? ` — ${note}` : ""}`);
   };
-  console.log("=== T9.2 --context-tree-ui-probe（带窗：旁支可见 / 双击换底 / 回填 / 回到最新） ===");
+  console.log("=== T9.2 v2.1 --context-tree-ui-probe（minimap 刻度条 + 消息级分叉 + 派生回跳） ===");
   let code = 1;
   try {
     if (!winRef) throw new Error("没有可用窗口（带窗探针必须以窗口形态运行）");
 
-    // 1) 真对话装配（引擎 child + 注册表 + 会话文件）
+    // 1) 真对话装配 → 写入分叉 fixture → 渲染层链路装载。
+    //    临时项目先注册进项目列表：左栏对话行（含「Fork of」别名断言）只渲染已注册项目的对话。
     const proj = makeGitProject("a");
+    await js<boolean>(`return window.pi.projectAdd(${JSON.stringify(proj)}).then(() => true).catch(() => false);`);
     const adapter = await ensureEngine(proj);
     const convId = getActiveConversationIdSafe();
     if (!convId) throw new Error("ensureEngine 后没有活跃对话");
     let sessionFile = getConversation(convId)?.record.sessionFile;
     if (!sessionFile) sessionFile = (await adapter.getState()).sessionFile;
     if (!sessionFile) throw new Error("拿不到该对话的会话文件路径");
-    check("U0 真对话起活且会话文件已知", true, `conv=${convId.slice(0, 8)} file=${sessionFile.split("/").slice(-2).join("/")}`);
+    check("U0 真对话起活且会话文件已知", true, `conv=${convId.slice(0, 8)}`);
 
-    // 2) 构造分叉写进该会话文件 → 走渲染层链路 engineSwitchSession（含注册表 sessionFile 同步）
     writeFileSync(sessionFile, fixtureLines(proj), "utf-8");
-    // 树开关可能被用户设置关了：探针强制开（settingsSet 深合并，只动这一个键）
-    await js<unknown>(`return window.pi.settingsSet({ ui: { contextTreeEnabled: true } }).then(() => true).catch(() => false);`);
     const switched = await js<boolean>(`return window.pi.engineSwitchSession(${JSON.stringify(sessionFile)}).then(() => true).catch(() => false);`);
-    check("U0.1 engineSwitchSession 经渲染层链路成功（注册表同步）", switched === true, `switched=${String(switched)}`);
-    await js<boolean>(`window.__piwoodSwitchConversation && window.__piwoodSwitchConversation(${JSON.stringify(convId)}); return true;`);
+    check("U0.1 engineSwitchSession 经渲染层链路成功", switched === true, `switched=${String(switched)}`);
 
-    // —— U0.5 诊断（不参与判定，只打印）：数据链哪一跳断了看这里 ——
-    const diag = await js<Record<string, unknown>>(`
-      const out = { hook: typeof window.__piwoodSwitchConversation };
-      out.list = window.pi.listConversations().then((r) => {
-        const rows = (r && r.conversations) || [];
-        out.listConvs = rows.map((x) => x.id + ":" + x.status + ":" + String(x.sessionFile || "").split("/").pop());
-        const mine = rows.find((x) => x.id === ${JSON.stringify(convId)});
-        out.mineFile = mine && mine.sessionFile ? String(mine.sessionFile).split("/").pop() : null;
-        return window.pi.sessionsMessages(mine ? mine.sessionFile : ${JSON.stringify(sessionFile)});
-      }).then((msgs) => {
-        out.msgCount = msgs.length;
-        out.msgHeads = msgs.slice(0, 8).map((m) => m.role + ":" + String(m.text || "").slice(0, 12));
-        return out;
-      });
-      return out.list.then(() => JSON.parse(JSON.stringify(out)));`)
-      .catch(() => undefined);
-    console.log(`[ctx-ui] diag=${JSON.stringify(diag)}`);
-
-    // 等渲染层收敛：轮询 aside 出现（1.5s 轮询 + ensureHistoryLoaded + 树刷新，最多多等 8s）
-    let asideSeen = false;
-    for (let i = 0; i < 16 && !asideSeen; i += 1) {
+    // 视图收敛：每轮补 switchTo（App 启动期草稿恢复会抢视图——09-07 实测），等 minimap 挂载
+    let minimapSeen = false;
+    for (let i = 0; i < 24 && !minimapSeen; i += 1) {
       await sleep(500);
-      asideSeen = await js<boolean>(`return !!document.querySelector('aside[aria-label="上下文缩略树"]');`) === true;
-      if (!asideSeen && i === 8) {
-        // 中途再切一次（对话行轮询可能滞后于 switchTo 首跑）
-        await js<boolean>(`window.__piwoodSwitchConversation && window.__piwoodSwitchConversation(${JSON.stringify(convId)}); return true;`);
-      }
+      await js<boolean>(`window.__piwoodSwitchConversation && window.__piwoodSwitchConversation(${JSON.stringify(convId)}); return true;`);
+      minimapSeen = await js<boolean>(`return !!document.querySelector('[data-minimap]');`) === true;
     }
 
-    // U1：树栏出现旁支行（主干被折叠在 #1 下），transcript = 默认叶（旁支尾）路径
-    const u1 = await js<{ aside: boolean; treeHasMainBranch: boolean; bodyHasBranch: boolean; bodyHasMain: boolean; dump: string }>(`
-      const aside = document.querySelector('aside[aria-label="上下文缩略树"]');
+    // U1：刻度条 + 4 个刻度（默认叶路径 2 user + 2 assistant）；旧侧栏不存在；transcript=旁支路径
+    const u1 = await js<{ minimap: boolean; ticks: number; asideGone: boolean; bodyHasBranch: boolean; bodyHasMain: boolean }>(`
+      const mm = document.querySelector('[data-minimap]');
       return {
-        aside: !!aside,
-        treeHasMainBranch: !!aside && (aside.textContent || "").includes("主干追问"),
+        minimap: !!mm,
+        ticks: mm ? mm.querySelectorAll('button[aria-label^="跳转到消息"]').length : 0,
+        asideGone: !document.querySelector('aside[aria-label="上下文缩略树"]'),
         bodyHasBranch: document.body.innerText.includes("BRANCH_REPLY_Z9"),
         bodyHasMain: document.body.innerText.includes("MAIN_REPLY_Z7"),
-        dump: document.body.innerText.replace(/\\s+/g, " ").slice(0, 400),
       };`);
-    check("U1.1 树栏渲染且旁支（主干）折叠可见", u1?.aside === true && u1?.treeHasMainBranch === true, u1?.aside ? `treeHasMainBranch=${u1.treeHasMainBranch}` : `dump=${JSON.stringify(u1?.dump ?? "")}`);
-    check("U1.2 transcript=默认叶路径：见旁支答、不见主干答", u1?.bodyHasBranch === true && u1?.bodyHasMain === false, `branch=${u1?.bodyHasBranch} main=${u1?.bodyHasMain}`);
-
-    // U2：双击旁支「主干追问」→ 换底 + 回填 + 回到最新条
-    const dbl1 = await js<boolean>(`
-      const aside = document.querySelector('aside[aria-label="上下文缩略树"]');
-      if (!aside) return false;
-      const btn = [...aside.querySelectorAll("button")].find((b) => (b.textContent || "").includes("主干追问"));
-      if (!btn) return false;
-      btn.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-      return true;`);
-    check("U2.0 找到旁支「主干追问」行并可派发 dblclick", dbl1 === true, "");
-    await sleep(1800);
-    const u2 = await js<{ common: boolean; bodyHasMain: boolean; bodyHasBranch: boolean; prefill: boolean; backBar: boolean; branchListFlipped: boolean }>(`
-      const aside = document.querySelector('aside[aria-label="上下文缩略树"]');
-      const ta = [...document.querySelectorAll("textarea")].find((t) => (t.value || "").includes("PROBE_MAIN_QUESTION"));
-      return {
-        common: document.body.innerText.includes("两分支共同的第一答"),
-        bodyHasMain: document.body.innerText.includes("MAIN_REPLY_Z7"),
-        bodyHasBranch: document.body.innerText.includes("BRANCH_REPLY_Z9"),
-        prefill: !!ta,
-        backBar: document.body.innerText.includes("正在查看历史分支"),
-        branchListFlipped: !!aside && (aside.textContent || "").includes("换个思路"),
-      };`);
-    // SDK navigateTree 语义：目标是 user 条目 → leaf 挪到其**父**、原文回填输入框（检查点式「改这问重发」）。
-    // 所以此刻 transcript = 公共前缀（u1/a1），主干与旁支的后续**都**不该在；被放弃的旁支反过来挂成旁支行。
     check(
-      "U2.1 双击后换底到提问之前：公共前缀在、两支线文本消失、原问题回填、出现「回到最新」、旁支反向可见",
-      u2?.common === true && u2?.bodyHasMain === false && u2?.bodyHasBranch === false && u2?.prefill === true && u2?.backBar === true && u2?.branchListFlipped === true,
+      "U1.1 刻度条出现、默认叶路径 4 刻度、旧侧栏已移除",
+      u1?.minimap === true && u1?.ticks === 4 && u1?.asideGone === true,
+      JSON.stringify(u1 ?? {}),
+    );
+    check("U1.2 transcript=默认叶路径：见旁支答、不见主干答", u1?.bodyHasBranch === true && u1?.bodyHasMain === false, "");
+
+    // U2：hover 第 3 个刻度（旁支问题）→ 正态重排（目标最长、邻居次之）+ 角色摘要 tooltip
+    await js<boolean>(`
+      const mm = document.querySelector('[data-minimap]');
+      const tick = mm.querySelectorAll('button[aria-label^="跳转到消息"]')[2];
+      if (!tick) return false;
+      tick.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      tick.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
+      return true;`);
+    await sleep(400);
+    const u2 = await js<{ hovered: number; neighbor: number; base: number; tip: boolean; role: boolean }>(`
+      const mm = document.querySelector('[data-minimap]');
+      const ticks = [...mm.querySelectorAll('button[aria-label^="跳转到消息"]')];
+      const w = (el) => el.getBoundingClientRect().width;
+      const tipText = mm.innerText || "";
+      return {
+        hovered: w(ticks[2]),
+        neighbor: w(ticks[1]),
+        base: w(ticks[0]),
+        tip: tipText.includes("换个思路"),
+        role: tipText.includes("我"),
+      };`);
+    check(
+      "U2 hover 正态重排：目标最长 > 邻居 > 远端，且 tooltip 显示角色+摘要",
+      !!u2 && u2.hovered > u2.neighbor && u2.neighbor > u2.base && u2.tip === true && u2.role === true,
       JSON.stringify(u2 ?? {}),
     );
 
-    // U3：点「回到最新」→ 回默认叶（旁支），回到最新条消失
-    const back = await js<boolean>(`
-      const btn = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("回到最新"));
-      if (!btn) return false;
-      btn.click();
+    // U3：点第 1 个刻度 → 跳转并 flash 高亮目标行（MessageList ring 类）
+    await js<boolean>(`
+      const mm = document.querySelector('[data-minimap]');
+      const tick = mm.querySelectorAll('button[aria-label^="跳转到消息"]')[0];
+      if (!tick) return false;
+      tick.click();
       return true;`);
-    check("U3.0 「回到最新」按钮可点", back === true, "");
-    await sleep(1500);
-    const u3 = await js<{ bodyHasBranch: boolean; bodyHasMain: boolean; backGone: boolean }>(`
-      return {
-        bodyHasBranch: document.body.innerText.includes("BRANCH_REPLY_Z9"),
-        bodyHasMain: document.body.innerText.includes("MAIN_REPLY_Z7"),
-        backGone: !document.body.innerText.includes("正在查看历史分支"),
-      };`);
-    check("U3.1 回到最新：transcript 回默认叶、指示条消失", u3?.bodyHasBranch === true && u3?.bodyHasMain === false && u3?.backGone === true, JSON.stringify(u3 ?? {}));
+    await sleep(700);
+    const u3 = await js<boolean>(`return !!document.querySelector('[class*="ring-ring"]');`);
+    check("U3 点刻度跳转：目标行出现 flash 高亮", u3 === true, "");
+
+    // U4：最后一条回复底部「分叉」→ 新对话停在触发提问（含旁支问题、不含旁支回答）+ Fork of 别名 + 派生 chip；点 chip 回跳
+    const forkClicked = await js<boolean>(`
+      const btns = [...document.querySelectorAll('[aria-label="分叉"]')];
+      if (!btns.length) return false;
+      btns[btns.length - 1].click();
+      return true;`);
+    check("U4.0 回复底部「分叉」按钮可点", forkClicked === true, "");
+    let u4 = { convCount: 0, hasQuestion: false, noReply: false, chip: false, aliasOk: false };
+    for (let i = 0; i < 24; i += 1) {
+      await sleep(1000);
+      u4 =
+        (await js<typeof u4>(`
+          const out = { convCount: 0, hasQuestion: false, noReply: false, chip: false, aliasOk: false };
+          return window.pi.listConversations().then((r) => {
+            out.convCount = ((r && r.conversations) || []).length;
+            const body = document.body.innerText;
+            out.hasQuestion = body.includes("换个思路的旁支问题");
+            out.noReply = !body.includes("BRANCH_REPLY_Z9");
+            out.chip = !!document.querySelector('[data-forked-from]');
+            // 左栏项目默认折叠、对话行不渲染——别名断言走数据契约（sessions:meta 落盘值），
+            // 「alias ?? 首条消息」的行渲染路径 T8.11 已证。
+            return window.pi.listConversations().then((rr) => {
+              const forkedFile = (((rr && rr.conversations) || []).find((c) => c.id !== ${JSON.stringify(convId)}) || {}).sessionFile;
+              return window.pi.sessionsMeta().then((m) => {
+                out.aliasOk = !!(forkedFile && m[forkedFile] && String(m[forkedFile].alias || "").startsWith("Fork of") && m[forkedFile].forkedFrom);
+                return out;
+              });
+            });
+          });`)) ?? u4;
+      if (u4.convCount === 2 && u4.hasQuestion && u4.noReply && u4.chip && u4.aliasOk) break;
+    }
+    check(
+      "U4.1 分叉出新对话：两条对话、视图停在触发提问（回答不在）、派生 chip + 别名/forkedFrom 谱系已落盘",
+      u4.convCount === 2 && u4.hasQuestion === true && u4.noReply === true && u4.chip === true && u4.aliasOk === true,
+      JSON.stringify(u4),
+    );
+    const chipClicked = await js<boolean>(`
+      const chip = document.querySelector('[data-forked-from]');
+      if (!chip) return false;
+      chip.click();
+      return true;`);
+    await sleep(1800);
+    const u4back = await js<boolean>(`return document.body.innerText.includes("BRANCH_REPLY_Z9");`);
+    check("U4.2 点「从对话中派生」回跳源对话", chipClicked === true && u4back === true, `back=${String(u4back)}`);
+
+    // U5：窄窗自动隐藏（临时放开 minWidth 钳制，测完还原）
+    const win = winRef;
+    const bounds = win.getBounds();
+    win.setMinimumSize(640, 480);
+    win.setBounds({ ...bounds, width: 760 });
+    await sleep(700);
+    const u5narrow = await js<string>(`
+      const mm = document.querySelector('[data-minimap]');
+      return mm ? getComputedStyle(mm).visibility : "missing";`);
+    win.setMinimumSize(960, 600);
+    win.setBounds(bounds);
+    await sleep(700);
+    const u5wide = await js<string>(`
+      const mm = document.querySelector('[data-minimap]');
+      return mm ? getComputedStyle(mm).visibility : "missing";`);
+    check("U5 窄窗自动隐藏、拉宽恢复", u5narrow === "hidden" && u5wide === "visible", `narrow=${u5narrow} wide=${u5wide}`);
+
+    // 清理：解除临时项目注册（探针不留在册痕迹；对话随应用退出自然消散）
+    await js<boolean>(`
+      return window.pi.projectList().then((list) => {
+        const rec = (list && list.projects ? list.projects : list || []).find((p) => p.path === ${JSON.stringify(proj)});
+        return rec ? window.pi.projectRemove(rec.id).then(() => true) : true;
+      }).catch(() => false);`);
 
     await capture(shot);
     const failed = results.filter((r) => !r.ok).length;
