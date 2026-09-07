@@ -11,17 +11,17 @@ rendering chunks...
 [plugin:vite:reporter] [plugin vite:reporter] 
 (!) /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/engine-manager.ts is dynamically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts but also statically imported by /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/approval-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/context-tree-ui-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/latency-ui-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/ui-chat-harness.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/engine/workspace-scope-probe.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/goal/goal.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/index.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/memory/memory.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/plugins/plugins.ipc.ts, /Users/admin/Desktop/personal/pi-wood/apps/desktop/electron/main/review/review.ipc.ts, dynamic import will not move module into another chunk.
 
-out/main/chunks/index-BrgnHJ8J.js              4.81 kB
+out/main/chunks/index-Cy-oIwDN.js              4.81 kB
 out/main/engine-child.js                      11.61 kB
-out/main/chunks/host-tool-specs-BjD_mOna.js   56.62 kB
-out/main/index.js                            322.89 kB
-✓ built in 265ms
+out/main/chunks/host-tool-specs-CrISf869.js   56.86 kB
+out/main/index.js                            327.10 kB
+✓ built in 276ms
 vite v5.4.21 building SSR bundle for production...
 transforming...
 ✓ 1 modules transformed.
 rendering chunks...
-out/preload/index.mjs  14.02 kB
-✓ built in 8ms
+out/preload/index.mjs  14.31 kB
+✓ built in 10ms
 vite v5.4.21 building for production...
 transforming...
 ✓ 4131 modules transformed.
@@ -34,7 +34,7 @@ rendering chunks...
 ../../out/renderer/assets/css.worker-Ddkp-8Lu.js                   1,909.27 kB
 ../../out/renderer/assets/ts.worker-D1n1aso5.js                   13,290.55 kB
 ../../out/renderer/assets/TerminalPanel-GVL3fBIr.css                   7.11 kB
-../../out/renderer/assets/index-B386hT6Z.css                          96.57 kB
+../../out/renderer/assets/index-CCkCEk41.css                          95.79 kB
 ../../out/renderer/assets/FilesPanel-BwxubRqT.css                    224.57 kB
 ../../out/renderer/assets/extends-BwmuZ0dU.js                          0.33 kB
 ../../out/renderer/assets/codeowners-awy7PWCD.js                       0.59 kB
@@ -46,7 +46,7 @@ rendering chunks...
 ../../out/renderer/assets/csv-Ba84L8e5.js                              1.17 kB
 ../../out/renderer/assets/git-commit-Dv4XKH0P.js                       1.29 kB
 ../../out/renderer/assets/azcli-BEAhqcuE.js                            1.30 kB
-../../out/renderer/assets/javascript-C03jbLux.js                       1.37 kB
+../../out/renderer/assets/javascript-BmuQluBn.js                       1.37 kB
 ../../out/renderer/assets/xsl-CnwVr_6q.js                              1.43 kB
 ../../out/renderer/assets/dotenv-Bb4iNxXK.js                           1.46 kB
 ../../out/renderer/assets/sparql-DswowMAp.js                           1.53 kB
@@ -58,7 +58,7 @@ rendering chunks...
 ../../out/renderer/assets/docker-CUaLOm2I.js                           1.78 kB
 ../../out/renderer/assets/desktop-_xiGZ9X1.js                          1.87 kB
 ../../out/renderer/assets/hxml-bhUxPckm.js                             1.94 kB
-../../out/renderer/assets/workers-DUJCo0MW.js                          2.12 kB
+../../out/renderer/assets/workers-BceaY6Zm.js                          2.12 kB
 ../../out/renderer/assets/jssm-DDuANZ2u.js                             2.27 kB
 ../../out/renderer/assets/scheme-D7PxodDG.js                           2.36 kB
 ../../out/renderer/assets/reg-CULnG2WX.js                              2.38 kB
@@ -70,7 +70,7 @@ rendering chunks...
 ../../out/renderer/assets/erb-BtI6ikng.js                              2.69 kB
 ../../out/renderer/assets/flow9-ZSTChSMd.js                            2.76 kB
 ../../out/renderer/assets/sb-Chfc_wZF.js                               2.81 kB
-../../out/renderer/assets/xml-DQJblB7n.js                              2.82 kB
+../../out/renderer/assets/xml-Cl0MhX6g.js                              2.82 kB
 ../../out/renderer/assets/json-TjWBGEk1.js                             2.86 kB
 ../../out/renderer/assets/openscad-C_m7ehZF.js                         2.87 kB
 ../../out/renderer/assets/pla-DEV89yYj.js                              2.87 kB
@@ -115,7 +115,7 @@ rendering chunks...
 ../../out/renderer/assets/m3-6ko6q9-_.js                               4.15 kB
 ../../out/renderer/assets/pascal-CU8Kjkr_.js                           4.19 kB
 ../../out/renderer/assets/sophia-D7pU0Y1d.js                           4.27 kB
-../../out/renderer/assets/BtwPanel-B96Dxu5S.js                         4.37 kB
+../../out/renderer/assets/BtwPanel-GHULlDse.js                         4.37 kB
 ../../out/renderer/assets/tcl-CTsc4-t7.js                              4.46 kB
 ../../out/renderer/assets/shell-vZEubQ82.js                            4.48 kB
 ../../out/renderer/assets/go-brnMpFrj.js                               4.49 kB
@@ -132,7 +132,7 @@ rendering chunks...
 ../../out/renderer/assets/tcl-Bb4GCwBr.js                              5.05 kB
 ../../out/renderer/assets/llvm-vwd2ARYn.js                             5.07 kB
 ../../out/renderer/assets/qsharp-BWK6YLKm.js                           5.14 kB
-../../out/renderer/assets/liquid-CkAONuvF.js                           5.15 kB
+../../out/renderer/assets/liquid-B7B91zLr.js                           5.15 kB
 ../../out/renderer/assets/cypher-D0--_GAN.js                           5.15 kB
 ../../out/renderer/assets/java-Dt3iMn2o.js                             5.16 kB
 ../../out/renderer/assets/wgsl-Vo-hHVWH.js                             5.18 kB
@@ -151,15 +151,15 @@ rendering chunks...
 ../../out/renderer/assets/coffee-CzJ5oEdj.js                           5.51 kB
 ../../out/renderer/assets/jinja-Co0rsagz.js                            5.79 kB
 ../../out/renderer/assets/lean-CTow-IzD.js                             5.80 kB
-../../out/renderer/assets/mdx-CgAG2YsO.js                              5.82 kB
-../../out/renderer/assets/yaml-DUdZw8xX.js                             5.88 kB
+../../out/renderer/assets/mdx-COwtGpto.js                              5.82 kB
+../../out/renderer/assets/yaml-BYWCclXK.js                             5.88 kB
 ../../out/renderer/assets/powerquery-B-e1fO-k.js                       5.95 kB
 ../../out/renderer/assets/shaderlab-C07uO3dL.js                        5.98 kB
 ../../out/renderer/assets/cypher-DbUmWIxC.js                           5.99 kB
 ../../out/renderer/assets/coq-B4-C1V0V.js                              6.01 kB
 ../../out/renderer/assets/css-i3rI3_64.js                              6.10 kB
 ../../out/renderer/assets/vb-Csa1FuFR.js                               6.10 kB
-../../out/renderer/assets/cssMode-aHMj1wCH.js                          6.25 kB
+../../out/renderer/assets/cssMode-7KmA2WdE.js                          6.25 kB
 ../../out/renderer/assets/rust-B1c0VCeq.js                             6.27 kB
 ../../out/renderer/assets/min-dark-BNaN9fWk.js                         6.31 kB
 ../../out/renderer/assets/gdshader-BEzE4j_3.js                         6.37 kB
@@ -171,29 +171,29 @@ rendering chunks...
 ../../out/renderer/assets/postcss-kj1IbjVd.js                          6.46 kB
 ../../out/renderer/assets/toml-vHPzWDj6.js                             6.46 kB
 ../../out/renderer/assets/dart-vLMHv35g.js                             6.48 kB
-../../out/renderer/assets/python-h6yA9OkE.js                           6.50 kB
+../../out/renderer/assets/python-BxqmiybY.js                           6.50 kB
 ../../out/renderer/assets/proto-Ds-m32NR.js                            6.58 kB
 ../../out/renderer/assets/markdown-B0YTnTxW.js                         6.65 kB
 ../../out/renderer/assets/solarized-light-B_pp2kVA.js                  6.66 kB
 ../../out/renderer/assets/chapel-wQk8d_On.js                           6.67 kB
 ../../out/renderer/assets/r-AvJ-_IZz.js                                6.76 kB
 ../../out/renderer/assets/talonscript-CEEMXJTH.js                      6.80 kB
-../../out/renderer/assets/BrowserPanel-VE-a5z2R.js                     6.92 kB
+../../out/renderer/assets/BrowserPanel-D4J1cJjk.js                     6.92 kB
 ../../out/renderer/assets/msdax-BBeIktCY.js                            6.95 kB
 ../../out/renderer/assets/riscv-BNQ9cVpw.js                            6.95 kB
 ../../out/renderer/assets/csharp-BJeIuvde.js                           6.98 kB
 ../../out/renderer/assets/min-light-CMrjentn.js                        6.99 kB
-../../out/renderer/assets/htmlMode-D17SYy2H.js                         7.00 kB
+../../out/renderer/assets/htmlMode-DOhNqvAp.js                         7.00 kB
 ../../out/renderer/assets/soy-DAT1Vt2Q.js                              7.03 kB
 ../../out/renderer/assets/solarized-dark-irU5sLKO.js                   7.03 kB
 ../../out/renderer/assets/swift-BmOZGynf.js                            7.18 kB
 ../../out/renderer/assets/scheme-BSHdPinv.js                           7.21 kB
 ../../out/renderer/assets/hlsl-TRzjajlb.js                             7.30 kB
 ../../out/renderer/assets/qss-BFrB6p4y.js                              7.50 kB
-../../out/renderer/assets/html-Dn8tta81.js                             7.62 kB
+../../out/renderer/assets/html-BeHovswE.js                             7.62 kB
 ../../out/renderer/assets/prisma-BGGfvhdm.js                           7.78 kB
 ../../out/renderer/assets/systemd-DJPFjU02.js                          7.91 kB
-../../out/renderer/assets/typescript-DYSHD3-X.js                       7.91 kB
+../../out/renderer/assets/typescript-N7eiygH0.js                       7.91 kB
 ../../out/renderer/assets/ecl-CeuUgzaZ.js                              7.94 kB
 ../../out/renderer/assets/regexp-BxWeO75u.js                           8.03 kB
 ../../out/renderer/assets/monokai-BqhsuXm2.js                          8.05 kB
@@ -204,7 +204,7 @@ rendering chunks...
 ../../out/renderer/assets/vue-html-DhreShjd.js                         8.53 kB
 ../../out/renderer/assets/plsql-B3Na24V4.js                            8.55 kB
 ../../out/renderer/assets/dart-BNVTaiA9.js                             8.66 kB
-../../out/renderer/assets/SubagentPanel-BSHXQtn3.js                    8.77 kB
+../../out/renderer/assets/SubagentPanel-D3dF2MTh.js                    8.77 kB
 ../../out/renderer/assets/horizon-DWzh3z5C.js                          8.80 kB
 ../../out/renderer/assets/horizon-bright-BJQsV5UY.js                   8.82 kB
 ../../out/renderer/assets/kotlin-BM2ZNTMh.js                           8.82 kB
@@ -225,11 +225,11 @@ rendering chunks...
 ../../out/renderer/assets/cmake-CDfQILeU.js                            9.89 kB
 ../../out/renderer/assets/light-plus-DS08Xg5J.js                       9.97 kB
 ../../out/renderer/assets/hcl-axoq0Ycu.js                             10.08 kB
-../../out/renderer/assets/RightPane-OWAd1OaK.js                       10.12 kB
+../../out/renderer/assets/RightPane-D1SUbXJM.js                       10.12 kB
 ../../out/renderer/assets/st-C-b0Dh53.js                              10.15 kB
 ../../out/renderer/assets/twig-DvgEGWAV.js                            10.26 kB
 ../../out/renderer/assets/pkl-BsByaYax.js                             10.40 kB
-../../out/renderer/assets/handlebars-C51EI5iF.js                      10.41 kB
+../../out/renderer/assets/handlebars-UkWb6xCX.js                      10.41 kB
 ../../out/renderer/assets/beancount-aZWrE5WV.js                       10.42 kB
 ../../out/renderer/assets/julia-Cm3ItYL_.js                           10.49 kB
 ../../out/renderer/assets/nextflow-groovy-BoHzzNJ-.js                 10.49 kB
@@ -259,7 +259,7 @@ rendering chunks...
 ../../out/renderer/assets/bat-Dkbx_DMM.js                             12.93 kB
 ../../out/renderer/assets/fish-kGF2-4SL.js                            13.07 kB
 ../../out/renderer/assets/nsis-CgTxT63b.js                            13.16 kB
-../../out/renderer/assets/razor-Cy3Sv1wt.js                           13.33 kB
+../../out/renderer/assets/razor-veKY_nI-.js                           13.33 kB
 ../../out/renderer/assets/v-Dq8gf8Kd.js                               13.36 kB
 ../../out/renderer/assets/vitesse-light-476zM4e6.js                   13.65 kB
 ../../out/renderer/assets/aurora-x-wJ4-eM2h.js                        13.68 kB
@@ -365,7 +365,7 @@ rendering chunks...
 ../../out/renderer/assets/razor-CAqfpVJf.js                           27.58 kB
 ../../out/renderer/assets/scala-X3YXDlFi.js                           28.92 kB
 ../../out/renderer/assets/night-owl-DSS199ra.js                       28.94 kB
-../../out/renderer/assets/jsonMode-BrROpUhX.js                        29.00 kB
+../../out/renderer/assets/jsonMode-C2rcX7Rq.js                        29.00 kB
 ../../out/renderer/assets/crystal-CCwukLCR.js                         29.51 kB
 ../../out/renderer/assets/applescript-C43Knf0G.js                     29.59 kB
 ../../out/renderer/assets/stylus-DXFa_2Jl.js                          31.11 kB
@@ -380,11 +380,11 @@ rendering chunks...
 ../../out/renderer/assets/erlang-Ch5kuXHm.js                          37.54 kB
 ../../out/renderer/assets/bird2-iVuaRSDs.js                           38.72 kB
 ../../out/renderer/assets/cobol-Cff68WIy.js                           39.19 kB
-../../out/renderer/assets/tsMode-BeK-qKTx.js                          40.42 kB
+../../out/renderer/assets/tsMode-BL3GxT-a.js                          40.42 kB
 ../../out/renderer/assets/asm-3tg4MVib.js                             40.75 kB
 ../../out/renderer/assets/haskell-CzPS7wjM.js                         41.47 kB
 ../../out/renderer/assets/shellscript-CQ8MXh-D.js                     41.53 kB
-../../out/renderer/assets/freemarker2-gGZ6i1vq.js                     42.16 kB
+../../out/renderer/assets/freemarker2-DPJsGyi_.js                     42.16 kB
 ../../out/renderer/assets/perl-DNMq5TeG.js                            43.25 kB
 ../../out/renderer/assets/d-9qSZPw74.js                               43.82 kB
 ../../out/renderer/assets/ahk2-CcfgwDsZ.js                            45.10 kB
@@ -406,7 +406,7 @@ rendering chunks...
 ../../out/renderer/assets/html-DmbcFRC9.js                            57.09 kB
 ../../out/renderer/assets/ballerina-B0yt0TYU.js                       58.74 kB
 ../../out/renderer/assets/markdown-F_EULe_G.js                        59.38 kB
-../../out/renderer/assets/lspLanguageFeatures-DTXUDU9C.js             61.70 kB
+../../out/renderer/assets/lspLanguageFeatures-CiCu15e3.js             61.70 kB
 ../../out/renderer/assets/ocaml-B1kfGk9Y.js                           62.48 kB
 ../../out/renderer/assets/mojo-CCMjFYSY.js                            69.55 kB
 ../../out/renderer/assets/python-CrdIx4PZ.js                          69.99 kB
@@ -433,11 +433,11 @@ rendering chunks...
 ../../out/renderer/assets/angular-ts-DY2SSsMH.js                     184.25 kB
 ../../out/renderer/assets/vue-vine-CBak_P96.js                       190.18 kB
 ../../out/renderer/assets/wolfram-CRmjUoI4.js                        262.43 kB
-../../out/renderer/assets/TerminalPanel-CWyCZ67l.js                  423.36 kB
+../../out/renderer/assets/TerminalPanel-hBGJvY28.js                  423.36 kB
 ../../out/renderer/assets/wasm-DDgzZJey.js                           622.45 kB
 ../../out/renderer/assets/cpp-CjtLXoXm.js                            785.61 kB
 ../../out/renderer/assets/emacs-lisp-BEPQeTF2.js                     790.05 kB
-../../out/renderer/assets/DiffPanel-BcgVwKFd.js                      859.04 kB
-../../out/renderer/assets/index-cDPrM24N.js                        2,045.61 kB
-../../out/renderer/assets/FilesPanel-2wgCOT3z.js                  11,703.74 kB
-✓ built in 18.50s
+../../out/renderer/assets/DiffPanel-BcCGARHA.js                      859.04 kB
+../../out/renderer/assets/index-C5c6z67K.js                        2,035.46 kB
+../../out/renderer/assets/FilesPanel-DLRxFxal.js                  11,703.74 kB
+✓ built in 17.97s

@@ -5,9 +5,11 @@
 [context-tree-probe] ✓ A3 主干枝叶过滤：含追问+工具+回答、不含旁支 — n=5
 [context-tree-probe] ✓ A4 未知 leafId 降级=不过滤（历史不清空） — fallback=7 all=7
 [context-tree-probe] ✓ A5 navigateTree RPC 帧契约（targetId 必填） — ok=true bad=false
+[context-tree-probe] ✓ A6.1 分支会话文件生成且只含 root→旁支路径 — file=ok n=4
+[context-tree-probe] ✓ A6.2 未知 leaf 不产出脏文件（null 或抛错） — throws
 [context-tree-probe] ✓ B0 引擎 child 起活并完成装配 — transport=undefined
 [context-tree-probe] ✓ B1 navigateTree(user 条目) → editorText 回填旁支问题、未取消 — editorText="换个思路的旁支问题"
 [context-tree-probe] ✓ B2 navigateTree(assistant 条目) → 不回填、未取消（从这里继续聊） — editorText=null
 [context-tree-probe] ✓ B3 navigateTree 零写盘（会话文件字节不变） — 1538 → 1538
 引擎子进程退出中（quit）
-[context-tree-probe] = 11/11 通过 · 结论 ALL PASS
+[context-tree-probe] = 13/13 通过 · 结论 ALL PASS

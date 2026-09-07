@@ -1,7 +1,7 @@
 [plugin-probe] > appPath=/Users/admin/Desktop/personal/pi-wood/apps/desktop
+[plugin-probe] · [示例·崩溃与自愈] 崩溃演示插件已就绪 — 点「演示：插件崩溃」将使其自我崩溃并自动重启
 [plugin-probe] · [示例·全能力演示] 厨房演示插件已就绪 — 点「演示：API 全能力」查看 §5.8 桌面 API
 [plugin-probe] · [示例·越权被拒] 越权演示插件已就绪 — 点「演示：越权调用被拒」将尝试调用未声明权限
-[plugin-probe] · [示例·崩溃与自愈] 崩溃演示插件已就绪 — 点「演示：插件崩溃」将使其自我崩溃并自动重启
 [plugin:demo-crash] [crash] activate（等待 crash 控制消息）
 [plugin-probe] > 启动后状态: overreach=running crash=running kitchen=running
 [plugin:demo-overreach] [overreach] 第 1 轮：尝试越权调用
@@ -13,7 +13,7 @@
 [plugin-probe] ① 越权拒绝 = PASS（demo-overreach activity: ["未声明权限「terminal:run」，API terminal.run 被拒绝","未声明权限「fs:write」，API diff.revert 被拒绝"]）
 [plugin-probe] · [示例·崩溃与自愈] 即将自我崩溃
 [plugin:demo-crash] [crash] 收到 crash 控制，50ms 后硬退出
-[plugin:demo-crash] crashed code=11 uptime=594ms restarts=0
+[plugin:demo-crash] crashed code=11 uptime=593ms restarts=0
 [plugin-probe] · 插件「示例·崩溃与自愈」崩溃（退出码 11），正在自动重启 1/3
 [plugin-probe] · [示例·崩溃与自愈] 崩溃演示插件已就绪 — 点「演示：插件崩溃」将使其自我崩溃并自动重启
 [plugin:demo-crash] [crash] activate（等待 crash 控制消息）

@@ -1,125 +1,125 @@
 [plugin:demo-crash] [crash] activate（等待 crash 控制消息）
 === T8.10 --ui-latency-probe（带窗：第二跳 / 首屏 / 掉帧 / 主进程 CPU） ===
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-5fb16c50--/2026-09-07T07-22-06-365Z_01a07abe-e69d-7a05-94d1-a51efa978285.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-b16f8c42--/2026-09-07T00-24-04-346Z_01a07940-2dfa-7f4b-943c-2cb39c772f47.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-5fb16c50--/2026-09-07T07-22-06-365Z_01a07abe-e69d-7a05-94d1-a51efa978285.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-b16f8c42--/2026-09-07T00-24-04-346Z_01a07940-2dfa-7f4b-943c-2cb39c772f47.jsonl'
 }
 Error occurred in handler for 'engine:getRuntimeInfo': Error: 引擎未启动：先调 start
-    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1257:24)
-    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1168:38)
+    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1265:24)
+    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1176:38)
     at ForkUtilityProcess.emit (node:events:519:28)
     at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
 Error occurred in handler for 'engine:getAvailableModels': Error: 引擎未启动：先调 start
-    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1257:24)
-    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1168:38)
+    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1265:24)
+    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1176:38)
     at ForkUtilityProcess.emit (node:events:519:28)
     at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
 Error occurred in handler for 'engine:getThinkingLevels': Error: 引擎未启动：先调 start
-    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1257:24)
-    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1168:38)
+    at EngineHost.onFrame (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1265:24)
+    at ForkUtilityProcess.<anonymous> (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:1176:38)
     at ForkUtilityProcess.emit (node:events:519:28)
     at ForkUtilityProcess.a.emit (node:electron/js2c/browser_init:2:75222)
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-5fb16c50--/2026-09-07T07-22-06-365Z_01a07abe-e69d-7a05-94d1-a51efa978285.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-b16f8c42--/2026-09-07T00-24-04-346Z_01a07940-2dfa-7f4b-943c-2cb39c772f47.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-5fb16c50--/2026-09-07T07-22-06-365Z_01a07abe-e69d-7a05-94d1-a51efa978285.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-b16f8c42--/2026-09-07T00-24-04-346Z_01a07940-2dfa-7f4b-943c-2cb39c772f47.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-8761670c--/2026-09-07T07-22-07-007Z_01a07abe-e91f-7d20-acff-36e7ccd3943d.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-be73fc8c--/2026-09-07T00-24-04-876Z_01a07940-300c-783b-9971-34eb82eea7e4.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-8761670c--/2026-09-07T07-22-07-007Z_01a07abe-e91f-7d20-acff-36e7ccd3943d.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-be73fc8c--/2026-09-07T00-24-04-876Z_01a07940-300c-783b-9971-34eb82eea7e4.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-8761670c--/2026-09-07T07-22-07-007Z_01a07abe-e91f-7d20-acff-36e7ccd3943d.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-be73fc8c--/2026-09-07T00-24-04-876Z_01a07940-300c-783b-9971-34eb82eea7e4.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-8761670c--/2026-09-07T07-22-07-007Z_01a07abe-e91f-7d20-acff-36e7ccd3943d.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-be73fc8c--/2026-09-07T00-24-04-876Z_01a07940-300c-783b-9971-34eb82eea7e4.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-QLEP1Q-.pi-wood-worktrees-6363aff9--/2026-09-07T07-22-07-633Z_01a07abe-eb91-7e54-bfa5-9166a63c19f6.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-o6diOI-.pi-wood-worktrees-4d9e51f0--/2026-09-07T00-24-05-410Z_01a07940-3222-7dac-9c53-5edb5e214c5f.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-QLEP1Q-.pi-wood-worktrees-6363aff9--/2026-09-07T07-22-07-633Z_01a07abe-eb91-7e54-bfa5-9166a63c19f6.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-o6diOI-.pi-wood-worktrees-4d9e51f0--/2026-09-07T00-24-05-410Z_01a07940-3222-7dac-9c53-5edb5e214c5f.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-QLEP1Q-.pi-wood-worktrees-6363aff9--/2026-09-07T07-22-07-633Z_01a07abe-eb91-7e54-bfa5-9166a63c19f6.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-o6diOI-.pi-wood-worktrees-4d9e51f0--/2026-09-07T00-24-05-410Z_01a07940-3222-7dac-9c53-5edb5e214c5f.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-QLEP1Q-.pi-wood-worktrees-6363aff9--/2026-09-07T07-22-07-633Z_01a07abe-eb91-7e54-bfa5-9166a63c19f6.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-o6diOI-.pi-wood-worktrees-4d9e51f0--/2026-09-07T00-24-05-410Z_01a07940-3222-7dac-9c53-5edb5e214c5f.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-5fb16c50--/2026-09-07T07-22-06-365Z_01a07abe-e69d-7a05-94d1-a51efa978285.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-b16f8c42--/2026-09-07T00-24-04-346Z_01a07940-2dfa-7f4b-943c-2cb39c772f47.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-5fb16c50--/2026-09-07T07-22-06-365Z_01a07abe-e69d-7a05-94d1-a51efa978285.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-b16f8c42--/2026-09-07T00-24-04-346Z_01a07940-2dfa-7f4b-943c-2cb39c772f47.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-8761670c--/2026-09-07T07-22-07-007Z_01a07abe-e91f-7d20-acff-36e7ccd3943d.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-be73fc8c--/2026-09-07T00-24-04-876Z_01a07940-300c-783b-9971-34eb82eea7e4.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-A8B71j-.pi-wood-worktrees-8761670c--/2026-09-07T07-22-07-007Z_01a07abe-e91f-7d20-acff-36e7ccd3943d.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-a-kv8otN-.pi-wood-worktrees-be73fc8c--/2026-09-07T00-24-04-876Z_01a07940-300c-783b-9971-34eb82eea7e4.jsonl'
 }
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-QLEP1Q-.pi-wood-worktrees-6363aff9--/2026-09-07T07-22-07-633Z_01a07abe-eb91-7e54-bfa5-9166a63c19f6.jsonl'
+Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-o6diOI-.pi-wood-worktrees-4d9e51f0--/2026-09-07T00-24-05-410Z_01a07940-3222-7dac-9c53-5edb5e214c5f.jsonl'
     at readFileSync (node:fs:441:20)
     at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:851:39)
+    at openSessionTree (file:///Users/admin/Desktop/personal/pi-wood/apps/desktop/out/main/index.js:859:39)
     at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
   errno: -2,
   code: 'ENOENT',
   syscall: 'open',
-  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-QLEP1Q-.pi-wood-worktrees-6363aff9--/2026-09-07T07-22-07-633Z_01a07abe-eb91-7e54-bfa5-9166a63c19f6.jsonl'
+  path: '/Users/admin/.pi/agent/sessions/--var-folders-26-3w298cl57vsch3h05l26klww0000gn-T-piwood-uilat-b-o6diOI-.pi-wood-worktrees-4d9e51f0--/2026-09-07T00-24-05-410Z_01a07940-3222-7dac-9c53-5edb5e214c5f.jsonl'
 }
-✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=0.98ms（预算 ≤20ms，n=366）；负载=900 帧 / 3 路 / 间隔 16ms
-✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=10.8ms（预算 ≤33.3ms，n=802）
-✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=5.019%（预算 ≤60%，n=5；无样本不判达标）
-✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=8.9ms（预算 ≤100ms，n=5）
-✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1173 rejectedBatches=0
-  · 全量摘要：rpcRtt p50=1.614 p95=419.166 max=419.166 n=10 | eventHop p50=0.11 p95=0.24 max=0.676 n=900 | rendererHop p50=0.278 p95=0.98 max=17.347 n=366 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=6.5 p95=8.9 max=8.9 n=5 | frameGap p50=10 p95=10.8 max=11.1 n=802 | hostTool p50=0 p95=0 max=0 n=0
-  · 主进程 CPU：p50=4.301% p95=5.019% max=5.019%（n=5）
+✓ U1 事件两跳第二跳 p95 达标 — rendererHop(main→renderer)：p95=1.079ms（预算 ≤20ms，n=257）；负载=900 帧 / 3 路 / 间隔 16ms
+✓ U2 三路并发流式期间无明显掉帧（帧间隔 p95 ≤33.3ms） — frameGap(rAF 帧间隔)：p95=10.9ms（预算 ≤33.3ms，n=786）
+✓ U3 流式期间主进程 CPU ≤ 单核 60% — p95=7.764%（预算 ≤60%，n=5；无样本不判达标）
+✓ U4 切换已激活对话首屏 p95 达标（切了 6 次） — firstPaint(切换首屏)：p95=11.6ms（预算 ≤100ms，n=5）
+✓ U5 上报链路健康（有样本进窗、无非法批次 = 桥与主进程版本同步） — reportedSamples=1048 rejectedBatches=0
+  · 全量摘要：rpcRtt p50=1.565 p95=311.858 max=311.858 n=10 | eventHop p50=0.131 p95=0.316 max=27.113 n=900 | rendererHop p50=0.069 p95=1.079 max=23.675 n=257 | approvalRtt p50=0 p95=0 max=0 n=0 | firstPaint p50=4 p95=11.6 max=11.6 n=5 | frameGap p50=10 p95=10.9 max=39.1 n=786 | hostTool p50=0 p95=0 max=0 n=0
+  · 主进程 CPU：p50=5.24% p95=7.764% max=7.764%（n=5）
   · 口径提醒：负载是 debugEcho 合成事件（不含模型生成），测的是通道 + 渲染管线扛不扛得住
 
 === 结论：5/5 条通过 ===
 [ui-latency] captured /Users/admin/Desktop/personal/pi-wood/apps/desktop/docs/proofs/T8.8/ui-latency-probe.png
-[plugin:demo-crash] crashed code=0 uptime=12250ms restarts=0
+[plugin:demo-crash] crashed code=0 uptime=12142ms restarts=0
 [engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
-[plugin:demo-kitchen] crashed code=0 uptime=12251ms restarts=0
-[plugin:demo-overreach] crashed code=0 uptime=12251ms restarts=0
-[engine] 子进程异常退出（code=0, conv=conv-1-5fb16c50）
-[engine] 子进程异常退出（code=0, conv=conv-2-8761670c）
-[engine] 子进程异常退出（code=0, conv=conv-3-6363aff9）
+[plugin:demo-kitchen] crashed code=0 uptime=12141ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=12142ms restarts=0
+[engine] 子进程异常退出（code=0, conv=conv-1-b16f8c42）
+[engine] 子进程异常退出（code=0, conv=conv-2-be73fc8c）
+[engine] 子进程异常退出（code=0, conv=conv-3-4d9e51f0）
