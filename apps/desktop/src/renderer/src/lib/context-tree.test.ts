@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   branchTitle,
+  branchTipId,
   defaultLeafId,
   deriveContextTree,
   expandBranch,
@@ -138,4 +139,16 @@ test("branchTitle：截 48 省略号；空题面按角色占位", () => {
   assert.equal(branchTitle(row("x", null, "user", "  多行\n第二行被丢弃  ")), "多行");
   assert.equal(branchTitle(row("x", null, "user", "一".repeat(60))), `${"一".repeat(47)}…`);
   assert.equal(branchTitle(row("x", null, "assistant", undefined)), "（回复）");
+});
+
+test("branchTipId：取旁支子树时间戳最新的末梢（fork 整条分支的落点）", () => {
+  const rows = [
+    row("u1", null, "user", "根"),
+    row("b1", "u1", "user", "旁支一轮"),
+    row("b2", "b1", "assistant", "旁支尾"),
+    row("main", "u1", "user", "主路"),
+  ];
+  assert.equal(branchTipId(rows, "b1"), "b2");
+  assert.equal(branchTipId(rows, "main"), "main"); // 单节点子树的梢就是它自己
+  assert.equal(branchTipId(rows, "ghost"), null);
 });

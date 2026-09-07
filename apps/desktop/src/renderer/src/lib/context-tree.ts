@@ -15,6 +15,9 @@
  * 本文件只补「旁支可见 + 可切换」这一层；两者用同一套 user 序号对齐。
  */
 
+/** T9.2 v2.1：中栏容器宽度低于此值时缩略树自动收起（§7.10 显隐规则 4） */
+export const CONTEXT_TREE_MIN_CENTER_WIDTH = 720;
+
 /** 与 ipc-schema SessionTreeRowSchema 对齐的结构类型（渲染层不 import zod，保持纯） */
 export interface TreeRowLike {
   id: string;
@@ -211,6 +214,34 @@ export function expandBranch(rows: TreeRowLike[], rootId: string, limit = 12): B
   };
   walk(rootId, 0);
   return out;
+}
+
+/**
+ * 旁支子树的「梢」= 子树内无子节点且时间戳最新的条目。
+ * T9.2 v2.1「把这条分支另开新对话」用：createBranchedSession(tip) 得到 root→tip 的完整分支路径。
+ */
+export function branchTipId(rows: TreeRowLike[], rootId: string): string | null {
+  const { byId, childrenOf } = indexRows(rows);
+  if (!byId.has(rootId)) return null;
+  let tip: string | null = null;
+  let tipTs = "";
+  const visited = new Set<string>();
+  const stack: string[] = [rootId];
+  while (stack.length) {
+    const id = stack.pop() as string;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const kids = childrenOf.get(id) ?? [];
+    if (kids.length === 0) {
+      const row = byId.get(id);
+      if (row && (tip === null || row.timestamp >= tipTs)) {
+        tip = id;
+        tipTs = row.timestamp;
+      }
+    }
+    for (const k of kids) stack.push(k.id);
+  }
+  return tip;
 }
 
 /**

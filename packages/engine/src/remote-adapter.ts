@@ -48,6 +48,9 @@ const METHOD_TIMEOUTS: Partial<Record<EngineRpcMethod, number>> = {
   newSession: 120_000,
   switchSession: 120_000,
   fork: 120_000,
+  // T9.2 v2.1：navigateTree 本身毫秒级，但 summarize=true 时 SDK 会先跑一次模型摘要（弃枝摘要），
+  // 与装配类同档给 120s——默认 15s 会把慢模型上的摘要误杀成「切换失败」。
+  navigateTree: 120_000,
   shutdown: 15_000,
   compact: 180_000,
   reload: 90_000,

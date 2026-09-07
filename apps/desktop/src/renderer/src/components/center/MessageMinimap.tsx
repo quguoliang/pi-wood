@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { CONTEXT_TREE_MIN_CENTER_WIDTH } from "../../lib/context-tree";
 import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useConversationsStore } from "../../stores/conversations-store";
 import { useContextTreeStore } from "../../stores/context-tree-store";
@@ -24,7 +25,6 @@ import { useContextTreeStore } from "../../stores/context-tree-store";
 const TICK_BASE = 14;
 const TICK_MAX = 30;
 const SIGMA = 1.6;
-const MIN_HOST_WIDTH = 720;
 
 interface Tick {
   rowId: string;
@@ -102,7 +102,7 @@ export function MessageMinimap(): React.JSX.Element | null {
     roRef.current = null;
     const host = el?.parentElement;
     if (!host) return;
-    const check = (w: number): void => setNarrow(w < MIN_HOST_WIDTH);
+    const check = (w: number): void => setNarrow(w < CONTEXT_TREE_MIN_CENTER_WIDTH);
     check(host.clientWidth);
     const ro = new ResizeObserver((entries) => check(Math.round(entries[0]?.contentRect.width ?? host.clientWidth)));
     ro.observe(host);
