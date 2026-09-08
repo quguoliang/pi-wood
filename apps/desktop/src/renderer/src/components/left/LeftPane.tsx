@@ -40,6 +40,24 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
 
   return (
     <aside className="flex h-full min-h-0 flex-col bg-surface-chrome text-sidebar-foreground" aria-label="项目与会话">
+      {window.pi.platform !== "win32" && (
+        /* macOS 无全宽顶栏：左栏顶部 40px 为红绿灯所在的自定义拖拽栏；
+           开关作为 no-drag 子元素嵌在拖拽区内（Electron 可靠模式），中心线对齐卡片 header（y≈26） */
+        <div className="app-drag relative h-10 shrink-0">
+          {/* 自绘红绿灯悬浮在本栏上方（AppShell z-30）：拖拽区会吞非后代元素的点击，
+              在灯占位（x 26-82）打 no-drag 洞后点击才能落到灯上 */}
+          <span aria-hidden="true" className="app-no-drag pointer-events-none absolute inset-y-0 left-[18px] w-[72px]" />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="app-no-drag absolute left-[92px] top-[10px] text-muted-foreground hover:text-foreground active:scale-100!"
+            onClick={() => window.dispatchEvent(new Event("piwood:toggle-sidebar"))}
+            aria-label="展开或收起项目栏"
+          >
+            <Icon name="sidebar" size={15} />
+          </Button>
+        </div>
+      )}
       <SidebarNav
         onNewTask={() => window.dispatchEvent(new Event("piwood:new-session"))}
         onSearch={() => window.dispatchEvent(new Event("piwood:open-command-palette"))}
@@ -98,11 +116,15 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
         </div>
       </section>
 
-      <footer className="shrink-0 p-2 pt-1">
+      <footer className="flex shrink-0 items-center justify-between gap-2 p-2 pt-1">
+        <div className="flex min-w-0 items-center gap-2 pl-1" aria-label="pi-wood">
+          <span className="grid size-[22px] shrink-0 place-items-center rounded-md bg-primary text-[12px] font-bold text-primary-foreground">π</span>
+          <span className="truncate text-[13px] font-semibold tracking-tight">pi-wood</span>
+        </div>
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 w-full justify-start gap-2.5 rounded-md px-2.5 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+          className="h-8 shrink-0 gap-2 rounded-md px-2.5 text-[13px] font-normal text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
           onClick={onOpenSettings}
         >
           <Icon name="settings" /> 设置

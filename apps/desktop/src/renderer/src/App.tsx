@@ -244,7 +244,7 @@ export default function App() {
     <>
       <AppShell
         left={
-          <div data-col-region="left" tabIndex={-1} className="h-full min-h-0 outline-none transition-shadow focus:ring-2 focus:ring-inset focus:ring-ring/60">
+          <div data-col-region="left" tabIndex={-1} className="h-full min-h-0 outline-none">
             <LeftPane onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         }
@@ -252,7 +252,7 @@ export default function App() {
           <div
             data-col-region="center"
             tabIndex={-1}
-            className="relative flex h-full min-h-0 flex-col bg-surface-app outline-none transition-shadow focus:ring-2 focus:ring-inset focus:ring-ring/60"
+            className="relative flex h-full min-h-0 flex-col bg-surface-app outline-none"
             style={{ ["--pk-chat-width" as string]: "48rem" }}
           >
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
@@ -269,7 +269,7 @@ export default function App() {
           </div>
         }
         right={
-          <div data-col-region="right" tabIndex={-1} className="h-full min-h-0 outline-none transition-shadow focus:ring-2 focus:ring-inset focus:ring-ring/60">
+          <div data-col-region="right" tabIndex={-1} className="h-full min-h-0 outline-none">
             <Suspense fallback={<div className="grid h-full place-items-center text-muted-foreground text-sm">正在载入工作台…</div>}>
               <RightPane />
             </Suspense>

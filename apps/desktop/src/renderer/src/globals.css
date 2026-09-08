@@ -164,6 +164,18 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* macOS 透明无边框窗：系统不画边框/圆角，由 #root 自绘 10px 圆角 */
+  html.mac-frameless body {
+    background-color: transparent;
+  }
+  html.mac-frameless #root {
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  /* 原生全屏：满屏无圆角，透明圆角在全屏下会露出白角 */
+  html.mac-frameless.mac-fs #root {
+    border-radius: 0;
+  }
   button {
     cursor: pointer;
   }

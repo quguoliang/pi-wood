@@ -69,9 +69,15 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: "pi-wood",
-    // UI v3：Windows 无边框 + 渲染层自绘 TitleBar（window-controls.ts）；macOS 保留红绿灯 hiddenInset
-    ...(process.platform === "win32" ? { frame: false } : { titleBarStyle: process.platform === "darwin" ? ("hiddenInset" as const) : ("default" as const) }),
-    backgroundColor: "#202020",
+    // UI v3：Windows 无边框 + 渲染层自绘 TitleBar；macOS 透明窗（无系统白线/圆角自绘）。
+    // 透明窗下系统忽略 trafficLightPosition → 红绿灯由渲染层自绘（WindowLights），
+    // 功能对齐原生：关闭/最小化/全屏。
+    ...(process.platform === "win32"
+      ? { frame: false }
+      : process.platform === "darwin"
+        ? { titleBarStyle: "hidden" as const, transparent: true }
+        : { titleBarStyle: "default" as const }),
+    backgroundColor: process.platform === "darwin" ? "#00000000" : "#202020",
     webPreferences: {
       // T8.P：electron-vite ESM 产物入口为 [name].mjs；sandbox:false 是 ESM preload 的硬依赖（不得改回 true）
       preload: join(__dirname, "../preload/index.mjs"),
@@ -84,11 +90,22 @@ function createWindow(): void {
   });
   mainWindowRef = win;
 
+  // 自绘红绿灯，隐藏原生按钮
+  if (process.platform === "darwin") win.setWindowButtonVisibility(false);
+
   win.on("ready-to-show", () => win.show());
 
   // 无边框窗口：最大化状态回推渲染层（TitleBar 图标切换 最大化/还原）
   win.on("maximize", () => sendToRenderer("win:onMaximizeChanged", true));
   win.on("unmaximize", () => sendToRenderer("win:onMaximizeChanged", false));
+
+  // macOS 全屏：让位给系统原生红绿灯（自动隐藏标题栏/悬停浮现），自绘灯隐藏；退出全屏换回
+  const onFullscreenChanged = (isFS: boolean): void => {
+    if (process.platform === "darwin") win.setWindowButtonVisibility(isFS);
+    sendToRenderer("win:onFullscreenChanged", isFS);
+  };
+  win.on("enter-full-screen", () => onFullscreenChanged(true));
+  win.on("leave-full-screen", () => onFullscreenChanged(false));
 
   // 外链走系统浏览器，不在应用内开新窗
   win.webContents.setWindowOpenHandler((details) => {

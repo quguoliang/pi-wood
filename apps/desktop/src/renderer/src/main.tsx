@@ -7,6 +7,13 @@ import { useConversationsStore } from "./stores/conversations-store";
 const container = document.getElementById("root");
 if (!container) throw new Error("#root not found");
 
+// macOS 透明窗：body 需全透明、#root 自绘圆角（见 globals.css .mac-frameless）；
+// 原生全屏时去掉圆角（透明圆角在全屏下露成白角）
+if (window.pi.platform === "darwin") {
+  document.documentElement.classList.add("mac-frameless");
+  window.pi.onWinFullscreenChanged((fs) => document.documentElement.classList.toggle("mac-fs", fs));
+}
+
 createRoot(container).render(
   <React.StrictMode>
     <App />

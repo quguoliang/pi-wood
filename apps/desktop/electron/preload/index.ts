@@ -57,11 +57,20 @@ const api = {
   winMinimize: (): Promise<void> => ipcRenderer.invoke("win:minimize"),
   winMaximizeToggle: (): Promise<void> => ipcRenderer.invoke("win:maximizeToggle"),
   winClose: (): Promise<void> => ipcRenderer.invoke("win:close"),
+  winFullScreenToggle: (): Promise<void> => ipcRenderer.invoke("win:fullscreenToggle"),
+  winSetTile: (tile: "left" | "right" | "top" | "bottom" | "fill" | "left23" | "right23" | "quadTL"): Promise<void> => ipcRenderer.invoke("win:setTile", tile),
+  winListDisplays: (): Promise<{ id: number; label: string }[]> => ipcRenderer.invoke("win:listDisplays"),
+  winMoveToDisplay: (id: number): Promise<void> => ipcRenderer.invoke("win:moveToDisplay", id),
   winIsMaximized: (): Promise<boolean> => ipcRenderer.invoke("win:isMaximized"),
   onWinMaximizeChanged: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_e: unknown, maximized: boolean): void => cb(maximized);
     ipcRenderer.on("win:onMaximizeChanged", handler);
     return () => ipcRenderer.removeListener("win:onMaximizeChanged", handler);
+  },
+  onWinFullscreenChanged: (cb: (fullScreen: boolean) => void): (() => void) => {
+    const handler = (_e: unknown, fullScreen: boolean): void => cb(fullScreen);
+    ipcRenderer.on("win:onFullscreenChanged", handler);
+    return () => ipcRenderer.removeListener("win:onFullscreenChanged", handler);
   },
   // T0.3 探针/桥接事件（正式化在 T1.1 IPC 层）
   onUiNotify: (cb: (data: { message: string; type: string }) => void): (() => void) => {

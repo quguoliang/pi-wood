@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Icon } from "../ui/Icon";
 import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useFullScreen } from "../../hooks/use-fullscreen";
 import { buildExportFilename, formatSessionAsMarkdown } from "../../lib/export-session";
 
 /**
@@ -34,6 +35,10 @@ export function ConversationHeader({
   const items = useActiveConversation((c) => c.items);
   const activeProject = useSessionStore((s) => s.activeProject);
   const rightCollapsed = useSettingsStore((s) => Boolean(s.settings.window.rightCollapsed));
+  const leftCollapsed = useSettingsStore((s) => Boolean(s.settings.window.leftCollapsed));
+  const fullScreen = useFullScreen();
+  // 窗口态收起左栏时，红绿灯+开关需要预留 128px；全屏无自绘灯，占位收掉、图标左移
+  const reserve = leftCollapsed && !fullScreen;
 
   const projectName = activeProject?.split(/[\\/]/).filter(Boolean).pop();
   const display = title || projectName || "新任务";
@@ -54,8 +59,19 @@ export function ConversationHeader({
   };
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-8">
-      <Icon name="message" className="size-4 shrink-0 text-muted-foreground" />
+    <header className={cn("relative flex h-11 shrink-0 items-center gap-2 border-b border-border/60 pl-8 pr-6", reserve && "pl-[128px]", leftCollapsed && fullScreen && "pl-[56px]")}>
+      {leftCollapsed && window.pi.platform !== "win32" && (
+        /* 左栏收起后开关接力点：窗口态与展开态同坐标 x=92（避开灯位）；全屏无灯，靠左缘 */
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cn("absolute top-1/2 z-10 -translate-y-1/2 text-muted-foreground hover:text-foreground active:scale-100!", fullScreen ? "left-[8px]" : "left-[88px]")}
+          onClick={() => window.dispatchEvent(new Event("piwood:toggle-sidebar"))}
+          aria-label="展开或收起项目栏"
+        >
+          <Icon name="sidebar" size={15} />
+        </Button>
+      )}
       <h1 className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={display}>
         {display}
       </h1>

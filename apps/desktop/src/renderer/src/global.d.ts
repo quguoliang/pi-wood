@@ -49,8 +49,13 @@ declare global {
       winMinimize(): Promise<void>;
       winMaximizeToggle(): Promise<void>;
       winClose(): Promise<void>;
+      winFullScreenToggle(): Promise<void>;
+      winSetTile(tile: "left" | "right" | "top" | "bottom" | "fill" | "left23" | "right23" | "quadTL"): Promise<void>;
+      winListDisplays(): Promise<{ id: number; label: string }[]>;
+      winMoveToDisplay(id: number): Promise<void>;
       winIsMaximized(): Promise<boolean>;
       onWinMaximizeChanged(cb: (maximized: boolean) => void): () => void;
+      onWinFullscreenChanged(cb: (fullScreen: boolean) => void): () => void;
       onUiNotify(cb: (data: { message: string; type: string }) => void): () => void;
       // T8.4：审批 / ctx.ui 带对话归属——conversationId=发起对话（null=插件等全局请求），projectName=来源项目名
       onUiRequest(cb: (data: { id: number; kind: "select" | "confirm" | "input"; conversationId: string | null; projectName?: string; title: string; options?: string[]; message?: string; placeholder?: string }) => void): () => void;
