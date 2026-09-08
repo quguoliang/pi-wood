@@ -69,17 +69,18 @@ export function ConversationHeader({
         >
           <Icon name="panelTop" />
         </Button>
-        {rightCollapsed && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={() => window.dispatchEvent(new Event("piwood:toggle-inspector"))}
-            aria-label="展开右侧工作台"
-          >
-            <Icon name="panelRight" />
-          </Button>
-        )}
+        {/* 常显：若只按 rightCollapsed 条件渲染，右栏被拖窄/状态不同步时会出现
+            Header 无按钮、RightPane 又看不见的双死锁——常显保证任何状态都有入口 */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cn("text-muted-foreground hover:text-foreground", !rightCollapsed && "bg-accent text-accent-foreground")}
+          onClick={() => window.dispatchEvent(new Event("piwood:toggle-inspector"))}
+          aria-label={rightCollapsed ? "展开右侧工作台" : "收起右侧工作台"}
+          title={rightCollapsed ? "展开右侧工作台" : "收起右侧工作台"}
+        >
+          <Icon name="panelRight" />
+        </Button>
         {items.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
