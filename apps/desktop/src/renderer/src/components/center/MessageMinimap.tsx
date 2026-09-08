@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { cn } from "@/lib/utils";
 import { CONTEXT_TREE_MIN_CENTER_WIDTH } from "../../lib/context-tree";
-import { buildNavTicks, diffBarCounts, DIFF_TOTAL_BLOCKS, tickWidthAt } from "../../lib/message-nav";
+import { buildNavTicks, tickWidthAt } from "../../lib/message-nav";
 import { subscribeOutlineAnchor } from "../../lib/outline-bus";
 import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useConversationsStore } from "../../stores/conversations-store";
@@ -32,8 +32,6 @@ const RAIL_ROW_HEIGHT = 12; // 刻度行高
 const TIP_GUTTER = 8; // 刻度条 ↔ 摘要浮层间距
 const TIP_CLOSE_DELAY = 120; // 沿刻度条平移时不闪断
 const RAIL_MAX_HEIGHT = "70vh"; // 轮次过多时内部滚动，不出消息列
-
-const NEUTRAL_COLOR = "var(--muted-foreground)";
 
 export function MessageMinimap(): React.JSX.Element | null {
   const items = useActiveConversation((c) => c.items);
@@ -257,7 +255,6 @@ export function MessageMinimap(): React.JSX.Element | null {
             className="pointer-events-none absolute z-30 flex max-w-[min(24rem,38vw)] -translate-y-1/2 items-center gap-2.5 whitespace-nowrap rounded-md border border-border/60 bg-popover/95 px-2.5 py-1 text-sm text-popover-foreground shadow-md"
             style={{ left: RAIL_WIDTH + TIP_GUTTER, top: tipTop }}
           >
-            <DiffBars additions={hovered.additions} deletions={hovered.deletions} />
             <span data-title-preview className="min-w-0 truncate">
               {hovered.title || "新消息"}
             </span>
@@ -265,31 +262,5 @@ export function MessageMinimap(): React.JSX.Element | null {
         )}
       </div>
     </div>
-  );
-}
-
-/** 参考 `DiffChanges variant="bars"`：18×14 视图内 5 根 2px 圆角竖条，增=绿、删=红、中性=弱灰。 */
-function DiffBars({ additions, deletions }: { additions: number; deletions: number }): React.JSX.Element {
-  const [added, deleted, neutral] = diffBarCounts(additions, deletions);
-  const colors = [
-    ...Array(added).fill("var(--success)"),
-    ...Array(deleted).fill("var(--destructive)"),
-    ...Array(neutral).fill(NEUTRAL_COLOR),
-  ].slice(0, DIFF_TOTAL_BLOCKS);
-  return (
-    <svg
-      data-diff-bars
-      className="block h-3.5 w-[18px] shrink-0"
-      viewBox="0 0 18 14"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <g>
-        {colors.map((color, i) => (
-          <rect key={i} x={i * 4} width="2" height="14" rx="1" fill={color} opacity={color === NEUTRAL_COLOR ? 0.35 : 1} />
-        ))}
-      </g>
-    </svg>
   );
 }

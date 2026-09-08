@@ -12,7 +12,7 @@ import { getConversation } from "./conversation-registry";
  *   U1 刻度条出现、每个 user 轮次一个刻度、常态无摘要浮层、旧侧栏不存在；transcript=默认叶路径
  *      U1.1b 常态所有刻度 10×1px 一模一样——**不做默认高亮**（当前阅读轮也不例外）
  *   U2 hover 刻度：以目标为中心**正态展开**（目标 ≈20px 最长、邻居跟着变长但严格更短、远端回 10px），
- *      全程只有长度动不加粗；右侧 8px 只浮出**这一条**的摘要（diff bars + 首行标题，显式断言不含其他轮次）
+ *      全程只有长度动不加粗；右侧 8px 只浮出**这一条**的摘要（首行标题，显式断言不含其他轮次）
  *   U3 点刻度 → 跳转 + 目标行 flash；指针离开后整列回到 10×1px 等长、浮层收起（无残留高亮）
  *   U4 回复底部「分叉」→ 新对话（含被点回复）+ 左栏「Fork of X」+ 底部「从对话中派生」chip；点 chip 回跳源对话
  *   U5 窄窗（<720px）刻度条自动隐藏、拉宽恢复
@@ -170,7 +170,6 @@ export async function runContextTreeUiProbe(): Promise<void> {
       ticks: Array<{ width: number; height: number }>;
       tipCount: number;
       tipText: string;
-      tipBars: number;
       tipRightOfRail: boolean;
       tipAlignedToHovered: boolean;
     }>(`
@@ -189,7 +188,6 @@ export async function runContextTreeUiProbe(): Promise<void> {
         }),
         tipCount: tips.length,
         tipText: tip ? tip.innerText : "",
-        tipBars: tip ? tip.querySelectorAll("svg[data-diff-bars] rect").length : 0,
         tipRightOfRail: t ? t.left >= railRight : false,
         tipAlignedToHovered: !!(t && line) && Math.abs(t.top + t.height / 2 - (line.top + line.height / 2)) <= 3,
       };`);
@@ -207,9 +205,9 @@ export async function runContextTreeUiProbe(): Promise<void> {
       JSON.stringify(u2 ?? {}),
     );
     check(
-      "U2.1 浮层只展示当前这一条（标题 + 5 根 bars），不列其他轮次",
-      !!u2 && u2.tipText.includes("换个思路") && !u2.tipText.includes("第一个问题") && u2.tipBars === 5,
-      `tip=${JSON.stringify(u2?.tipText ?? "")} bars=${String(u2?.tipBars ?? -1)}`,
+      "U2.1 浮层只展示当前这一条（仅标题），不列其他轮次",
+      !!u2 && u2.tipText.includes("换个思路") && !u2.tipText.includes("第一个问题"),
+      `tip=${JSON.stringify(u2?.tipText ?? "")}`,
     );
     // hover 摘要态留一张证据图（末帧 capture 时浮层已收）
     await capture(join(dirname(shot), "context-tree-ui-hover.png"));
