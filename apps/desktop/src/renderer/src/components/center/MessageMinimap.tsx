@@ -13,8 +13,8 @@ import { useContextTreeStore } from "../../stores/context-tree-store";
  *
  * 形态（用户 2026-09-08 三轮改判定稿）：
  * - **每个 user 轮次一条刻度**（assistant/thinking/tool/system 不成刻度），行高 12px 等距；
- * - **常态所有刻度完全一样**（16×1px 发丝线、同色）——**不做默认高亮**，当前阅读轮次也不例外；
- * - **hover 才动**：以目标为中心做正态分布衰减（目标 30px、相邻按高斯渐次变长、远端回 16px，200ms ease），
+ * - **常态所有刻度完全一样**（10×1px 发丝线、同色）——**不做默认高亮**，当前阅读轮次也不例外；
+ * - **hover 才动**：以目标为中心做正态分布衰减（目标 20px、相邻按高斯渐次变长、远端回 10px，200ms ease），
  *   离开后整列回到等长；
  * - hover 只在右侧浮出**当前这一条**的摘要（diff bars + 首行标题），**不列出其他轮次**；
  * - 点击刻度 → 派发 `piwood:outline-jump`（MessageList 既有监听：scrollToIndex + 行 flash 高亮）；
@@ -24,8 +24,8 @@ import { useContextTreeStore } from "../../stores/context-tree-store";
  * 刻度/衰减/bars 的纯逻辑在 lib/message-nav.ts（单测覆盖）；颜色全走主题 token，浅暗色自动适配。
  */
 
-const TICK_BASE = 16; // 常态刻度长度（全部等长）
-const TICK_MAX = 30; // hover 目标刻度长度（邻居按高斯衰减介于两者之间）
+const TICK_BASE = 10; // 常态刻度长度（全部等长）
+const TICK_MAX = 20; // hover 目标刻度长度（邻居按高斯衰减介于两者之间）
 const SIGMA = 1.6; // 正态衰减系数（越大→邻居被带得越长）
 const RAIL_WIDTH = TICK_MAX; // 容器预留满宽，展开时不推动布局
 const RAIL_ROW_HEIGHT = 12; // 刻度行高
@@ -191,7 +191,7 @@ export function MessageMinimap(): React.JSX.Element | null {
       ref={attachHost}
       data-minimap
       aria-label="消息刻度导航"
-      className={cn("pointer-events-none absolute left-0 top-1/2 z-20 -translate-y-1/2", narrow && "invisible")}
+      className={cn("pointer-events-none absolute left-2 top-1/2 z-20 -translate-y-1/2", narrow && "invisible")}
     >
       <div ref={railBoxRef} className="pointer-events-auto relative">
         {/* 刻度条：常态每根完全一样（16×1px、同色）；hover 才以目标为中心做正态展开；轮次过多内部滚动不留滚动条 */}

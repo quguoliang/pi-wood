@@ -10,10 +10,10 @@ import { getConversation } from "./conversation-registry";
  * T9.2 v2.2 带窗交互探针 `electron . --context-tree-ui-probe`（形态按用户三轮改判定稿）：
  * 验证的是**消息刻度条 minimap（竖向居中 + 常态完全等长 + hover 正态展开 + 单条摘要浮层）**与**消息级分叉**：
  *   U1 刻度条出现、每个 user 轮次一个刻度、常态无摘要浮层、旧侧栏不存在；transcript=默认叶路径
- *      U1.1b 常态所有刻度 16×1px 一模一样——**不做默认高亮**（当前阅读轮也不例外）
- *   U2 hover 刻度：以目标为中心**正态展开**（目标 ≈30px 最长、邻居跟着变长但严格更短、远端回 16px），
+ *      U1.1b 常态所有刻度 10×1px 一模一样——**不做默认高亮**（当前阅读轮也不例外）
+ *   U2 hover 刻度：以目标为中心**正态展开**（目标 ≈20px 最长、邻居跟着变长但严格更短、远端回 10px），
  *      全程只有长度动不加粗；右侧 8px 只浮出**这一条**的摘要（diff bars + 首行标题，显式断言不含其他轮次）
- *   U3 点刻度 → 跳转 + 目标行 flash；指针离开后整列回到 16×1px 等长、浮层收起（无残留高亮）
+ *   U3 点刻度 → 跳转 + 目标行 flash；指针离开后整列回到 10×1px 等长、浮层收起（无残留高亮）
  *   U4 回复底部「分叉」→ 新对话（含被点回复）+ 左栏「Fork of X」+ 底部「从对话中派生」chip；点 chip 回跳源对话
  *   U5 窄窗（<720px）刻度条自动隐藏、拉宽恢复
  * 截图留档 docs/proofs/ui-v3/context-tree-ui.png（+ hover 态 context-tree-ui-hover.png）。
@@ -152,8 +152,8 @@ export async function runContextTreeUiProbe(): Promise<void> {
       JSON.stringify(u1 ?? {}),
     );
     check(
-      "U1.1b 常态无默认高亮：所有刻度 16×1px 完全一样（当前轮也不例外）",
-      !!u1 && u1.lines.length === 2 && u1.lines.every((l) => l.width <= 17 && l.height <= 1.5),
+      "U1.1b 常态无默认高亮：所有刻度 10×1px 完全一样（当前轮也不例外）",
+      !!u1 && u1.lines.length === 2 && u1.lines.every((l) => l.width <= 11 && l.height <= 1.5),
       `lines=${JSON.stringify(u1?.lines ?? [])}`,
     );
     check("U1.2 transcript=默认叶路径：见旁支答、不见主干答", u1?.bodyHasBranch === true && u1?.bodyHasMain === false, "");
@@ -193,14 +193,14 @@ export async function runContextTreeUiProbe(): Promise<void> {
         tipRightOfRail: t ? t.left >= railRight : false,
         tipAlignedToHovered: !!(t && line) && Math.abs(t.top + t.height / 2 - (line.top + line.height / 2)) <= 3,
       };`);
-    // 正态展开：目标最长（≈30px）、邻居跟着变长但严格更短、远端回 base；全程只有长度动，粗细不变。
+    // 正态展开：目标最长（≈20px）、邻居跟着变长但严格更短、远端回 base；全程只有长度动，粗细不变。
     const target = u2?.ticks[1];
     const neighbour = u2?.ticks[0];
     check(
-      "U2 hover 正态展开：目标最长 > 邻居 > 常态 16px，且都不加粗；摘要浮层贴目标右侧并对齐",
+      "U2 hover 正态展开：目标最长 > 邻居 > 常态 10px，且都不加粗；摘要浮层贴目标右侧并对齐",
       !!target && !!neighbour &&
-        target.width >= 29 &&
-        neighbour.width > 17 &&
+        target.width >= 19.5 &&
+        neighbour.width > 15 &&
         neighbour.width < target.width - 1 &&
         u2.ticks.every((t) => t.height <= 1.5) &&
         u2.tipCount === 1 && u2.tipRightOfRail === true && u2.tipAlignedToHovered === true,
@@ -247,8 +247,8 @@ export async function runContextTreeUiProbe(): Promise<void> {
         tipGone: !document.querySelector('[data-minimap] [data-nav-tip]'),
       };`);
     check(
-      "U3.1 指针离开后整列回到 16×1px 等长、浮层收起（不留任何高亮）",
-      !!u3rest && u3rest.lines.length === 2 && u3rest.lines.every((l) => l.width <= 17 && l.height <= 1.5) && u3rest.tipGone === true,
+      "U3.1 指针离开后整列回到 10×1px 等长、浮层收起（不留任何高亮）",
+      !!u3rest && u3rest.lines.length === 2 && u3rest.lines.every((l) => l.width <= 11 && l.height <= 1.5) && u3rest.tipGone === true,
       JSON.stringify(u3rest ?? {}),
     );
 
