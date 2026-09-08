@@ -181,6 +181,7 @@ const api = {
   engineSetThinking: (level: string): Promise<void> => ipcRenderer.invoke("engine:setThinking", { level }),
   engineCompact: (): Promise<void> => ipcRenderer.invoke("engine:compact"),
   projectList: (): Promise<unknown> => ipcRenderer.invoke("project:list"),
+  projectVirtualDir: (): Promise<string> => ipcRenderer.invoke("project:virtualDir"),
   projectAdd: (path: string): Promise<unknown> => ipcRenderer.invoke("project:add", { path }),
   projectRemove: (id: string): Promise<boolean> => ipcRenderer.invoke("project:remove", { id }),
   projectPick: (): Promise<string | undefined> => ipcRenderer.invoke("project:pickDialog"),

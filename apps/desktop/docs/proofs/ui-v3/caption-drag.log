@@ -1,5 +1,3 @@
-$ pnpm --filter @pi-wood/desktop dev
-$ node ../../scripts/ensure-electron.mjs && electron-vite dev
 [36mvite v5.4.21 [32mbuilding SSR bundle for development...[36m[39m
 transforming...
 [32m✓[39m 92 modules transformed.
@@ -16,8 +14,8 @@ rendering chunks...
 [2mout/main/[22m[36mchunks/index-Cy-oIwDN.js            [39m[1m[2m  4.81 kB[22m[1m[22m
 [2mout/main/[22m[36mengine-child.js                     [39m[1m[2m 11.61 kB[22m[1m[22m
 [2mout/main/[22m[36mchunks/host-tool-specs-CrISf869.js  [39m[1m[2m 56.86 kB[22m[1m[22m
-[2mout/main/[22m[36mindex.js                            [39m[1m[2m335.48 kB[22m[1m[22m
-[32m✓ built in 560ms[39m
+[2mout/main/[22m[36mindex.js                            [39m[1m[2m335.05 kB[22m[1m[22m
+[32m✓ built in 448ms[39m
 [32m
 build the electron main process successfully[39m
 [90m
@@ -27,8 +25,8 @@ build the electron main process successfully[39m
 transforming...
 [32m✓[39m 1 modules transformed.
 rendering chunks...
-[2mout/preload/[22m[36mindex.mjs  [39m[1m[2m14.96 kB[22m[1m[22m
-[32m✓ built in 20ms[39m
+[2mout/preload/[22m[36mindex.mjs  [39m[1m[2m14.89 kB[22m[1m[22m
+[32m✓ built in 14ms[39m
 [32m
 build the electron preload files successfully[39m
 [90m
@@ -43,51 +41,7 @@ start electron app...
 [39m
 
 [plugin:demo-crash] [crash] activate（等待 crash 控制消息）
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open 'C:\Users\1\.pi\agent\sessions\--C--Users-1-.pi-wood-chats--\2026-09-08T16-44-56-961Z_01a081e8-8f01-7a84-a5fa-ccc2c2bc6774.jsonl'
-    at readFileSync (node:fs:441:20)
-    at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:865:39)
-    at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
-  errno: -4058,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: 'C:\\Users\\1\\.pi\\agent\\sessions\\--C--Users-1-.pi-wood-chats--\\2026-09-08T16-44-56-961Z_01a081e8-8f01-7a84-a5fa-ccc2c2bc6774.jsonl'
-}
-[engine] 对话 conv-2-86857d07 共享主工作树：该目录不是 git 仓库，无法为对话隔离工作树。该对话将共享主工作树，存在互相覆盖风险。
-[engine] 对话 conv-3-2ea4eae3 共享主工作树：该目录不是 git 仓库，无法为对话隔离工作树。该对话将共享主工作树，存在互相覆盖风险。
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open 'C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-A--\2026-09-08T16-45-01-361Z_01a081e8-a031-74b5-a97a-ce4b5c57a38c.jsonl'
-    at readFileSync (node:fs:441:20)
-    at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:865:39)
-    at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
-  errno: -4058,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: 'C:\\Users\\1\\.pi\\agent\\sessions\\--C--Users-1-Desktop-A--\\2026-09-08T16-45-01-361Z_01a081e8-a031-74b5-a97a-ce4b5c57a38c.jsonl'
-}
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open 'C:\Users\1\.pi\agent\sessions\--C--Users-1-Desktop-A-frontend--\2026-09-08T16-45-02-925Z_01a081e8-a64d-7517-aa88-f593471cbdfb.jsonl'
-    at readFileSync (node:fs:441:20)
-    at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:865:39)
-    at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
-  errno: -4058,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: 'C:\\Users\\1\\.pi\\agent\\sessions\\--C--Users-1-Desktop-A-frontend--\\2026-09-08T16-45-02-925Z_01a081e8-a64d-7517-aa88-f593471cbdfb.jsonl'
-}
-Error occurred in handler for 'sessions:tree': Error: ENOENT: no such file or directory, open 'C:\Users\1\.pi\agent\sessions\--C--Users-1-.pi-wood-chats--\2026-09-08T16-44-56-961Z_01a081e8-8f01-7a84-a5fa-ccc2c2bc6774.jsonl'
-    at readFileSync (node:fs:441:20)
-    at t.readFileSync (node:electron/js2c/node_init:2:11013)
-    at openSessionTree (file:///C:/Users/1/Desktop/pi-wood/apps/desktop/out/main/index.js:865:39)
-    at async Session.<anonymous> (node:electron/js2c/browser_init:2:107253) {
-  errno: -4058,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: 'C:\\Users\\1\\.pi\\agent\\sessions\\--C--Users-1-.pi-wood-chats--\\2026-09-08T16-44-56-961Z_01a081e8-8f01-7a84-a5fa-ccc2c2bc6774.jsonl'
-}
-[plugin:demo-crash] crashed code=18446744073709552000 uptime=940760ms restarts=0
-[plugin:demo-kitchen] crashed code=18446744073709552000 uptime=940765ms restarts=0
-C:\Users\1\Desktop\pi-wood\apps\desktop:
-[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @pi-wood/desktop@0.0.1 dev: `node ../../scripts/ensure-electron.mjs && electron-vite dev`
-Exit status 4294967295
-[ELIFECYCLE] Command failed with exit code 4294967295.
+[plugin:demo-crash] crashed code=0 uptime=3403ms restarts=0
+[engine] 渲染层推送累计丢弃 1 条（窗口未就绪/已销毁？通道 ui:notify）
+[plugin:demo-kitchen] crashed code=0 uptime=3402ms restarts=0
+[plugin:demo-overreach] crashed code=0 uptime=3401ms restarts=0

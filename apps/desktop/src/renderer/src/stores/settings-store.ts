@@ -58,6 +58,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ settings: merge(settings), loaded: true });
   },
   async patch(patch) {
+    // 乐观更新：本地立即生效（UI 零延迟——折叠联动 header padding/接力图标必须同步，
+    // 等 settingsSet IPC 往返会晚 ~200ms=动画中途换挡抖动），落盘后用主进程合并结果校正。
+    const cur = get().settings as unknown as Record<string, object>;
+    const raw: Record<string, unknown> = { ...cur };
+    for (const [k, v] of Object.entries(patch)) {
+      raw[k] = v && typeof v === "object" && !Array.isArray(v) ? { ...cur[k], ...(v as object) } : v;
+    }
+    set({ settings: merge(raw as Partial<PiWoodSettings>) });
     const settings = (await window.pi.settingsSet(patch)) as unknown as PiWoodSettings;
     set({ settings: merge(settings) });
   },

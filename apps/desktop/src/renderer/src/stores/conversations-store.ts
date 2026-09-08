@@ -17,6 +17,8 @@ export interface ConversationRow {
   inFlightPrompt: boolean;
   pendingApprovals: number;
   worktreePath?: string;
+  /** 「最近」组排序用（注册表在切换/收发消息时 touch） */
+  lastActiveAt?: number;
   /** 该对话当前 Pi 会话文件（首轮消息落盘前缺席）；左栏树行 ↔ 磁盘会话去重的映射键 */
   sessionFile?: string;
   epoch?: number;

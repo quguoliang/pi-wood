@@ -311,7 +311,9 @@ async function spawnHandle(
   // 降级（非 git / detached / 路径过长）→ 显式提示后共享主树，不静默。
   let cwd = projectDir;
   let worktreeBaseRef: string | undefined;
-  if (worktreeSettings().enabled) {
+  // 「最近」虚拟项目目录（~/.pi-wood/chats）非 git 是设计使然：跳过 worktree 机制，不降级不提示
+  const isVirtualChats = /[\\/]\.pi-wood[\\/]chats[\\/]?$/i.test(projectDir.replace(/[\\/]+$/, ""));
+  if (worktreeSettings().enabled && !isVirtualChats) {
     if (!orphanCheckedProjects.has(projectDir)) {
       orphanCheckedProjects.add(projectDir);
       const orphans = await reconcileOrphans(projectDir, [...handles.values()].map((h) => h.worktreePath ?? h.projectDir));
@@ -324,7 +326,7 @@ async function spawnHandle(
     cwd = ensured.cwd;
     worktreeBaseRef = ensured.baseRef;
     if (ensured.status === "degraded-shared" && ensured.reason) {
-      c.notify(ensured.reason, "warning");
+      console.warn(`[engine] 对话 ${id} 共享主工作树：${ensured.reason}`);
     }
   }
   const host = new EngineHost({

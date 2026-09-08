@@ -94,6 +94,7 @@ function MenuItem({
 /** 单个项目分组：项目行 + 对话列表（活跃对话）+ 历史会话 + 「已归档」组。纯呈现，操作经回调上行。 */
 export function ProjectGroup({
   project,
+  virtual = false,
   conversations,
   sessions,
   metaMap,
@@ -120,6 +121,8 @@ export function ProjectGroup({
   onDeleteSession,
 }: {
   project: ProjectRecord;
+  /** 「最近」虚拟项目分组：无项目管理菜单（重命名/移除），图标用对话语义 */
+  virtual?: boolean;
   conversations: ConversationTreeItem[];
   sessions: SessionItem[];
   metaMap: Record<string, SessionMeta>;
@@ -247,7 +250,7 @@ export function ProjectGroup({
         ) : (
           <button className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[13px]" type="button" onClick={onToggle}>
             <Icon name="chevronRight" className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform", isExpanded && "rotate-90")} />
-            <Icon name={isExpanded ? "folderOpen" : "folder"} className="size-4 shrink-0 opacity-80" />
+            <Icon name={virtual ? "message" : isExpanded ? "folderOpen" : "folder"} className="size-4 shrink-0 opacity-80" />
             <span className="min-w-0 truncate">{project.name}</span>
           </button>
         )}
@@ -265,7 +268,8 @@ export function ProjectGroup({
         >
           <Icon name="add" className="size-3.5" />
         </Button>
-        <DropdownMenu>
+        {!virtual && (
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -283,6 +287,7 @@ export function ProjectGroup({
             <MenuItem icon={<Trash2 className="size-3.5" />} label="移除项目…" destructive onSelect={() => setPendingRemoveProject(true)} />
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
       </div>
 
       {isExpanded && (

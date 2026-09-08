@@ -37,6 +37,9 @@ export interface SessionItem {
  */
 export function useSidebarProjects() {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  // 「最近」虚拟项目（~/.pi-wood/chats）：普通对话的默认归属，不入 projects.json
+  const [virtualProject, setVirtualProject] = useState<ProjectRecord | undefined>();
+  const virtualRef = useRef<ProjectRecord | undefined>(undefined);
   const [sessionsByProject, setSessionsByProject] = useState<Record<string, SessionItem[]>>({});
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [activeProject, setActiveProject] = useState<string | undefined>();
@@ -72,13 +75,28 @@ export function useSidebarProjects() {
     projectsRef.current = projectList;
     setProjects(projectList);
 
+    // 「最近」虚拟项目：一并纳入查找表（piwood:select-project 也能选中它）
+    try {
+      const dir = (await window.pi.projectVirtualDir?.()) as string | undefined;
+      if (dir) {
+        const virtual = { id: "virtual", path: dir, name: "最近" };
+        virtualRef.current = virtual;
+        setVirtualProject(virtual);
+        projectsRef.current = [...projectList, virtual];
+        const vSessions = (await window.pi.sessionsList(dir).catch(() => [])) as SessionItem[];
+        setSessionsByProject((current) => ({ ...current, [dir]: vSessions }));
+      }
+    } catch {
+      /* 虚拟目录不可用（罕见）则维持纯项目模式 */
+    }
+
     const grouped = await Promise.all(
       projectList.map(async (project) => [
         project.path,
         (await window.pi.sessionsList(project.path).catch(() => [])) as SessionItem[],
       ] as const),
     );
-    setSessionsByProject(Object.fromEntries(grouped));
+    setSessionsByProject((current) => ({ ...Object.fromEntries(grouped), ...current }));
   }, []);
 
   const activateProject = useCallback(async (project: ProjectRecord) => {
@@ -149,15 +167,25 @@ export function useSidebarProjects() {
     useConversationsStore.getState().startDraft(project.path);
   }, [activeProject, activateProject]);
 
-  // 全局"新建会话"（SidebarNav 新建任务 / Ctrl+N）落到当前激活项目（草稿态，不预建）
+  // 全局"新建会话"（SidebarNav 新建任务 / Ctrl+N）落到当前激活项目；无激活项目 → 「最近」虚拟项目
   useEffect(() => {
     const createProjectSession = () => {
-      const project = projectsRef.current.find((item) => item.path === activeProject);
+      const project = projectsRef.current.find((item) => item.path === activeProject) ?? virtualRef.current;
       if (project) void startDraftIn(project);
     };
     window.addEventListener("piwood:new-session", createProjectSession);
     return () => window.removeEventListener("piwood:new-session", createProjectSession);
   }, [activeProject, startDraftIn]);
+
+  // 「最近」虚拟项目：启动时默认进入（引擎就绪 → 不选项目也能直接对话/调模型），并默认展开
+  useEffect(() => {
+    if (!virtualProject) return;
+    setExpandedProjects((current) => new Set(current).add(virtualProject.path));
+    if (!activeProject && !useSessionStore.getState().activeConversationId) {
+      void activateProject(virtualProject);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [virtualProject]);
 
   const toggleProject = useCallback((project: ProjectRecord) => {
     setExpandedProjects((current) => {
@@ -294,8 +322,13 @@ export function useSidebarProjects() {
         isTree: Boolean(row.worktreePath) && row.worktreePath !== row.projectDir,
       });
     }
+    // 「最近」组：最新对话在最前（lastActiveAt 由注册表维护，切换/收发消息都会 touch）
+    const vdir = virtualProject?.path;
+    if (vdir && map[vdir]) {
+      map[vdir].sort((a, b) => (b.row.lastActiveAt ?? 0) - (a.row.lastActiveAt ?? 0));
+    }
     return map;
-  }, [convRows, firstUserById, unreadIds, metaMap]);
+  }, [convRows, firstUserById, unreadIds, metaMap, virtualProject]);
 
   /** 磁盘会话列表：被活跃对话认领的不重复展示；已归档的不在树里展示（设置「归档」页统一管理，T8.11-R2） */
   const activeSessionsByProject = useMemo(() => {
@@ -321,6 +354,7 @@ export function useSidebarProjects() {
 
   return {
     projects,
+    virtualProject,
     conversationsByProject,
     sessionsByProject: activeSessionsByProject,
     metaMap,

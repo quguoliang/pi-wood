@@ -251,6 +251,20 @@
   }
 }
 
+/* ===================== Pane collapse transition ===================== */
+/* react-resizable-panels v4 把 className 放进嵌套 div，而 flexGrow 在外层 [data-panel] 上——
+   只能用根类 + 后代选择器把过渡挂到真正带 flexGrow 的元素。拖拽分割条时移除根类保跟手。 */
+@layer base {
+  .pane-anim [data-panel] {
+    transition: flex-grow 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pane-anim [data-panel] {
+      transition: none;
+    }
+  }
+}
+
 /* ===================== Third-party surface bridges ===================== */
 @layer base {
   /* dockview (right workbench) — map host theme onto --dv-* variables */

@@ -50,7 +50,7 @@ function ClosePaneButton(): React.JSX.Element {
     <Button
       variant="ghost"
       size="icon-sm"
-      className="self-center text-muted-foreground hover:text-foreground"
+      className="app-no-drag self-center text-muted-foreground hover:text-foreground"
       onClick={() => window.dispatchEvent(new Event("piwood:toggle-inspector"))}
       aria-label="收起右侧工作台"
     >
@@ -64,7 +64,7 @@ function AddTabMenu({ onPick }: { onPick(tab: WorkbenchTab): void }): React.JSX.
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="self-center text-muted-foreground hover:text-foreground" aria-label="新增面板">
+        <Button variant="ghost" size="icon-sm" className="app-no-drag self-center text-muted-foreground hover:text-foreground" aria-label="新增面板">
           <Icon name="add" />
         </Button>
       </PopoverTrigger>
@@ -102,7 +102,7 @@ function TabButton({
   return (
     <div
       className={cn(
-        "group flex max-w-45 items-center gap-1 rounded-md pl-2.5 pr-1 text-xs transition-colors",
+        "app-no-drag group flex max-w-45 items-center gap-1 rounded-md pl-2.5 pr-1 text-xs transition-colors",
         active ? "bg-surface-app text-foreground" : "text-muted-foreground hover:bg-white/5",
       )}
     >
@@ -171,18 +171,36 @@ export function RightPane(): React.JSX.Element {
 
   if (openTabs.length === 0) {
     return (
-      <div className="relative flex h-full min-w-0 flex-col bg-surface-app">
-        <div className="absolute right-1.5 top-1.5 z-10">
-          <ClosePaneButton />
+      <div className="flex h-full min-w-0 flex-col bg-surface-app">
+        {/* 空头条与中栏 header 同高（h-11）同色（透明）+ 同为拖拽区：底线照样通铺；收起按钮贴窗口控制左侧 */}
+        <div
+          className={cn(
+            "app-drag relative flex h-11 shrink-0 select-none items-center justify-end border-b border-border/60 pr-6",
+            window.pi.platform === "win32" && "pr-[104px]",
+          )}
+        >
+          <div className="app-no-drag flex items-center">
+            <ClosePaneButton />
+          </div>
         </div>
-        <Launcher onPick={openTab} />
+        <div className="relative min-h-0 flex-1 border-l border-border">
+          <Launcher onPick={openTab} />
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-surface-app">
-      <nav className="flex h-9 shrink-0 items-stretch gap-1 border-b border-border bg-surface-chrome pl-1.5 pr-1" aria-label="工作台面板">
+      {/* Windows 自绘窗口控制悬浮在窗口右上角（AppShell z-30），nav 右侧为其预留 104px */}
+      {/* 与中栏 header 同高（h-11）同色（透明，用户裁定顶部色彩不分栏）+ 同为拖拽区；右侧为窗口控制预留 104px */}
+      <nav
+        className={cn(
+          "app-drag flex h-11 shrink-0 select-none items-stretch gap-1 border-b border-border/60 pl-1.5",
+          window.pi.platform === "win32" ? "pr-[104px]" : "pr-1",
+        )}
+        aria-label="工作台面板"
+      >
         {openTabs.map((tab) => (
           <TabButton
             key={tab}
@@ -196,7 +214,8 @@ export function RightPane(): React.JSX.Element {
         <AddTabMenu onPick={openTab} />
         <ClosePaneButton />
       </nav>
-      <div className="relative min-h-0 flex-1">
+      {/* 纵向分割线从这里才开始：不进头部带（与中栏 header 之间无线） */}
+      <div className="relative min-h-0 flex-1 border-l border-border">
         {openTabs.map((tab) => (
           <div key={tab} className={cn("absolute inset-0", tab === activeTab ? "block" : "hidden")}>
             <Suspense fallback={<LoadingPanel />}>{panelNode(tab)}</Suspense>

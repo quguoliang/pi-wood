@@ -72,7 +72,7 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
             void c.addPastedText(text);
           }
         }}
-        placeholder={c.canCompose ? "描述任务，或添加文件作为上下文" : "先在上方选择一个项目"}
+        placeholder={c.canCompose ? "描述任务，或添加文件作为上下文" : "选择项目，或直接开始对话"}
         rows={1}
         disabled={!c.canCompose}
         className="block max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"

@@ -17,8 +17,14 @@ interface ProjectRecord {
 export function ProjectPicker({ activeProject }: { activeProject: string | undefined }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [virtualDir, setVirtualDir] = useState<string | undefined>();
   const [query, setQuery] = useState("");
-  const currentName = activeProject?.split(/[\\/]/).filter(Boolean).pop();
+  // 「最近」虚拟项目显示名（路径尾段是 chats，不能直接用 basename）
+  const currentName = activeProject === virtualDir ? "最近" : activeProject?.split(/[\\/]/).filter(Boolean).pop();
+
+  useEffect(() => {
+    void (window.pi.projectVirtualDir?.() as Promise<string | undefined>).then(setVirtualDir).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -67,7 +73,20 @@ export function ProjectPicker({ activeProject }: { activeProject: string | undef
         </div>
         <div className="my-1 h-px bg-border" />
         <div className="max-h-64 overflow-auto">
-          {filtered.length === 0 && <p className="px-2.5 py-2 text-[12px] text-muted-foreground">没有匹配的工作区。</p>}
+          {filtered.length === 0 && !virtualDir && <p className="px-2.5 py-2 text-[12px] text-muted-foreground">没有匹配的工作区。</p>}
+          {virtualDir && (
+            <button
+              type="button"
+              onClick={() => pick(virtualDir)}
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent"
+            >
+              <Icon name="message" className="size-4 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">最近</span>
+              <span className="text-[11px] text-muted-foreground">普通对话</span>
+              {activeProject === virtualDir && <Icon name="check" className="size-4 text-success" />}
+            </button>
+          )}
+          {virtualDir && filtered.length > 0 && <div className="my-1 h-px bg-border" />}
           {filtered.map((project) => (
             <button
               key={project.path}

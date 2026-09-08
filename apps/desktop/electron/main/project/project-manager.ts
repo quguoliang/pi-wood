@@ -77,6 +77,13 @@ export class ProjectManager {
     return this.read().projects.sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt));
   }
 
+  /** 「最近」虚拟项目的会话目录（普通对话；非 git、无 worktree，不入 projects.json 注册表） */
+  virtualDir(): string {
+    const dir = join(dirname(this.registryPath), "chats");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
   get(path: string): ProjectRecord | undefined {
     const id = projectIdFor(path);
     return this.read().projects.find((p) => p.id === id);

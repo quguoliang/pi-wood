@@ -81,6 +81,7 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
   const pm = new ProjectManager(DEFAULT_APP_DATA_DIR, agentDir);
 
   ipcMain.handle(PROJECT_CHANNELS.list, () => pm.list());
+  ipcMain.handle("project:virtualDir", () => pm.virtualDir());
   ipcMain.handle(PROJECT_CHANNELS.add, (_e, raw: unknown) => {
     const { path } = PathArgSchema.parse(raw);
     return pm.add(path);

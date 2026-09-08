@@ -99,6 +99,7 @@ declare global {
       engineSetThinking(level: string): Promise<void>;
       engineCompact(): Promise<void>;
       projectList(): Promise<unknown>;
+      projectVirtualDir(): Promise<string>;
       projectAdd(path: string): Promise<unknown>;
       projectRemove(id: string): Promise<boolean>;
       projectPick(): Promise<string | undefined>;
