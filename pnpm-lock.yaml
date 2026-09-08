@@ -119,6 +119,9 @@ importers:
       dockview:
         specifier: ^8.2.0
         version: 8.2.0
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
       ignore:
         specifier: ^7.0.6
         version: 7.0.6
@@ -2565,6 +2568,9 @@ packages:
   grok-mermaid@0.2.2:
     resolution: {integrity: sha512-XcJEP5dDC8liHBh52mlLjU18fNvu1ckFsu0QpIG3+APZ270fsj9wxpiA6cOURmbUEuoMVgjbC2+UYgTdCqqgzA==}
     engines: {node: '>=18'}
+
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
 
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
@@ -6631,6 +6637,8 @@ snapshots:
   graceful-fs@4.2.11: {}
 
   grok-mermaid@0.2.2: {}
+
+  gsap@3.15.0: {}
 
   has-flag@4.0.0: {}
 

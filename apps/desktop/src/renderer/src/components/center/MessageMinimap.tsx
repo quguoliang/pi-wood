@@ -1,50 +1,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import gsap from "gsap";
 import { cn } from "@/lib/utils";
 import { CONTEXT_TREE_MIN_CENTER_WIDTH } from "../../lib/context-tree";
+import { buildNavTicks, diffBarCounts, DIFF_TOTAL_BLOCKS, tickWidthAt } from "../../lib/message-nav";
+import { subscribeOutlineAnchor } from "../../lib/outline-bus";
 import { useActiveConversation, useSessionStore } from "../../stores/session-store";
 import { useConversationsStore } from "../../stores/conversations-store";
 import { useContextTreeStore } from "../../stores/context-tree-store";
 
 /**
- * T9.2 v2.1 MessageMinimap：消息列左缘的竖向刻度条（取代原 w-56 常驻侧栏——用户改判：
- * 「缩略导航不该单独弄侧栏，浮在左边、小横杠代表每条消息」）。
+ * T9.2 v2.2 MessageMinimap：消息列左缘**竖向居中**的浮层刻度条（不占布局宽度）。
  *
- * 交互（对齐参考形态）：
- * - 每条 user/assistant 消息一个刻度；**常态全部等长**（14px），工具/思考/系统不成刻度；
- * - hover：以目标为中心做正态分布式的横向重排（目标最长 30px、相邻按高斯衰减渐长，150ms ease），
- *   同时右侧浮出「角色 + 首行摘要」tooltip；
- * - 点击：派发 `piwood:outline-jump`（MessageList 既有监听：scrollToIndex + 行高亮），平滑滚到目标；
- * - 当前阅读区域高亮：跟随 MessageList scroll-spy 派发的 `piwood:outline-active`（user 行锚点），
- *   该轮（锚点 user + 其后的 assistant）刻度点亮；
- * - 对话更新自动重建（items 派生）；宿主容器 <720px 自动隐藏（浮层不遮正文）；
- * - 顺带承担轮末刷会话树（fork 的「行 ↔ 会话树条目」序号对齐依赖树数据新鲜）。
+ * 形态（用户 2026-09-08 三轮改判定稿）：
+ * - **每个 user 轮次一条刻度**（assistant/thinking/tool/system 不成刻度），行高 12px 等距；
+ * - **常态所有刻度完全一样**（16×1px 发丝线、同色）——**不做默认高亮**，当前阅读轮次也不例外；
+ * - **hover 才动**：以目标为中心做正态分布衰减（目标 30px、相邻按高斯渐次变长、远端回 16px，200ms ease），
+ *   离开后整列回到等长；
+ * - hover 只在右侧浮出**当前这一条**的摘要（diff bars + 首行标题），**不列出其他轮次**；
+ * - 点击刻度 → 派发 `piwood:outline-jump`（MessageList 既有监听：scrollToIndex + 行 flash 高亮）；
+ * - 阅读锚点（lib/outline-bus，MessageList scroll-spy 发布）只用于**长对话时刻度条内部跟随滚动**，不产生视觉高亮；
+ * - 轮次过多时刻度条内部滚动（藏滚动条）；宿主容器 <720px 自动隐藏；轮末顺带刷会话树（供 fork 对齐）。
  *
- * 颜色全走主题 token（foreground/muted-foreground/primary），浅暗色自动适配。
+ * 刻度/衰减/bars 的纯逻辑在 lib/message-nav.ts（单测覆盖）；颜色全走主题 token，浅暗色自动适配。
  */
 
-const TICK_BASE = 14;
-const TICK_MAX = 30;
-const SIGMA = 1.6;
+const TICK_BASE = 16; // 常态刻度长度（全部等长）
+const TICK_MAX = 30; // hover 目标刻度长度（邻居按高斯衰减介于两者之间）
+const SIGMA = 1.6; // 正态衰减系数（越大→邻居被带得越长）
+const RAIL_WIDTH = TICK_MAX; // 容器预留满宽，展开时不推动布局
+const RAIL_ROW_HEIGHT = 12; // 刻度行高
+const TIP_GUTTER = 8; // 刻度条 ↔ 摘要浮层间距
+const TIP_CLOSE_DELAY = 120; // 沿刻度条平移时不闪断
+const RAIL_MAX_HEIGHT = "70vh"; // 轮次过多时内部滚动，不出消息列
 
-interface Tick {
-  rowId: string;
-  kind: "user" | "assistant";
-  title: string;
-  turnIndex: number;
-}
-
-function firstLine(text: string): string {
-  const line =
-    text
-      .trim()
-      .split("\n", 1)[0]
-      ?.replace(/^#{1,6}\s+/, "")
-      .replace(/[*`>]+/g, "")
-      .replace(/\s+/g, " ")
-      .trim() ?? "";
-  if (!line) return "(空消息)";
-  return line.length > 60 ? `${line.slice(0, 59)}…` : line;
-}
+const NEUTRAL_COLOR = "var(--muted-foreground)";
 
 export function MessageMinimap(): React.JSX.Element | null {
   const items = useActiveConversation((c) => c.items);
@@ -53,22 +42,10 @@ export function MessageMinimap(): React.JSX.Element | null {
   const sessionFile = useConversationsStore((s) => s.rows.find((r) => r.id === activeConversationId)?.sessionFile);
   const refreshTree = useContextTreeStore((s) => s.refresh);
 
-  const ticks = useMemo<Tick[]>(() => {
-    const out: Tick[] = [];
-    let turn = -1;
-    for (const it of items) {
-      if (it.kind === "user") {
-        turn += 1;
-        out.push({ rowId: it.id, kind: "user", title: firstLine(it.text), turnIndex: turn });
-      } else if (it.kind === "assistant") {
-        out.push({ rowId: it.id, kind: "assistant", title: firstLine(it.text), turnIndex: turn });
-      }
-    }
-    return out;
-  }, [items]);
+  const ticks = useMemo(() => buildNavTicks(items), [items]);
 
   // 会话树刷新：切对话/会话文件变化刷一次，轮末（streaming true→false）强刷一次。
-  // 树数据供消息级「分叉」做 行↔条目 序号对齐（fork 需要 user 条目的 entry id）。
+  // 树数据供消息级「分叉」做 行↔会话树条目 序号对齐（fork 需要 user 条目的 entry id）。
   useEffect(() => {
     if (activeConversationId && sessionFile) void refreshTree(activeConversationId, sessionFile);
   }, [activeConversationId, sessionFile, refreshTree]);
@@ -82,15 +59,110 @@ export function MessageMinimap(): React.JSX.Element | null {
 
   const [hover, setHover] = useState(-1);
   const [anchorTurn, setAnchorTurn] = useState(-1);
+  // 阅读锚点：只用来在长对话里让当前轮次的刻度留在可见区（**不做视觉高亮**，常态所有刻度一样）。
+  // 订阅即回放现值 ⇒ 兄弟组件 effect 挂载顺序不再影响首帧。
+  const railRef = useRef<HTMLUListElement | null>(null);
+  const tickRefs = useRef(new Map<number, HTMLButtonElement>());
+  useEffect(
+    () =>
+      subscribeOutlineAnchor((itemId) => {
+        const idx = itemId ? ticks.findIndex((t) => t.rowId === itemId) : -1;
+        setAnchorTurn(idx >= 0 ? ticks[idx].turnIndex : -1);
+      }),
+    [ticks],
+  );
   useEffect(() => {
-    const onActive = (e: Event): void => {
-      const id = (e as CustomEvent<{ itemId?: string }>).detail?.itemId;
-      const idx = id ? ticks.findIndex((t) => t.rowId === id) : -1;
-      setAnchorTurn(idx >= 0 ? ticks[idx].turnIndex : -1);
+    if (anchorTurn < 0) return;
+    const rail = railRef.current;
+    const el = tickRefs.current.get(anchorTurn);
+    if (!rail || !el) return; // 只在刻度条自身溢出时跟随，够得着就不动
+    if (rail.scrollHeight <= rail.clientHeight) return;
+    const top = el.offsetTop - rail.offsetTop;
+    const bottom = top + el.offsetHeight;
+    if (top < rail.scrollTop) rail.scrollTop = top;
+    else if (bottom > rail.scrollTop + rail.clientHeight) rail.scrollTop = bottom - rail.clientHeight;
+  }, [anchorTurn, ticks.length]);
+
+  // ── hover 动画：GSAP 命令式驱动，React 只管摘要浮层内容 ──────────────────
+  // 旧实现把 tickWidthAt 写进 inline style.width + CSS transition：每次 hover 变化
+  // 整列刻度重渲染，且 width 是布局属性——逐帧 reflow，多根同动就是「卡」的根源。
+  // GSAP 姿势：刻度线固定 16px 基准宽，只动 transform.scaleX（合成层，零 reflow）；
+  // 颜色「变亮」用前景色叠加层的 opacity 代替 color-mix 背景色（opacity 同样走合成）。
+  const lineRefs = useRef(new Map<number, HTMLSpanElement>());
+  const hlRefs = useRef(new Map<number, HTMLSpanElement>());
+  const applyHover = useCallback((h: number): void => {
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const duration = reduce ? 0 : 0.25;
+    for (const [i, line] of lineRefs.current) {
+      const width = tickWidthAt(i, h, TICK_BASE, TICK_MAX, SIGMA);
+      const hl = hlRefs.current.get(i);
+      gsap.to(line, { scaleX: width / TICK_BASE, duration, ease: "power3.out", overwrite: "auto" });
+      if (hl) {
+        gsap.to(hl, {
+          autoAlpha: (width - TICK_BASE) / (TICK_MAX - TICK_BASE),
+          duration,
+          ease: "power2.out",
+          overwrite: "auto",
+        });
+      }
+    }
+  }, []);
+  // 刻度集合变化（新轮次/切对话）：全部回常态并清掉在途 tween
+  useEffect(() => {
+    for (const el of lineRefs.current.values()) gsap.set(el, { scaleX: 1 });
+    for (const el of hlRefs.current.values()) gsap.set(el, { autoAlpha: 0 });
+  }, [ticks.length]);
+  useEffect(() => {
+    const lines = lineRefs.current;
+    const hls = hlRefs.current;
+    return () => {
+      for (const el of lines.values()) gsap.killTweensOf(el);
+      for (const el of hls.values()) gsap.killTweensOf(el);
     };
-    window.addEventListener("piwood:outline-active", onActive);
-    return () => window.removeEventListener("piwood:outline-active", onActive);
-  }, [ticks]);
+  }, []);
+
+  // 摘要浮层跟随被 hover 的那一根：按实测行中心定位（刻度条内部滚动/居中偏移都不用换算常量）。
+  const railBoxRef = useRef<HTMLDivElement | null>(null);
+  const [tipTop, setTipTop] = useState(0);
+  const showTipFor = useCallback(
+    (index: number, el: HTMLElement): void => {
+      setHover(index);
+      applyHover(index); // 动画走 GSAP ticker，不等 React 重渲染
+      const box = railBoxRef.current?.getBoundingClientRect();
+      const row = el.getBoundingClientRect();
+      if (box) setTipTop(row.top - box.top + row.height / 2);
+    },
+    [applyHover],
+  );
+
+  // 沿刻度条平移时不闪断：离开 120ms 后才收（期间移到相邻刻度会立刻续上）。
+  const closeTimer = useRef<number | null>(null);
+  const keepTip = useCallback((): void => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+  const scheduleHide = useCallback((): void => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => {
+      setHover(-1);
+      applyHover(-1);
+      closeTimer.current = null;
+    }, TIP_CLOSE_DELAY);
+  }, [applyHover]);
+  useEffect(
+    () => () => {
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
+  const jump = useCallback((rowId: string): void => {
+    setHover(-1);
+    applyHover(-1);
+    window.dispatchEvent(new CustomEvent("piwood:outline-jump", { detail: { itemId: rowId } }));
+  }, [applyHover]);
 
   // 窄窗隐藏：观察自己所在的消息列容器（offsetParent）宽度。
   // ⚠ 必须用 callback ref 而不是 useEffect([])：消息 <2 条时组件返回 null，effect 首跑没有 DOM，
@@ -110,13 +182,9 @@ export function MessageMinimap(): React.JSX.Element | null {
   }, []);
   useEffect(() => () => roRef.current?.disconnect(), []);
 
-  if (ticks.length < 2) return null; // 消息太少没有导航价值（也避免盖住空态）
+  if (ticks.length < 2) return null; // 消息太少没有导航价值（参考 messages.length > 1，也避免盖住空态）
 
-  const widthAt = (i: number): number => {
-    if (hover < 0) return TICK_BASE;
-    const d = i - hover;
-    return TICK_BASE + (TICK_MAX - TICK_BASE) * Math.exp(-(d * d) / (2 * SIGMA * SIGMA));
-  };
+  const hovered = hover >= 0 ? ticks[hover] : undefined;
 
   return (
     <div
@@ -125,38 +193,103 @@ export function MessageMinimap(): React.JSX.Element | null {
       aria-label="消息刻度导航"
       className={cn("pointer-events-none absolute left-1 top-1/2 z-20 -translate-y-1/2", narrow && "invisible")}
     >
-      <div className="pointer-events-auto flex flex-col items-start gap-[6px] py-2">
-        {ticks.map((t, i) => {
-          const inTurn = anchorTurn >= 0 && t.turnIndex === anchorTurn;
-          return (
-            <div
-              key={t.rowId}
-              className="relative flex items-center"
-              onMouseEnter={() => setHover(i)}
-              onMouseLeave={() => setHover((h) => (h === i ? -1 : h))}
-            >
+      <div ref={railBoxRef} className="pointer-events-auto relative">
+        {/* 刻度条：常态每根完全一样（16×1px、同色）；hover 才以目标为中心做正态展开；轮次过多内部滚动不留滚动条 */}
+        <ul
+          ref={railRef}
+          data-message-nav="compact"
+          role="list"
+          className="flex list-none flex-col items-start overflow-y-auto py-2 pl-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{ width: RAIL_WIDTH, maxHeight: RAIL_MAX_HEIGHT }}
+        >
+          {ticks.map((t, i) => (
+            <li key={t.rowId} data-nav-item className="flex items-center self-stretch" style={{ height: RAIL_ROW_HEIGHT }}>
               <button
                 type="button"
+                data-tick
+                ref={(el) => {
+                  if (el) tickRefs.current.set(i, el);
+                  else tickRefs.current.delete(i);
+                }}
                 aria-label={`跳转到消息：${t.title}`}
-                onClick={() => window.dispatchEvent(new CustomEvent("piwood:outline-jump", { detail: { itemId: t.rowId } }))}
-                style={{ width: Math.round(widthAt(i)) }}
-                className={cn(
-                  "h-[3px] shrink-0 cursor-pointer rounded-full transition-[width,background-color] duration-150 ease-out",
-                  hover === i ? "bg-foreground/70" : inTurn ? "bg-primary/70" : "bg-muted-foreground/35 hover:bg-muted-foreground/60",
-                )}
-              />
-              {hover === i && (
-                <span className="pointer-events-none absolute left-6 top-1/2 z-30 flex max-w-[min(24rem,38vw)] -translate-y-1/2 items-center gap-1.5 whitespace-nowrap rounded-md border border-border/60 bg-popover/95 px-2 py-1 text-[11px] text-popover-foreground shadow-md">
-                  <span className={cn("shrink-0 font-medium", t.kind === "user" ? "text-primary" : "text-muted-foreground")}>
-                    {t.kind === "user" ? "我" : "助手"}
-                  </span>
-                  <span className="min-w-0 truncate">{t.title}</span>
+                onMouseEnter={(e) => {
+                  keepTip();
+                  showTipFor(i, e.currentTarget);
+                }}
+                onMouseLeave={scheduleHide}
+                onFocus={(e) => showTipFor(i, e.currentTarget)}
+                onBlur={scheduleHide}
+                onClick={() => jump(t.rowId)}
+                className="flex cursor-pointer items-center justify-start border-0 bg-transparent p-0"
+                style={{ width: RAIL_WIDTH, height: RAIL_ROW_HEIGHT }}
+              >
+                {/* 基准宽固定，hover 只动 scaleX（合成层）；高亮 = 前景叠加层的 opacity（代替 color-mix，同样零 reflow） */}
+                <span
+                  ref={(el) => {
+                    if (el) lineRefs.current.set(i, el);
+                    else lineRefs.current.delete(i);
+                  }}
+                  aria-hidden
+                  data-tick-line
+                  className="relative block h-px rounded-[1px]"
+                  style={{ width: TICK_BASE, transformOrigin: "left center" }}
+                >
+                  <span className="absolute inset-0 rounded-[1px] bg-muted-foreground" />
+                  <span
+                    ref={(el) => {
+                      if (el) hlRefs.current.set(i, el);
+                      else hlRefs.current.delete(i);
+                    }}
+                    data-tick-hl
+                    className="absolute inset-0 rounded-[1px] bg-foreground invisible"
+                  />
                 </span>
-              )}
-            </div>
-          );
-        })}
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {/* 摘要浮层：只出当前 hover 的这一条，不列其他轮次 */}
+        {hovered && (
+          <div
+            data-nav-tip
+            aria-hidden
+            className="pointer-events-none absolute z-30 flex max-w-[min(24rem,38vw)] -translate-y-1/2 items-center gap-2.5 whitespace-nowrap rounded-md border border-border/60 bg-popover/95 px-2.5 py-1 text-sm text-popover-foreground shadow-md"
+            style={{ left: RAIL_WIDTH + TIP_GUTTER, top: tipTop }}
+          >
+            <DiffBars additions={hovered.additions} deletions={hovered.deletions} />
+            <span data-title-preview className="min-w-0 truncate">
+              {hovered.title || "新消息"}
+            </span>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+/** 参考 `DiffChanges variant="bars"`：18×14 视图内 5 根 2px 圆角竖条，增=绿、删=红、中性=弱灰。 */
+function DiffBars({ additions, deletions }: { additions: number; deletions: number }): React.JSX.Element {
+  const [added, deleted, neutral] = diffBarCounts(additions, deletions);
+  const colors = [
+    ...Array(added).fill("var(--success)"),
+    ...Array(deleted).fill("var(--destructive)"),
+    ...Array(neutral).fill(NEUTRAL_COLOR),
+  ].slice(0, DIFF_TOTAL_BLOCKS);
+  return (
+    <svg
+      data-diff-bars
+      className="block h-3.5 w-[18px] shrink-0"
+      viewBox="0 0 18 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <g>
+        {colors.map((color, i) => (
+          <rect key={i} x={i * 4} width="2" height="14" rx="1" fill={color} opacity={color === NEUTRAL_COLOR ? 0.35 : 1} />
+        ))}
+      </g>
+    </svg>
   );
 }

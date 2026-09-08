@@ -10,6 +10,7 @@ import { useConversationsStore } from "../../stores/conversations-store";
 import { useSessionMetaStore } from "../../stores/session-meta-store";
 import { useContextTreeStore } from "../../stores/context-tree-store";
 import { groupToolRows, isToolGroup, type DisplayRow } from "../../lib/tool-groups";
+import { publishOutlineAnchor } from "../../lib/outline-bus";
 import { ToolGroup } from "./ToolGroup";
 import { cn } from "@/lib/utils";
 
@@ -198,6 +199,21 @@ export function MessageList(): React.JSX.Element | null {
     getItemKey: (i) => displayRows[i].id,
   });
 
+  // T9.1 scroll spy：可见首行向上找最近 user 行，通知缩略树/刻度条高亮（仅变更时派发）。
+  // 单独成函数：短对话/切对话时不会触发 scroll 事件，也要能出锚点（v2.2 刻度条 active 态依赖）。
+  const reportSpy = useCallback(() => {
+    const first = virtualizer.getVirtualItems()[0];
+    const rows = rowsRef.current;
+    if (!first || rows.length === 0) return;
+    let idx = Math.min(first.index, rows.length - 1);
+    while (idx >= 0 && rows[idx] && rows[idx].kind !== "user") idx -= 1;
+    const anchor = idx >= 0 ? rows[idx] : undefined;
+    if ((anchor?.id ?? undefined) !== spyRef.current) {
+      spyRef.current = anchor?.id;
+      publishOutlineAnchor(anchor?.id);
+    }
+  }, [virtualizer]);
+
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -208,19 +224,8 @@ export function MessageList(): React.JSX.Element | null {
     const s = useSessionStore.getState();
     s.setScrollTop(el.scrollTop);
     s.setFollowBottom(bottom);
-    // T9.1 scroll spy：可见首行向上找最近 user 行，通知缩略树高亮（仅变更时派发）
-    const first = virtualizer.getVirtualItems()[0];
-    const rows = rowsRef.current;
-    if (first && rows.length > 0) {
-      let idx = Math.min(first.index, rows.length - 1);
-      while (idx >= 0 && rows[idx] && rows[idx].kind !== "user") idx -= 1;
-      const anchor = idx >= 0 ? rows[idx] : undefined;
-      if ((anchor?.id ?? undefined) !== spyRef.current) {
-        spyRef.current = anchor?.id;
-        window.dispatchEvent(new CustomEvent("piwood:outline-active", { detail: { itemId: anchor?.id } }));
-      }
-    }
-  }, [virtualizer]);
+    reportSpy();
+  }, [reportSpy]);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -229,6 +234,12 @@ export function MessageList(): React.JSX.Element | null {
     atBottomRef.current = true;
     setAtBottom(true);
   }, []);
+
+  // 内容不足一屏（无 scroll 事件）或切对话时也要出锚点：刻度条/缩略树的 active 态依赖它
+  useEffect(() => {
+    spyRef.current = undefined;
+    reportSpy();
+  }, [reportSpy, displayRows.length, activeConversationId]);
 
   // T9.1 缩略树单击节点 → 跳到对应行（虚拟列表定位 + 短暂高亮；离开底部后不再自动跟底）
   useEffect(() => {

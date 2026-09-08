@@ -7,15 +7,16 @@ import { ensureEngine, getActiveConversationIdSafe } from "./engine-manager";
 import { getConversation } from "./conversation-registry";
 
 /**
- * T9.2 v2.1 带窗交互探针 `electron . --context-tree-ui-probe`（形态已按用户改判重做）：
- * 侧栏撤了——验证的是**消息刻度条 minimap** 与**消息级分叉**：
- *   U1 刻度条出现、每条 user/assistant 一个刻度、旧侧栏不存在；transcript=默认叶路径
- *   U2 hover 正态重排（目标最长、邻居次之）+「角色+摘要」tooltip
- *   U3 点刻度 → 跳转并触发目标行 flash 高亮
- *   U4 回复底部「分叉」→ 新对话（停在触发提问上）+ 左栏「Fork of X」+ 底部「从对话中派生」chip；
- *      点 chip 回跳源对话
+ * T9.2 v2.2 带窗交互探针 `electron . --context-tree-ui-probe`（形态按用户三轮改判定稿）：
+ * 验证的是**消息刻度条 minimap（竖向居中 + 常态完全等长 + hover 正态展开 + 单条摘要浮层）**与**消息级分叉**：
+ *   U1 刻度条出现、每个 user 轮次一个刻度、常态无摘要浮层、旧侧栏不存在；transcript=默认叶路径
+ *      U1.1b 常态所有刻度 16×1px 一模一样——**不做默认高亮**（当前阅读轮也不例外）
+ *   U2 hover 刻度：以目标为中心**正态展开**（目标 ≈30px 最长、邻居跟着变长但严格更短、远端回 16px），
+ *      全程只有长度动不加粗；右侧 8px 只浮出**这一条**的摘要（diff bars + 首行标题，显式断言不含其他轮次）
+ *   U3 点刻度 → 跳转 + 目标行 flash；指针离开后整列回到 16×1px 等长、浮层收起（无残留高亮）
+ *   U4 回复底部「分叉」→ 新对话（含被点回复）+ 左栏「Fork of X」+ 底部「从对话中派生」chip；点 chip 回跳源对话
  *   U5 窄窗（<720px）刻度条自动隐藏、拉宽恢复
- * 截图留档 docs/proofs/ui-v3/context-tree-ui.png。
+ * 截图留档 docs/proofs/ui-v3/context-tree-ui.png（+ hover 态 context-tree-ui-hover.png）。
  */
 export function isContextTreeUiProbeMode(): boolean {
   return process.argv.includes("--context-tree-ui-probe");
@@ -37,7 +38,7 @@ function makeGitProject(tag: string): string {
   return dir;
 }
 
-/** 分叉拓扑：默认叶=旁支尾（transcript 4 条消息 = 4 个刻度）；token 唯一防串扰 */
+/** 分叉拓扑：默认叶=旁支尾（transcript 4 条消息 = 2 个 user 刻度）；token 唯一防串扰 */
 function fixtureLines(cwd: string): string {
   const ts = (n: number): string => new Date(Date.UTC(2026, 8, 7, 0, 0, 0) + n * 60_000).toISOString();
   const header = { type: "session", version: 3, id: "sess-ctxui1", timestamp: ts(0), cwd };
@@ -121,60 +122,135 @@ export async function runContextTreeUiProbe(): Promise<void> {
       minimapSeen = await js<boolean>(`return !!document.querySelector('[data-minimap]');`) === true;
     }
 
-    // U1：刻度条 + 4 个刻度（默认叶路径 2 user + 2 assistant）；旧侧栏不存在；transcript=旁支路径
-    const u1 = await js<{ minimap: boolean; ticks: number; asideGone: boolean; bodyHasBranch: boolean; bodyHasMain: boolean }>(`
+    // U1：刻度条 2 个 user 刻度（v2.2：assistant 不成刻度）+ 面板默认不渲染 + 旧侧栏不存在；transcript=旁支路径
+    const u1 = await js<{
+      minimap: boolean;
+      ticks: number;
+      lines: Array<{ width: number; height: number }>;
+      tipAbsent: boolean;
+      asideGone: boolean;
+      bodyHasBranch: boolean;
+      bodyHasMain: boolean;
+    }>(`
       const mm = document.querySelector('[data-minimap]');
+      const lines = mm ? [...mm.querySelectorAll('[data-message-nav="compact"] [data-tick-line]')] : [];
       return {
         minimap: !!mm,
-        ticks: mm ? mm.querySelectorAll('button[aria-label^="跳转到消息"]').length : 0,
+        ticks: mm ? mm.querySelectorAll('[data-message-nav="compact"] button[data-tick]').length : 0,
+        lines: lines.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { width: r.width, height: r.height };
+        }),
+        tipAbsent: !document.querySelector('[data-minimap] [data-nav-tip]'),
         asideGone: !document.querySelector('aside[aria-label="上下文缩略树"]'),
         bodyHasBranch: document.body.innerText.includes("BRANCH_REPLY_Z9"),
         bodyHasMain: document.body.innerText.includes("MAIN_REPLY_Z7"),
       };`);
     check(
-      "U1.1 刻度条出现、默认叶路径 4 刻度、旧侧栏已移除",
-      u1?.minimap === true && u1?.ticks === 4 && u1?.asideGone === true,
+      "U1.1 刻度条出现、默认叶路径 2 个 user 刻度、常态无摘要浮层、旧侧栏已移除",
+      u1?.minimap === true && u1?.ticks === 2 && u1?.tipAbsent === true && u1?.asideGone === true,
       JSON.stringify(u1 ?? {}),
+    );
+    check(
+      "U1.1b 常态无默认高亮：所有刻度 16×1px 完全一样（当前轮也不例外）",
+      !!u1 && u1.lines.length === 2 && u1.lines.every((l) => l.width <= 17 && l.height <= 1.5),
+      `lines=${JSON.stringify(u1?.lines ?? [])}`,
     );
     check("U1.2 transcript=默认叶路径：见旁支答、不见主干答", u1?.bodyHasBranch === true && u1?.bodyHasMain === false, "");
 
-    // U2：hover 第 3 个刻度（旁支问题）→ 正态重排（目标最长、邻居次之）+ 角色摘要 tooltip
+    // U2：hover 第 2 个刻度（旁支问题）→ 正态展开（目标最长、邻居次之）+ 右侧只浮「这一条」的摘要
     await js<boolean>(`
       const mm = document.querySelector('[data-minimap]');
-      const tick = mm.querySelectorAll('button[aria-label^="跳转到消息"]')[2];
+      const tick = mm.querySelectorAll('[data-message-nav="compact"] button[data-tick]')[1];
       if (!tick) return false;
       tick.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-      tick.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
       return true;`);
     await sleep(400);
-    const u2 = await js<{ hovered: number; neighbor: number; base: number; tip: boolean; role: boolean }>(`
+    const u2 = await js<{
+      ticks: Array<{ width: number; height: number }>;
+      tipCount: number;
+      tipText: string;
+      tipBars: number;
+      tipRightOfRail: boolean;
+      tipAlignedToHovered: boolean;
+    }>(`
       const mm = document.querySelector('[data-minimap]');
-      const ticks = [...mm.querySelectorAll('button[aria-label^="跳转到消息"]')];
-      const w = (el) => el.getBoundingClientRect().width;
-      const tipText = mm.innerText || "";
+      const rail = mm.querySelector('[data-message-nav="compact"]');
+      const ticks = [...mm.querySelectorAll('[data-message-nav="compact"] button[data-tick]')];
+      const tips = [...mm.querySelectorAll('[data-nav-tip]')];
+      const tip = tips[0];
+      const railRight = rail.getBoundingClientRect().right;
+      const line = ticks[1] ? ticks[1].querySelector('[data-tick-line]').getBoundingClientRect() : null;
+      const t = tip ? tip.getBoundingClientRect() : null;
       return {
-        hovered: w(ticks[2]),
-        neighbor: w(ticks[1]),
-        base: w(ticks[0]),
-        tip: tipText.includes("换个思路"),
-        role: tipText.includes("我"),
+        ticks: ticks.map((el) => {
+          const r = el.querySelector('[data-tick-line]').getBoundingClientRect();
+          return { width: r.width, height: r.height };
+        }),
+        tipCount: tips.length,
+        tipText: tip ? tip.innerText : "",
+        tipBars: tip ? tip.querySelectorAll("svg[data-diff-bars] rect").length : 0,
+        tipRightOfRail: t ? t.left >= railRight : false,
+        tipAlignedToHovered: !!(t && line) && Math.abs(t.top + t.height / 2 - (line.top + line.height / 2)) <= 3,
       };`);
+    // 正态展开：目标最长（≈30px）、邻居跟着变长但严格更短、远端回 base；全程只有长度动，粗细不变。
+    const target = u2?.ticks[1];
+    const neighbour = u2?.ticks[0];
     check(
-      "U2 hover 正态重排：目标最长 > 邻居 > 远端，且 tooltip 显示角色+摘要",
-      !!u2 && u2.hovered > u2.neighbor && u2.neighbor > u2.base && u2.tip === true && u2.role === true,
+      "U2 hover 正态展开：目标最长 > 邻居 > 常态 16px，且都不加粗；摘要浮层贴目标右侧并对齐",
+      !!target && !!neighbour &&
+        target.width >= 29 &&
+        neighbour.width > 17 &&
+        neighbour.width < target.width - 1 &&
+        u2.ticks.every((t) => t.height <= 1.5) &&
+        u2.tipCount === 1 && u2.tipRightOfRail === true && u2.tipAlignedToHovered === true,
       JSON.stringify(u2 ?? {}),
     );
+    check(
+      "U2.1 浮层只展示当前这一条（标题 + 5 根 bars），不列其他轮次",
+      !!u2 && u2.tipText.includes("换个思路") && !u2.tipText.includes("第一个问题") && u2.tipBars === 5,
+      `tip=${JSON.stringify(u2?.tipText ?? "")} bars=${String(u2?.tipBars ?? -1)}`,
+    );
+    // hover 摘要态留一张证据图（末帧 capture 时浮层已收）
+    await capture(join(dirname(shot), "context-tree-ui-hover.png"));
 
-    // U3：点第 1 个刻度 → 跳转并 flash 高亮目标行（MessageList ring 类）
+    // U3：点第 1 个刻度 → 跳转 + flash 高亮；指针离开后整列回到等长（无残留高亮）
     await js<boolean>(`
       const mm = document.querySelector('[data-minimap]');
-      const tick = mm.querySelectorAll('button[aria-label^="跳转到消息"]')[0];
+      const prev = mm.querySelectorAll('[data-message-nav="compact"] button[data-tick]')[1];
+      prev.dispatchEvent(new MouseEvent("mouseout", { bubbles: true })); // 清掉 U2 残留的 hover 展开
+      return true;`);
+    await sleep(300);
+    await js<boolean>(`
+      const mm = document.querySelector('[data-minimap]');
+      const tick = mm.querySelectorAll('[data-message-nav="compact"] button[data-tick]')[0];
       if (!tick) return false;
       tick.click();
       return true;`);
     await sleep(700);
     const u3 = await js<boolean>(`return !!document.querySelector('[class*="ring-ring"]');`);
     check("U3 点刻度跳转：目标行出现 flash 高亮", u3 === true, "");
+    await js<boolean>(`
+      const mm = document.querySelector('[data-minimap]');
+      const tick = mm.querySelectorAll('[data-message-nav="compact"] button[data-tick]')[0];
+      tick.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+      return true;`);
+    await sleep(700); // 120ms 收起延迟 + 200ms 回弹过渡
+    const u3rest = await js<{ lines: Array<{ width: number; height: number }>; tipGone: boolean }>(`
+      const mm = document.querySelector('[data-minimap]');
+      const lines = [...mm.querySelectorAll('[data-message-nav="compact"] [data-tick-line]')];
+      return {
+        lines: lines.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { width: r.width, height: r.height };
+        }),
+        tipGone: !document.querySelector('[data-minimap] [data-nav-tip]'),
+      };`);
+    check(
+      "U3.1 指针离开后整列回到 16×1px 等长、浮层收起（不留任何高亮）",
+      !!u3rest && u3rest.lines.length === 2 && u3rest.lines.every((l) => l.width <= 17 && l.height <= 1.5) && u3rest.tipGone === true,
+      JSON.stringify(u3rest ?? {}),
+    );
 
     // U4（v2.1 语义改判）：最后一条回复底部「分叉」→ 新对话**含被点回复本身**（整条旁支路径
     // u1/a1/ub/ab1 全量拷贝）+ Fork of 别名 + 派生 chip；点 chip 回跳源对话；再验「轮中分叉」。
@@ -249,6 +325,15 @@ export async function runContextTreeUiProbe(): Promise<void> {
       JSON.stringify(u43),
     );
 
+    // U5 前置：视图此时停在「轮中分叉」的新对话（只有 1 个 user 轮 → 参考形态下刻度条本就不渲染），
+    //      先切回原对话（2 个 user 轮）再验窄窗，免得把「按设计不出现」误判成隐藏逻辑坏了。
+    let backToSource = false;
+    for (let i = 0; i < 20 && !backToSource; i += 1) {
+      await sleep(500);
+      await js<boolean>(`window.__piwoodSwitchConversation && window.__piwoodSwitchConversation(${JSON.stringify(convId)}); return true;`);
+      backToSource = (await js<boolean>(`return !!document.querySelector('[data-minimap]');`)) === true;
+    }
+
     // U5：窄窗自动隐藏（临时放开 minWidth 钳制，测完还原）
     const win = winRef;
     const bounds = win.getBounds();
@@ -264,7 +349,7 @@ export async function runContextTreeUiProbe(): Promise<void> {
     const u5wide = await js<string>(`
       const mm = document.querySelector('[data-minimap]');
       return mm ? getComputedStyle(mm).visibility : "missing";`);
-    check("U5 窄窗自动隐藏、拉宽恢复", u5narrow === "hidden" && u5wide === "visible", `narrow=${u5narrow} wide=${u5wide}`);
+    check("U5 窄窗自动隐藏、拉宽恢复", u5narrow === "hidden" && u5wide === "visible", `narrow=${u5narrow} wide=${u5wide} back=${String(backToSource)}`);
 
     // 清理：解除临时项目注册（探针不留在册痕迹；对话随应用退出自然消散）
     await js<boolean>(`
