@@ -345,10 +345,16 @@ export async function runContextTreeUiProbe(): Promise<void> {
       return mm ? getComputedStyle(mm).visibility : "missing";`);
     win.setMinimumSize(960, 600);
     win.setBounds(bounds);
-    await sleep(700);
-    const u5wide = await js<string>(`
-      const mm = document.querySelector('[data-minimap]');
-      return mm ? getComputedStyle(mm).visibility : "missing";`);
+    // 拉宽后轮询到 visible 为止（AppShell 列宽有 260ms 过渡 + GSAP 帧，单次测量会撞在动画中途误报）
+    let u5wide = "missing";
+    for (let i = 0; i < 10; i += 1) {
+      await sleep(300);
+      u5wide =
+        (await js<string>(`
+          const mm = document.querySelector('[data-minimap]');
+          return mm ? getComputedStyle(mm).visibility : "missing";`)) ?? "missing";
+      if (u5wide === "visible") break;
+    }
     check("U5 窄窗自动隐藏、拉宽恢复", u5narrow === "hidden" && u5wide === "visible", `narrow=${u5narrow} wide=${u5wide} back=${String(backToSource)}`);
 
     // 清理：解除临时项目注册（探针不留在册痕迹；对话随应用退出自然消散）

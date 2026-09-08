@@ -295,7 +295,7 @@ export function MessageList(): React.JSX.Element | null {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-    <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pt-6" aria-live="polite" role="log">
+    <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-8 pt-6" aria-live="polite" role="log">
       {
         <div className="mx-auto w-full max-w-[var(--pk-chat-width,48rem)]">
           <div style={{ height: virtualizer.getTotalSize() }} className="relative w-full">

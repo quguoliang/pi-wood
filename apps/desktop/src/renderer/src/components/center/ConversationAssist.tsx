@@ -23,7 +23,7 @@ export function ConversationAssist({ className }: { className?: string }): React
   };
 
   return (
-    <div className={cn("mx-auto w-full max-w-[var(--pk-chat-width,48rem)] px-4", className)}>
+    <div className={cn("mx-auto w-full max-w-[var(--pk-chat-width,48rem)] px-8", className)}>
       <div className="flex items-start gap-2 rounded-lg border border-border/50 bg-white/[0.02] px-3 py-2">
         <Icon name="brain" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">

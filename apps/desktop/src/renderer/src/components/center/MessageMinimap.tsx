@@ -191,7 +191,7 @@ export function MessageMinimap(): React.JSX.Element | null {
       ref={attachHost}
       data-minimap
       aria-label="消息刻度导航"
-      className={cn("pointer-events-none absolute left-1 top-1/2 z-20 -translate-y-1/2", narrow && "invisible")}
+      className={cn("pointer-events-none absolute left-0 top-1/2 z-20 -translate-y-1/2", narrow && "invisible")}
     >
       <div ref={railBoxRef} className="pointer-events-auto relative">
         {/* 刻度条：常态每根完全一样（16×1px、同色）；hover 才以目标为中心做正态展开；轮次过多内部滚动不留滚动条 */}
@@ -199,7 +199,7 @@ export function MessageMinimap(): React.JSX.Element | null {
           ref={railRef}
           data-message-nav="compact"
           role="list"
-          className="flex list-none flex-col items-start overflow-y-auto py-2 pl-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex list-none flex-col items-start overflow-y-auto py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ width: RAIL_WIDTH, maxHeight: RAIL_MAX_HEIGHT }}
         >
           {ticks.map((t, i) => (

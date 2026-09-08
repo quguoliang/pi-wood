@@ -190,7 +190,7 @@ export function PromptTray(): React.JSX.Element | null {
   // 折叠态：一条细卡片（与输入框同款外壳），显示待处理数，点击展开。
   if (collapsed) {
     return (
-      <section className="shrink-0 px-4 pt-2" aria-label="交互扩展层">
+      <section className="shrink-0 px-8 pt-2" aria-label="交互扩展层">
         <div className="mx-auto w-full max-w-[var(--pk-chat-width,48rem)]">
           <button
             type="button"
@@ -210,7 +210,7 @@ export function PromptTray(): React.JSX.Element | null {
   }
 
   return (
-    <section className="shrink-0 px-4 pt-2" aria-label="交互扩展层">
+    <section className="shrink-0 px-8 pt-2" aria-label="交互扩展层">
       <div className="mx-auto w-full max-w-[var(--pk-chat-width,48rem)]">
         <div className="mx-3 rounded-2xl border border-white/10 bg-[var(--composer-bg)] p-1.5 shadow-[0_8px_22px_-16px_rgba(0,0,0,0.6)]">
           <div className="px-2.5 pb-2.5 pt-1.5">

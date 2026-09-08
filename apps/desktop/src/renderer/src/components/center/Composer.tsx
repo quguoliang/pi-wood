@@ -138,7 +138,7 @@ function ComposerBody({ c, header }: { c: ComposerController; header?: React.Rea
 function OnboardingComposer({ c }: { c: ComposerController }): React.JSX.Element {
   const enter = "animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out [animation-fill-mode:both]";
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-8">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 py-8">
       <div className="w-full max-w-[var(--pk-chat-width,48rem)]">
         <h1 className={`mb-8 text-center text-[27px] font-semibold leading-tight tracking-tight ${enter}`}>
           {greeting()}
@@ -175,7 +175,7 @@ function OnboardingComposer({ c }: { c: ComposerController }): React.JSX.Element
 /** 对话态：底部停靠，隐藏头部芯片，只留亮灰输入卡主体。 */
 function DockedComposer({ c }: { c: ComposerController }): React.JSX.Element {
   return (
-    <section className="shrink-0 px-4 pb-4 pt-2" aria-label="发送消息">
+    <section className="shrink-0 px-8 pb-4 pt-2" aria-label="发送消息">
       <div className="mx-auto w-full max-w-[var(--pk-chat-width,48rem)]">
         <ComposerBody c={c} />
         {c.error && <div role="alert" className="mt-1.5 text-center text-xs text-destructive">{c.error}</div>}

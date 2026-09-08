@@ -54,7 +54,7 @@ export function ConversationHeader({
   };
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-8">
       <Icon name="message" className="size-4 shrink-0 text-muted-foreground" />
       <h1 className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={display}>
         {display}
