@@ -37,7 +37,7 @@ function RunRow({ run, onOpen }: { run: SubagentRunInfo; onOpen(): void }): Reac
     >
       <div className="flex items-center gap-2">
         <span className={cn("size-1.5 shrink-0 rounded-full", meta.dot)} />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{run.agent}</span>
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-foreground">{run.agent}</span>
         <StatusBadge status={run.status} />
         <Icon name="chevronRight" className="size-3.5 shrink-0 text-muted-foreground" />
       </div>
@@ -84,7 +84,7 @@ function TranscriptItem({ item }: { item: SubagentItem }): React.JSX.Element | n
   }
   if (item.kind === "assistant") {
     return (
-      <div className="pk-prose max-w-none text-[13px]">
+      <div className="pk-prose max-w-none text-[14px]">
         <Markdown>{item.text ?? ""}</Markdown>
       </div>
     );
@@ -101,7 +101,7 @@ function DetailView({ run, onBack }: { run: SubagentRunInfo; onBack(): void }): 
           <Icon name="chevronRight" className="size-3.5 rotate-180" />
           返回
         </Button>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{run.agent}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{run.agent}</span>
         <StatusBadge status={run.status} />
       </div>
       <div className="min-h-0 flex-1 space-y-2.5 overflow-auto px-3 py-3">
@@ -141,7 +141,7 @@ export function SubagentPanel(): React.JSX.Element {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border px-3">
         <Icon name="brain" className="size-3.5 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">子代理{runs.length > 0 ? ` · ${runs.length}` : ""}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground/90">子代理{runs.length > 0 ? ` · ${runs.length}` : ""}</span>
         {runningCount > 0 && (
           <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">{runningCount} 运行中</span>
         )}

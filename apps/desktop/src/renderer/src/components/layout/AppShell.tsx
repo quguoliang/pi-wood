@@ -329,7 +329,7 @@ export function AppShell({
                     "app-no-drag h-full overflow-hidden",
                     settings.window.rightCollapsed
                       ? "border-transparent"
-                      : "min-w-[260px] rounded-lg border border-border/60 bg-surface-app",
+                      : "min-w-[260px] rounded-lg border border-border/60 bg-surface-right",
                   )}
                 >
                   <PanelFade collapsed={Boolean(settings.window.rightCollapsed)}>

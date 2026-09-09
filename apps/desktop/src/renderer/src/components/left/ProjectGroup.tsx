@@ -204,7 +204,7 @@ export function ProjectGroup({
           <span className={cn("min-w-0 flex-1 truncate", activeSessionFile === session.file && "font-medium text-sidebar-foreground")}>
             {title}
           </span>
-          <span className="shrink-0 text-[11px] text-muted-foreground/70">{formatRelativeTime(session.modified)}</span>
+          <span className="shrink-0 text-[11px] text-muted-foreground/70 group-hover:opacity-0 transition-opacity">{formatRelativeTime(session.modified)}</span>
         </button>
         <RowMenu label={`${title} 的操作`}>
           <MenuItem
@@ -318,7 +318,7 @@ export function ProjectGroup({
                   <ConversationDot badge={badge} />
                   <span className="min-w-0 flex-1 truncate">{item.title}</span>
                   {item.isTree && (
-                    <span className="shrink-0 rounded-sm bg-primary/10 px-1 text-[9px] leading-4 text-primary" title={`独立工作树：${item.row.worktreePath}`}>
+                    <span className="shrink-0 rounded-sm bg-primary/10 px-1 text-[9px] leading-4 text-primary transition-opacity group-hover:opacity-0" title={`独立工作树：${item.row.worktreePath}`}>
                       树
                     </span>
                   )}

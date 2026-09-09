@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { ChevronDown, CircleCheck, CircleX, Loader2 } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleX, Wrench } from "lucide-react";
 import { ToolCard } from "@pi-wood/ui-kit";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useToolGroupsStore } from "../../stores/tool-groups-store";
@@ -53,10 +53,10 @@ export const ToolGroup = memo(function ToolGroup({ group }: { group: ToolGroupIt
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-2.5 py-1 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-muted/50"
+        className="flex w-full items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-left text-[13px] text-muted-foreground transition-colors hover:bg-muted/50"
       >
         {running ? (
-          <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+          <Wrench className="size-3.5 shrink-0 text-primary" />
         ) : hasError ? (
           <CircleX className="size-3.5 shrink-0 text-destructive/70" />
         ) : (
@@ -65,7 +65,7 @@ export const ToolGroup = memo(function ToolGroup({ group }: { group: ToolGroupIt
         <span className="shrink-0 font-medium text-foreground/80">{group.tools.length} 个工具调用</span>
         <span className="min-w-0 flex-1 truncate">
           {running ? (
-            "运行中…"
+            <span className="pk-shimmer-text">运行中…</span>
           ) : (
             <>
               · {group.status === "all_ok" ? "全部成功" : `${group.errorCount} 个失败`}

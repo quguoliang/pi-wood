@@ -17,9 +17,10 @@ import { cn } from "@/lib/utils";
 /* ------------------------------ 单条渲染 ------------------------------ */
 
 const UserBubble = memo(function UserBubble({ text }: { text: string }) {
+  // ZCode 用户消息形态：rounded-xl + 右上角收尖（rounded-tr-xs）+ 描边卡 + 限宽 max-w-xl
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-secondary px-3.5 py-2 text-[13.5px] leading-relaxed text-secondary-foreground">
+      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-tr-xs border border-border bg-surface px-4 py-3 text-[14.5px] leading-relaxed text-secondary-foreground">
         {text}
       </div>
     </div>
@@ -28,7 +29,10 @@ const UserBubble = memo(function UserBubble({ text }: { text: string }) {
 
 const AssistantProse = memo(function AssistantProse({ text, streaming }: { text: string; streaming?: boolean }) {
   return (
-    <div className={cn("pk-prose max-w-none text-[13.5px]", streaming && "[&>*:last-child]:after:content-['▍'] [&>*:last-child]:after:ml-0.5 [&>*:last-child]:after:animate-pulse [&>*:last-child]:after:text-primary")}>
+    <div
+      className={cn("pk-prose max-w-none text-[14.5px]", streaming && "[&>*:last-child]:after:content-['▍'] [&>*:last-child]:after:ml-0.5 [&>*:last-child]:after:animate-pulse [&>*:last-child]:after:text-primary")}
+      data-pk-stream-marker={streaming || undefined}
+    >
       <Markdown>{text}</Markdown>
     </div>
   );
@@ -57,11 +61,15 @@ const SystemNote = memo(function SystemNote({
       </div>
     );
   }
+  // ZCode timelineMarker 形态：两侧发丝线（bg-border/50）+ 居中弱化标签，融入输出流而不是胶囊浮标
   return (
-    <div className="flex justify-center">
-      <div className={cn("rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-[11px]", toneCls)}>
-        {text}
-      </div>
+    <div className="flex w-full items-center gap-3 px-1 py-1.5">
+      <div aria-hidden className="h-px min-w-8 flex-1 bg-border/50" />
+      <span className={cn("inline-flex min-w-0 shrink items-center justify-center gap-1.5 text-center text-[11.5px] leading-5", toneCls)}>
+        <OctagonX className="size-3.5 shrink-0" />
+        <span className="min-w-0 break-words">{text}</span>
+      </span>
+      <div aria-hidden className="h-px min-w-8 flex-1 bg-border/50" />
     </div>
   );
 });
@@ -190,6 +198,8 @@ export function MessageList(): React.JSX.Element | null {
   rowsRef.current = displayRows;
   const spyRef = useRef<string | undefined>(undefined);
   const [flashId, setFlashId] = useState<string | undefined>();
+  // ZCode 输出流同步：已播过进入动画的行（key=convId:rowId），滚动回挂/历史行不重播
+  const playedStreamRows = useRef<Set<string>>(new Set());
 
   const virtualizer = useVirtualizer({
     count: displayRows.length,
@@ -302,6 +312,11 @@ export function MessageList(): React.JSX.Element | null {
             {rows.map((row) => {
               const r = displayRows[row.index];
               const tight = r.kind === "tool" || r.kind === "thinking" || r.kind === "tool_group";
+              // ZCode 输出流同步：流式期间新增的行首次出现即淡入（每卡 +36ms，封顶 240ms 错落），
+              // 已播放过的行（滚动回挂/历史行）不重播。
+              const rowKey = `${activeConversationId}:${r.id}`;
+              const streamEnter = streaming && !playedStreamRows.current.has(rowKey);
+              if (streamEnter) playedStreamRows.current.add(rowKey);
               return (
               <div
                 key={row.key}
@@ -310,8 +325,13 @@ export function MessageList(): React.JSX.Element | null {
                 className="absolute top-0 left-0 w-full"
                 style={{ transform: `translateY(${row.start}px)` }}
               >
-                <div className={cn("rounded-lg", tight ? "mb-0.5" : "mb-3", r.id === flashId && "ring-1 ring-ring/50 transition-shadow")}>
-                  <ConversationRow item={r} isLast={r.id === lastRowId} />
+                <div className={cn("rounded-lg", tight ? "mb-2" : "mb-4", r.id === flashId && "ring-1 ring-ring/50 transition-shadow")}>
+                  <div
+                    className={cn(streamEnter && "pk-stream-in")}
+                    style={streamEnter ? ({ "--pk-stream-delay": `${Math.min(row.index * 36, 240)}ms` } as React.CSSProperties) : undefined}
+                  >
+                    <ConversationRow item={r} isLast={r.id === lastRowId} />
+                  </div>
                 </div>
               </div>
               );
@@ -320,14 +340,20 @@ export function MessageList(): React.JSX.Element | null {
 
           {/* live 尾块：流式思考 / 流式正文（不进虚拟列表，避免每 token 重排） */}
           {(liveThinking || liveText || streaming) && (
-            <div className="animate-in fade-in-0 duration-200 flex w-full flex-col gap-3 pb-2">
-              {liveThinking && <ThinkingCard text={liveThinking} streaming preview={liveThinking.slice(-60)} />}
-              {liveText && <AssistantProse text={liveText} streaming />}
+            <div className="pk-stream-in flex w-full flex-col gap-3 pb-2">
+              {liveThinking && (
+                <div className="pk-stream-in">
+                  <ThinkingCard text={liveThinking} streaming preview={liveThinking.slice(-60)} />
+                </div>
+              )}
+              {liveText && (
+                <div className="pk-stream-in">
+                  <AssistantProse text={liveText} streaming />
+                </div>
+              )}
               {streaming && !liveText && !liveThinking && (
-                <div className="flex items-center gap-1 pl-1">
-                  <span className="size-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-primary [animation-delay:-0.15s]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-primary" />
+                <div className="pk-stream-in">
+                  <span className="pk-shimmer-text pl-1 text-[13px] font-medium">正在思考…</span>
                 </div>
               )}
             </div>

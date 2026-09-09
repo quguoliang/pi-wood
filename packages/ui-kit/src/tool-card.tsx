@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
-  ChevronDown, CircleSlash, FileCode2, FilePen, FilePlus2, FolderOpen, Globe,
-  Loader2, Search, Sparkles, Terminal, XCircle,
+  Brain, ChevronDown, CircleSlash, FileCode2, FilePen, FilePlus2, FolderOpen, Globe,
+  Search, Sparkles, Terminal, XCircle,
 } from "lucide-react";
 import { cn } from "./cn";
 import { DiffView } from "./diff";
@@ -55,7 +55,6 @@ function describe(name: string, args: Record<string, unknown>): { verb: string; 
 }
 
 function headerIcon(name: string, status: ToolCardProps["status"]): React.ReactNode {
-  if (status === "running") return <Loader2 className="size-4 shrink-0 animate-spin text-primary" />;
   if (status === "error") return <XCircle className="size-4 shrink-0 text-destructive/70" />;
   switch (name) {
     case "read": return <FileCode2 className="size-4 shrink-0" />;
@@ -76,12 +75,12 @@ const isShellTool = (name: string): boolean => name === "bash" || name === "powe
 /** 折叠行状态文字（无框、弱化色），与图标并存；对齐 pi.dev「运行中/已完成/失败」文案。 */
 function StatusText({ status }: { status: ToolCardProps["status"] }): React.JSX.Element {
   if (status === "running") {
-    return <span className="shrink-0 text-[11.5px] text-primary/90 [animation-duration:1.6s] animate-pulse">运行中</span>;
+    return <span className="pk-shimmer-text shrink-0 text-[11.5px] text-primary/90">运行中</span>;
   }
   if (status === "error") {
     return <span className="shrink-0 text-[11.5px] text-destructive/70">失败</span>;
   }
-  return <span className="shrink-0 text-[11.5px] text-muted-foreground/55">已完成</span>;
+  return <span className="shrink-0 text-[12px] text-muted-foreground/70">已完成</span>;
 }
 
 const outputBlock =
@@ -118,7 +117,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
   const isEdit = (name === "edit" || name === "write") && diff;
   if (isEdit) {
     return (
-      <div className="mb-1 ml-[7px] mt-1 border-l-2 border-border pl-3">
+      <div className="mb-1 ml-[7px] mt-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5">
         <DiffView patch={diff!} />
       </div>
     );
@@ -126,7 +125,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
   if (name === "agent_start") {
     const runId = parseSubagentRunId(output);
     return (
-      <div className="mb-1 ml-[7px] mt-1 space-y-1 border-l-2 border-border pl-3">
+      <div className="mb-1 ml-[7px] mt-1.5 space-y-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5">
         <div className="text-[12.5px] text-muted-foreground">
           {status === "running" ? (
             "启动中…"
@@ -146,7 +145,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
   if (name === "agent_result") {
     const runId = parseSubagentRunId(output);
     return (
-      <div className="mb-1 ml-[7px] mt-1 space-y-1.5 border-l-2 border-border pl-3">
+      <div className="mb-1 ml-[7px] mt-1.5 space-y-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5">
         {output ? (
           <pre className={cn(outputBlock, status === "error" && "border-destructive/30 text-destructive")}>{output}</pre>
         ) : (
@@ -157,7 +156,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
     );
   }
   return (
-    <div className="mb-1 ml-[7px] mt-1 space-y-1.5 border-l-2 border-border pl-3">
+    <div className="mb-1 ml-[7px] mt-1.5 space-y-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5">
       {(name === "bash" || name === "powershell") && str(args.command) && (
         <div className="flex items-start gap-2 rounded-md border border-border bg-[#0f1115] px-2.5 py-1.5 font-mono text-[12px] dark:bg-[#0b0d10]">
           <span className="select-none text-success">$</span>
@@ -196,14 +195,14 @@ export function ToolCard(props: ToolCardProps): React.JSX.Element {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] transition-colors hover:bg-accent/50"
+        className="-mx-2 inline-flex max-w-full min-w-0 items-center gap-2 self-start rounded-lg px-2 py-1.5 text-left text-[13.5px] transition-colors hover:bg-accent/50"
       >
-        <span className="shrink-0 text-muted-foreground">{headerIcon(name, status)}</span>
-        <span className="shrink-0 font-medium text-foreground/90">{verb}</span>
+        <span className="shrink-0 text-foreground/50">{headerIcon(name, status)}</span>
+        <span className="shrink-0 font-medium text-foreground">{verb}</span>
         {shell && cmdInline ? (
           <HighlightedCommand inline code={cmdInline} className="min-w-0 flex-1 truncate text-muted-foreground" />
         ) : target ? (
-          <span className={cn("min-w-0 flex-1 truncate text-muted-foreground", mono && "font-mono text-[12.5px]")}>{target}</span>
+          <span className={cn("min-w-0 flex-1 truncate text-foreground/75", mono && "font-mono text-[12.5px] font-medium")}>{target}</span>
         ) : (
           <span className="min-w-0 flex-1" />
         )}
@@ -257,18 +256,18 @@ export function ThinkingCard({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={isOpen}
-        className="-mx-2 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        className="-mx-2 inline-flex max-w-full min-w-0 items-center gap-2 self-start rounded-lg px-2 py-1.5 text-left text-[13.5px] text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
       >
-        <Sparkles className={cn("size-4 shrink-0", streaming && "animate-pulse text-primary")} />
-        <span className="shrink-0 font-medium">思考</span>
-        <span className="min-w-0 flex-1 truncate">
-          · {streaming ? "思考中…" : fmtDuration(durationMs)}
-          {pv && <span className="text-muted-foreground/65"> · {pv}</span>}
+        <Brain className={cn("size-4 shrink-0 text-foreground/55", streaming && "text-primary")} />
+        <span className="shrink-0 font-medium text-foreground/90">思考</span>
+        <span className="min-w-0 truncate text-foreground/70">
+          · {streaming ? <span className="pk-shimmer-text">思考中…</span> : fmtDuration(durationMs)}
+          {pv && <span className="text-muted-foreground/70"> · {pv}</span>}
         </span>
         <ChevronDown className={cn("shrink-0 transition", isOpen ? "opacity-100 rotate-180" : "opacity-0 group-hover/tool:opacity-100")} size={14} />
       </button>
       {isOpen && (
-        <div className="mb-1 ml-[7px] mt-1 border-l-2 border-border pl-3 text-[12.5px] leading-relaxed whitespace-pre-wrap italic text-muted-foreground">
+        <div className="mb-1 ml-[7px] mt-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/90">
           {text}
         </div>
       )}

@@ -103,7 +103,7 @@ function TabButton({
     <div
       className={cn(
         "app-no-drag group flex max-w-45 items-center gap-1 rounded-md pl-2.5 pr-1 text-xs transition-colors",
-        active ? "bg-surface-app text-foreground" : "text-muted-foreground hover:bg-white/5",
+        active ? "bg-white/[0.06] text-foreground" : "text-muted-foreground hover:bg-white/5",
       )}
     >
       <button type="button" onClick={onActivate} className="flex min-w-0 items-center gap-1.5 py-1.5">
@@ -139,7 +139,7 @@ function Launcher({ onPick }: { onPick(tab: WorkbenchTab): void }): React.JSX.El
             className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out [animation-fill-mode:both] flex items-center gap-2.5 rounded-md bg-white/[0.04] px-3 py-2 text-left transition-colors hover:bg-white/[0.08]"
           >
             <Icon name={panelMeta[tab].icon} className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{panelMeta[tab].title}</span>
+            <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{panelMeta[tab].title}</span>
             <kbd className="shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{panelMeta[tab].kbd}</kbd>
           </button>
         ))}

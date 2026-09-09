@@ -19,12 +19,13 @@
   /* 分层主题（UI v3，唯一色彩来源）：chrome（顶栏/侧栏）比内容区浅一档。
      换肤/调分层只改这里，组件层禁止散落面板底色。
      内容区取色对齐参考稿 #181818（柔和深灰，非纯黑，减小白字对比刺眼）。 */
-  --surface-app: #181818; /* 内容区 */
+  --surface-app: #000000; /* 内容区（对话流）：暗模式纯黑，与右栏一致 */
   --surface-chrome: #1e1e1e; /* 顶栏 + 侧栏（比内容区浅一档） */
+  --surface-right: #000000; /* 右栏工作台：暗模式纯黑（对齐 ZCode 参考稿），亮模式白 */
 
   /* 空态 Composer 的两层表面（卡片 / 芯片条）：默认保持手调值，Pi 主题可覆盖 */
-  --composer-bg: #333333;
-  --composer-chip-bg: #242424;
+  --composer-bg: #2a2a2a;
+  --composer-chip-bg: #1c1c1c;
 
   --background: var(--surface-app);
   --foreground: oklch(0.985 0 0);
@@ -64,6 +65,7 @@
   /* 亮色下 chrome 比内容区暗一档（同理唯一来源） */
   --surface-app: oklch(0.99 0 0);
   --surface-chrome: oklch(0.962 0.002 255);
+  --surface-right: #ffffff; /* 亮色右栏 = 白 */
 
   /* 亮色下 composer：卡片白、芯片条浅灰（与深色层关系相反，符合 light 惯例） */
   --composer-bg: #ffffff;
@@ -104,6 +106,7 @@
 @theme inline {
   --color-surface-app: var(--surface-app);
   --color-surface-chrome: var(--surface-chrome);
+  --color-surface-right: var(--surface-right);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -204,40 +207,42 @@
 /* ===================== Markdown prose (prompt-kit Response) ===================== */
 @layer components {
   .pk-prose {
-    @apply text-[0.83rem] leading-[1.7] break-words;
+    @apply text-[0.9375rem] leading-[1.7] break-words;
   }
   .pk-prose :where(p, ul, ol, pre, table, blockquote) {
     margin-top: 0;
-    margin-bottom: 0.7rem;
+    margin-bottom: 1.1em;
   }
   .pk-prose :where(h1, h2, h3, h4) {
-    margin: 1.15rem 0 0.5rem;
-    font-weight: 600;
-    line-height: 1.35;
+    margin: 1.6em 0 0.6em;
+    font-weight: 700;
+    line-height: 1.4;
   }
-  .pk-prose :where(h1) { font-size: 1.15rem; }
-  .pk-prose :where(h2) { font-size: 1.05rem; }
-  .pk-prose :where(h3) { font-size: 0.95rem; }
+  .pk-prose :where(h1) { font-size: 1.31em; }
+  .pk-prose :where(h2) { font-size: 1.25em; }
+  .pk-prose :where(h3) { font-size: 1.1em; }
   .pk-prose :where(ul) { list-style: disc; padding-left: 1.35rem; }
   .pk-prose :where(ol) { list-style: decimal; padding-left: 1.35rem; }
-  .pk-prose :where(li) { margin: 0.15rem 0; }
+  .pk-prose :where(li) { margin: 0.3em 0; }
   .pk-prose :where(a) { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
   .pk-prose :where(blockquote) {
     border-left: 3px solid var(--border);
     padding-left: 0.85rem;
     color: var(--muted-foreground);
   }
-  .pk-prose :where(table) { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .pk-prose :where(strong) { color: var(--foreground); font-weight: 600; }
+  .pk-prose :where(table) { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
   .pk-prose :where(th, td) { border: 1px solid var(--border); padding: 0.35rem 0.6rem; text-align: left; }
   .pk-prose :where(th) { background: var(--muted); font-weight: 600; }
   .pk-prose :where(hr) { border: 0; border-top: 1px solid var(--border); margin: 1.1rem 0; }
   .pk-prose :where(:not(pre) > code) {
-    padding: 0.1rem 0.35rem;
+    padding: 0.12rem 0.4rem;
     border-radius: 5px;
-    background: var(--muted);
-    color: var(--foreground);
+    background: color-mix(in oklab, var(--foreground) 16%, transparent);
+    color: color-mix(in oklab, var(--foreground) 82%, transparent);
     font-family: var(--font-mono);
-    font-size: 0.78rem;
+    font-weight: 500;
+    font-size: 0.92em;
   }
 }
 
@@ -327,3 +332,86 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===================== 运行态文字扫光（ZCode 同款参数） ===================== */
+/* 取自 ZCode.app asar 内 .animated-gradient-text / @keyframes gradient-flow：
+   文字保持自身颜色，一条 30% 透明的光泽带以 4s 周期从右往左扫过；
+   0%→50% 扫动、50%→100% 静止，节奏为「扫一下、歇一下」。
+   替换原先的 bounce 圆点 / spinner 转圈 / pulse 状态文字（2026-09-09 用户拍板）。 */
+.pk-shimmer-text {
+  background-image: linear-gradient(
+    90deg,
+    currentColor 0%,
+    currentColor 34%,
+    color-mix(in srgb, currentColor 30%, transparent) 50%,
+    currentColor 66%,
+    currentColor 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: pk-gradient-flow 4s linear infinite;
+  display: inline-block;
+  transform: translateZ(0);
+  will-change: background-position;
+  backface-visibility: hidden;
+}
+
+@keyframes pk-gradient-flow {
+  0% {
+    background-position: 100% 0;
+  }
+  50% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* 静止态安全：position 0 时可见窗口落在纯色区（光泽带在窗外），reduced-motion 下退化为纯文字 */
+@media (prefers-reduced-motion: reduce) {
+  .pk-shimmer-text {
+    animation: none;
+  }
+}
+
+/* ===================== 流式进入动画（ZCode 输出流同步） ===================== */
+/* zcode-stream-text-in：0.9s expo-out 淡入，both 填充；错落 delay 由调用方给出（min(index*36, 240)ms）。 */
+@keyframes pk-stream-text-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pk-stream-in {
+  animation: pk-stream-text-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) var(--pk-stream-delay, 0s) both;
+  will-change: opacity;
+}
+
+/* markdown 列表 marker（ul/ol 条目符号）在流式容器内淡入 —— zcode-stream-marker-in 同参，
+   目标色取 muted-foreground（对应 ZCode foreground-subtlest）。 */
+@keyframes pk-stream-marker-in {
+  from {
+    color: transparent;
+  }
+  to {
+    color: var(--muted-foreground);
+  }
+}
+
+.pk-prose[data-pk-stream-marker="true"] :where(ul, ol) > li::marker {
+  animation: pk-stream-marker-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk-stream-in,
+  .pk-prose[data-pk-stream-marker="true"] :where(ul, ol) > li::marker {
+    animation: none;
+  }
+}
+
