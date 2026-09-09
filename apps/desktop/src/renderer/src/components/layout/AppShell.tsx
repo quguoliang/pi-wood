@@ -57,6 +57,13 @@ function PanelFade({ collapsed, children }: { collapsed: boolean; children: Reac
  * 修法：GSAP 每帧经 `group.setLayout()` 显式写百分比布局（库的单一写入路径），
  * 面板库不再自发跳变，CSS flex-grow transition 随之退役。拖拽分割条不经过此路径。
  *
+ * ⚠️ toLayout 返回的对象 key 必须按该 Group 内 Panel 的 DOM 顺序插入：
+ * 库的 setLayout 校验（v4 内部 X()）把 Object.values(layout) 与 panelConstraints
+ * 按「下标」zip——先 clamp 再按 Object.keys(layout) 插装回写。key 顺序 ≠ DOM 顺序时，
+ * 甲面板的值会被乙面板的 min/max 钳制（如右栏收 0 被中栏 minSize 25% 拦成 25），
+ * 且错序 map 会被 commit 成组内存布局，后续拖拽/补间全部串位
+ * （实机表现：关右栏后中栏被右栏的 minSize 0 压到极窄）。
+ *
  * 连点安全：tween 登记在 group 元素上（activeTweens），新 toggle 先 killTweensOf 全清
  * 再起拍——旧实现 tween 挂在每次新建的临时 proxy 上，连点会两条补间并行打架（视觉=方向反了）。
  */
@@ -69,8 +76,7 @@ function killActiveTween(group: GroupImperativeHandle): void {
 
 function animateLayout(
   group: GroupImperativeHandle | null,
-  panelId: string,
-  otherId: string,
+  toLayout: (pct: number) => { [panelId: string]: number },
   fromPct: number,
   toPct: number,
   onDone?: () => void,
@@ -81,7 +87,7 @@ function animateLayout(
   }
   killActiveTween(group);
   if (prefersReducedMotion()) {
-    group.setLayout({ [panelId]: toPct, [otherId]: 100 - toPct });
+    group.setLayout(toLayout(toPct));
     onDone?.();
     return;
   }
@@ -91,7 +97,7 @@ function animateLayout(
     duration: COLLAPSE_DURATION,
     ease: COLLAPSE_EASE,
     onUpdate: () => {
-      group.setLayout({ [panelId]: proxy.pct, [otherId]: 100 - proxy.pct });
+      group.setLayout(toLayout(proxy.pct));
     },
     onComplete: () => {
       activeTweens.delete(group);
@@ -115,13 +121,15 @@ function animateLayout(
  * 折叠动画（GSAP）：程序化折叠/展开经 animateLayout 每帧 setLayout 补间，
  * 内容淡入淡出由 PanelFade 同拍演出；拖拽分割条不经过补间路径，天然跟手。
  *
- * 折叠态三铁律（修「关右栏后中栏被挤到最左/右栏铺满」）：
+ * 折叠态四铁律（修「关右栏后中栏被挤到最左/右栏铺满」）：
  * 1. 展开永远回到持久化比例（toggle 补间/挂载恢复都写回 l/ri）——expand() 重载后丢
  *    expandToSize 会回落 minSize，窄窗下 260px 即半屏（表现为「点关闭反而铺满」）；
  * 2. 折叠态不落盘 layout——拖拽收到 0 释放的 commit 是 isUserInteraction，会把 [c=100,r=0]
  *    存成永久 defaultSize，重载即压塌右栏；
  * 3. 折叠标记只在「开关」与「拖拽释放 commit」两处同步——onResize 反同步会被挂载误测
- *    （窄窗首帧 minSize% 过大直接压塌面板）与补间中间帧写飘。
+ *    （窄窗首帧 minSize% 过大直接压塌面板）与补间中间帧写飘；
+ * 4. setLayout 的对象 key 必须按 Panel 的 DOM 顺序插入——库（v4）按下标 zip 值与约束，
+ *    反序会让两栏 min/max 互换钳制（关右栏 → 中栏被挤成极窄条）。
  */
 export function AppShell({
   left,
@@ -165,7 +173,8 @@ export function AppShell({
       return;
     }
     animatingRef.current = true;
-    animateLayout(group, "left", "content", current, target, () => {
+    // key 顺序 = 外层 Group 面板 DOM 顺序（left → content）
+    animateLayout(group, (p) => ({ left: p, content: 100 - p }), current, target, () => {
       animatingRef.current = false;
     });
   };
@@ -184,7 +193,10 @@ export function AppShell({
       return;
     }
     animatingRef.current = true;
-    animateLayout(group, "right", "center", currentRight, targetRight, () => {
+    // key 顺序 = 内层 Group 面板 DOM 顺序（center → right）；
+    // 旧实现 { right, center } 与 DOM 序相反，库按下标 zip 约束 → 两栏 min/max 互换，
+    // 表现为「关右栏反而把中栏挤到极窄」
+    animateLayout(group, (p) => ({ center: 100 - p, right: p }), currentRight, targetRight, () => {
       animatingRef.current = false;
     });
   };
@@ -199,10 +211,10 @@ export function AppShell({
       const outer = outerGroupRef.current?.getLayout() ?? {};
       if ((outer.left ?? 0) <= 0 && l > 0) outerGroupRef.current?.setLayout({ left: l, content: 100 - l });
     }
-    if (settings.window.rightCollapsed) innerGroupRef.current?.setLayout({ right: 0, center: 100 });
+    if (settings.window.rightCollapsed) innerGroupRef.current?.setLayout({ center: 100, right: 0 });
     else {
       const inner = innerGroupRef.current?.getLayout() ?? {};
-      if ((inner.right ?? 0) <= 0 && ri > 0) innerGroupRef.current?.setLayout({ right: ri, center: 100 - ri });
+      if ((inner.right ?? 0) <= 0 && ri > 0) innerGroupRef.current?.setLayout({ center: 100 - ri, right: ri });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
