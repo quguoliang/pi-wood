@@ -5,7 +5,7 @@ export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
   theme: { fallback: "light" | "dark" | "system"; pi?: string };
   editor: { fontSize: number; tabSize: number };
-  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean };
+  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean; lastSection?: string };
   recentProjects: string[];
   /** T8.6/T8.11：工作树开关（设置「工作树」页可改；主进程 conversation-registry 读同一段配置） */
   worktree: { enabled: boolean; keepAfterClose: boolean };

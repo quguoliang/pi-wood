@@ -4,7 +4,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { MessageList } from "./components/center/MessageList";
 import { Composer } from "./components/center/Composer";
 import { PromptTray } from "./components/center/PromptTray";
-import { SettingsModal } from "./components/center/SettingsModal";
+import { SettingsPage } from "./components/settings/SettingsPage";
 import { PackageMarket } from "./components/center/PackageMarket";
 import { CommandPalette } from "./components/center/CommandPalette";
 import { LeftPane } from "./components/left/LeftPane";
@@ -13,7 +13,8 @@ import { ConversationHeader } from "./components/center/ConversationHeader";
 import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
-import { activeSlice, useSessionStore } from "./stores/session-store";
+import { activeSlice, useActiveConversation, useSessionStore } from "./stores/session-store";
+import { cn } from "@/lib/utils";
 import { useSettingsStore } from "./stores/settings-store";
 import { MessageMinimap } from "./components/center/MessageMinimap";
 import { ForkedFromChip } from "./components/center/ForkedFromChip";
@@ -38,6 +39,8 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [environmentOpen, setEnvironmentOpen] = useState(false);
   const handleEvent = useSessionStore((s) => s.handleEvent);
+  // 空态判定与 Composer 的 hasConversation 同规则：无消息且无流式输出 → onboarding 居中态
+  const hasConversation = useActiveConversation((c) => c.items.length > 0 || Boolean(c.liveText) || c.streaming);
   const trackRuntimeEvent = useRuntimeStore((s) => s.trackEvent);
   const addDiff = useWorkbenchStore((s) => s.addDiff);
   const activeConversationId = useSessionStore((s) => s.activeConversationId);
@@ -257,7 +260,9 @@ export default function App() {
           >
             <ConversationHeader environmentOpen={environmentOpen} onEnvironmentToggle={() => setEnvironmentOpen((open) => !open)} />
             {/* T9.2 v2.1 改判：缩略导航不再占布局宽度——消息列左缘浮一条竖向刻度条（minimap），窄窗自动隐藏 */}
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            {/* 空态隐藏消息区：否则它与 OnboardingComposer（均 flex-1）对半分高，
+                「垂直居中」只发生在下半区里，问候块挂在中心线下方；对话态恢复 flex-1 */}
+            <div className={cn("relative flex min-h-0 min-w-0 flex-col", hasConversation ? "flex-1" : "hidden")}>
               <MessageList />
               <MessageMinimap />
               <ForkedFromChip />
@@ -276,7 +281,7 @@ export default function App() {
           </div>
         }
       />
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPage onClose={() => setSettingsOpen(false)} />}
       {marketOpen && <PackageMarket onClose={() => setMarketOpen(false)} />}
       {paletteOpen && (
         <CommandPalette onClose={() => setPaletteOpen(false)} onOpenSettings={() => setSettingsOpen(true)} />
