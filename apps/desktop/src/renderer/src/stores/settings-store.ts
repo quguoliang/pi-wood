@@ -38,10 +38,25 @@ interface SettingsState {
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
+/**
+ * layout 消毒：旧版 bug 会把折叠态几何（如 [19,100,0]）落盘成永久 defaultSize，
+ * 重载即压塌面板。展开比例是唯一该持久化的东西（折叠态由 leftCollapsed/rightCollapsed 承载），
+ * 故 c/r 任一为 0/非数 → 整组回默认；l 为 0 单独回默认（c/r 不受牵连）。
+ */
+const sanitizeLayout = (raw: unknown): PiWoodSettings["window"]["layout"] => {
+  const [dl, dc, dr] = defaults.window.layout;
+  const arr = Array.isArray(raw) ? raw : [];
+  const slot = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
+  const l = slot(arr[0]) || dl;
+  const c = slot(arr[1]);
+  const r = slot(arr[2]);
+  return c > 0 && r > 0 ? [l, c, r] : [l, dc, dr];
+};
+
 const merge = (raw: Partial<PiWoodSettings> | undefined): PiWoodSettings => ({
   ...defaults,
   ...raw,
-  window: { ...defaults.window, ...raw?.window },
+  window: { ...defaults.window, ...raw?.window, layout: sanitizeLayout(raw?.window?.layout) },
   theme: { ...defaults.theme, ...raw?.theme },
   editor: { ...defaults.editor, ...raw?.editor },
   ui: { ...defaults.ui, ...raw?.ui },

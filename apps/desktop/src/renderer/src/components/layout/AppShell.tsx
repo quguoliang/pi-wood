@@ -114,6 +114,14 @@ function animateLayout(
  * 唯一来源在 globals.css 的 --surface-* 令牌。
  * 折叠动画（GSAP）：程序化折叠/展开经 animateLayout 每帧 setLayout 补间，
  * 内容淡入淡出由 PanelFade 同拍演出；拖拽分割条不经过补间路径，天然跟手。
+ *
+ * 折叠态三铁律（修「关右栏后中栏被挤到最左/右栏铺满」）：
+ * 1. 展开永远回到持久化比例（toggle 补间/挂载恢复都写回 l/ri）——expand() 重载后丢
+ *    expandToSize 会回落 minSize，窄窗下 260px 即半屏（表现为「点关闭反而铺满」）；
+ * 2. 折叠态不落盘 layout——拖拽收到 0 释放的 commit 是 isUserInteraction，会把 [c=100,r=0]
+ *    存成永久 defaultSize，重载即压塌右栏；
+ * 3. 折叠标记只在「开关」与「拖拽释放 commit」两处同步——onResize 反同步会被挂载误测
+ *    （窄窗首帧 minSize% 过大直接压塌面板）与补间中间帧写飘。
  */
 export function AppShell({
   left,
@@ -181,19 +189,28 @@ export function AppShell({
     });
   };
 
-  // 首次加载恢复折叠态：瞬时（无补间），启动不该放动画
+  // 首次加载恢复折叠态：瞬时（无补间），启动不该放动画。
+  // 挂载收敛到持久化折叠态：库按约束校正初始布局，窄窗下可能把面板压塌，
+  // 与折叠标记相悖时以标记为准，按持久化比例重开
   useEffect(() => {
     if (!loaded) return;
     if (settings.window.leftCollapsed) outerGroupRef.current?.setLayout({ left: 0, content: 100 });
+    else {
+      const outer = outerGroupRef.current?.getLayout() ?? {};
+      if ((outer.left ?? 0) <= 0 && l > 0) outerGroupRef.current?.setLayout({ left: l, content: 100 - l });
+    }
     if (settings.window.rightCollapsed) innerGroupRef.current?.setLayout({ right: 0, center: 100 });
+    else {
+      const inner = innerGroupRef.current?.getLayout() ?? {};
+      if ((inner.right ?? 0) <= 0 && ri > 0) innerGroupRef.current?.setLayout({ right: ri, center: 100 - ri });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
-  // v4 无 onCollapse 回调：拖拽把面板收到 0 时设置值不会变，用 onResize 反同步真实折叠态，
-  // 保证「收起态接力开关」等依赖设置的渲染不漏出（仅在布尔翻转时写回，避免拖拽期高频 patch）
-  const syncCollapsed = (key: "leftCollapsed" | "rightCollapsed", sizePct: number): void => {
+  // 折叠标记同步：只在用户拖拽释放（isUserInteraction commit）时对齐真实几何，
+  // 避开挂载误测与补间中间帧；patch 仅在布尔翻转时写（拖拽期不高频打 IPC）
+  const syncFlagFromLayout = (key: "leftCollapsed" | "rightCollapsed", collapsed: boolean): void => {
     if (animatingRef.current) return; // 补间中间帧不是用户意图
-    const collapsed = sizePct < 0.5;
     if (useSettingsStore.getState().settings.window[key] !== collapsed) {
       void useSettingsStore.getState().patch({ window: { [key]: collapsed } });
     }
@@ -228,14 +245,18 @@ export function AppShell({
         groupRef={outerGroupRef}
         onLayoutChanged={(layout, meta) => {
           if (!meta.isUserInteraction) return;
-          const total = (layout.left ?? 0) + (layout.content ?? 0);
+          const left = layout.left ?? 0;
+          // 拖拽释放 commit：对齐折叠标记（拖到 0 = 折叠，从 0 拖出 = 展开）
+          syncFlagFromLayout("leftCollapsed", left <= 0);
+          if (left <= 0) return; // 折叠态不落盘，保留上次展开比例
+          const total = left + (layout.content ?? 0);
           if (total <= 0) return;
           const saved = useSettingsStore.getState().settings.window.layout;
-          setLayout([Math.round(((layout.left ?? 0) / total) * 100), saved[1], saved[2]]);
+          setLayout([Math.round((left / total) * 100), saved[1], saved[2]]);
         }}
       >
         {/* !overflow-hidden 压掉库嵌套层(overflow:auto)的滚动条：内容 min-w 在收起时被裁切而非出滚动条抖动 */}
-        <Panel id="left" panelRef={leftRef} defaultSize={`${l}%`} minSize="200px" maxSize="280px" collapsible collapsedSize={0} className="!overflow-hidden" onResize={(size) => syncCollapsed("leftCollapsed", size.asPercentage)}>
+        <Panel id="left" panelRef={leftRef} defaultSize={`${l}%`} minSize="200px" maxSize="280px" collapsible collapsedSize={0} className="!overflow-hidden">
           <div className="h-full min-w-[200px] overflow-hidden bg-surface-chrome">
             <PanelFade collapsed={Boolean(settings.window.leftCollapsed)}>
               {left}
@@ -256,10 +277,14 @@ export function AppShell({
               groupRef={innerGroupRef}
               onLayoutChanged={(layout, meta) => {
                 if (!meta.isUserInteraction) return;
-                const total = (layout.center ?? 0) + (layout.right ?? 0);
+                const right = layout.right ?? 0;
+                // 拖拽释放 commit：对齐折叠标记（拖到 0 = 折叠，从 0 拖出 = 展开）
+                syncFlagFromLayout("rightCollapsed", right <= 0);
+                if (right <= 0) return; // 折叠态不落盘，保留上次展开比例
+                const total = (layout.center ?? 0) + right;
                 if (total <= 0) return;
                 const saved = useSettingsStore.getState().settings.window.layout;
-                setLayout([saved[0], Math.round(((layout.center ?? 0) / total) * 100), Math.round(((layout.right ?? 0) / total) * 100)]);
+                setLayout([saved[0], Math.round(((layout.center ?? 0) / total) * 100), Math.round((right / total) * 100)]);
               }}
             >
               <Panel id="center" defaultSize={`${ci}%`} minSize="25%">
@@ -283,7 +308,6 @@ export function AppShell({
                 collapsible
                 collapsedSize={0}
                 className="!overflow-hidden"
-                onResize={(size) => syncCollapsed("rightCollapsed", size.asPercentage)}
               >
                 {/* 两闸齐下防「站位一直在」：
                     ① min-w 只在展开时挂——收起时卡 0 宽会让库把 0 钳回最小尺寸（0 < minSize 时库 Z() 会弹回 minSize 或 collapsedSize，配合 min-w 就把 0 宽判成非法）；
