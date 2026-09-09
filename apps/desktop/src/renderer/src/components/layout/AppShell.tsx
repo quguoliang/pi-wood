@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
-import { Group, Panel, Separator, type PanelImperativeHandle } from "react-resizable-panels";
+import { Group, Panel, Separator, type GroupImperativeHandle, type PanelImperativeHandle } from "react-resizable-panels";
 import { useSettingsStore } from "../../stores/settings-store";
 import { cn } from "@/lib/utils";
 import { WindowLights } from "./WindowLights";
@@ -8,9 +8,14 @@ import { WinWindowControls } from "./WinWindowControls";
 
 const prefersReducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** 折叠补间时长/曲线：与 MessageMinimap 同一族（power 系 out，快进慢出）。 */
+const COLLAPSE_DURATION = 0.3;
+const COLLAPSE_EASE = "power3.out";
+
 /**
  * 折叠面板内容淡入淡出（GSAP）：内容常驻挂载（visibility 裁剪，tab 顺序自动剔除）。
  * 只做纯透明度——位移交给几何补间（宽度裁切本身就是运动），叠加位移会变成双重运动=视觉抖动。
+ * 时长与几何补间同拍（0.3s），避免「宽度还在动、内容已闪现」的两拍错位。
  */
 function PanelFade({ collapsed, children }: { collapsed: boolean; children: React.ReactNode }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
@@ -21,13 +26,83 @@ function PanelFade({ collapsed, children }: { collapsed: boolean; children: Reac
     gsap.killTweensOf(el);
     const reduced = prefersReducedMotion();
     if (collapsed) {
-      gsap.to(el, { autoAlpha: 0, duration: reduced ? 0 : 0.15, ease: "power2.out" });
+      // 淡出比几何快半拍：宽度收到一半时内容已隐，避免「内容被压扁」的挤压感
+      gsap.to(el, { autoAlpha: 0, duration: reduced ? 0 : COLLAPSE_DURATION * 0.5, ease: "power2.out" });
     } else {
-      gsap.fromTo(el, { autoAlpha: 0 }, { autoAlpha: 1, duration: reduced ? 0 : 0.25, ease: "power2.out", clearProps: "opacity,visibility" });
+      // 展开时内容等宽度让出位置后再淡入（delay 半拍），从「已展开的空白」里浮现而非被拉伸
+      gsap.fromTo(
+        el,
+        { autoAlpha: 0 },
+        {
+          autoAlpha: 1,
+          duration: reduced ? 0 : COLLAPSE_DURATION * 0.6,
+          delay: reduced ? 0 : COLLAPSE_DURATION * 0.4,
+          ease: "power2.out",
+          clearProps: "opacity,visibility",
+        },
+      );
     }
   }, [collapsed]);
 
   return <div ref={ref} className="h-full">{children}</div>;
+}
+
+/**
+ * 程序化折叠/展开的 GSAP 补间驱动。
+ *
+ * 抖动根因（旧实现）：靠 CSS `transition: flex-grow` 补间——flexGrow 触发整列 relayout，
+ * 库每帧回写内联 flexGrow 与 transition 叠加，产生双写竞争；且 collapse() 单步跳变
+ * 让 transition 从错起点起拍。
+ *
+ * 修法：GSAP 每帧经 `group.setLayout()` 显式写百分比布局（库的单一写入路径），
+ * 面板库不再自发跳变，CSS flex-grow transition 随之退役。拖拽分割条不经过此路径。
+ *
+ * 连点安全：tween 登记在 group 元素上（activeTweens），新 toggle 先 killTweensOf 全清
+ * 再起拍——旧实现 tween 挂在每次新建的临时 proxy 上，连点会两条补间并行打架（视觉=方向反了）。
+ */
+const activeTweens = new WeakMap<GroupImperativeHandle, gsap.core.Tween>();
+
+function killActiveTween(group: GroupImperativeHandle): void {
+  activeTweens.get(group)?.kill();
+  activeTweens.delete(group);
+}
+
+function animateLayout(
+  group: GroupImperativeHandle | null,
+  panelId: string,
+  otherId: string,
+  fromPct: number,
+  toPct: number,
+  onDone?: () => void,
+): void {
+  if (!group) {
+    onDone?.();
+    return;
+  }
+  killActiveTween(group);
+  if (prefersReducedMotion()) {
+    group.setLayout({ [panelId]: toPct, [otherId]: 100 - toPct });
+    onDone?.();
+    return;
+  }
+  const proxy = { pct: fromPct };
+  const tween = gsap.to(proxy, {
+    pct: toPct,
+    duration: COLLAPSE_DURATION,
+    ease: COLLAPSE_EASE,
+    onUpdate: () => {
+      group.setLayout({ [panelId]: proxy.pct, [otherId]: 100 - proxy.pct });
+    },
+    onComplete: () => {
+      activeTweens.delete(group);
+      onDone?.();
+    },
+    onInterrupt: () => {
+      activeTweens.delete(group);
+      onDone?.();
+    },
+  });
+  activeTweens.set(group, tween);
 }
 
 /**
@@ -37,8 +112,8 @@ function PanelFade({ collapsed, children }: { collapsed: boolean; children: Reac
  *
  * 分层色彩：chrome（顶栏/侧栏）= bg-surface-chrome，内容区 = bg-surface-app，
  * 唯一来源在 globals.css 的 --surface-* 令牌。
- * 折叠动画（GSAP）：程序化折叠/展开时对面板元素补间 flex-grow（面板库本身瞬时置值），
- * 内容淡入淡出由 PanelFade 同步演出；拖拽分割条不经过补间路径，天然跟手。
+ * 折叠动画（GSAP）：程序化折叠/展开经 animateLayout 每帧 setLayout 补间，
+ * 内容淡入淡出由 PanelFade 同拍演出；拖拽分割条不经过补间路径，天然跟手。
  */
 export function AppShell({
   left,
@@ -53,14 +128,11 @@ export function AppShell({
   const rootRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<PanelImperativeHandle | null>(null);
   const rightRef = useRef<PanelImperativeHandle | null>(null);
-  // 几何动画：库是 flex-grow 唯一写入者，globals.css 的 .pane-anim [data-panel] 负责 transition
-  // （Panel 的 className 落在嵌套 div 上，管不到外层 flexGrow——别再往 Panel className 上挂过渡）。
-  // 初始 false 防启动折叠动画；拖拽分割条期间移除根类保跟手。
-  const [paneTransition, setPaneTransition] = useState(false);
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => setPaneTransition(true));
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  const outerGroupRef = useRef<GroupImperativeHandle | null>(null);
+  const innerGroupRef = useRef<GroupImperativeHandle | null>(null);
+  // 补间进行中屏蔽 onResize 反同步（每帧 setLayout 会触发 onResize，误把中间帧当用户拖拽）
+  const animatingRef = useRef(false);
+
   const [l, c, r] = settings.window.layout;
   // 旧存档的 c/r 是相对整窗的百分比；新结构里中栏+右栏在内层 Group 内分栏，归一化为内容区百分比
   const innerTotal = c + r || 100;
@@ -71,22 +143,56 @@ export function AppShell({
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!loaded) return;
-    if (settings.window.leftCollapsed) leftRef.current?.collapse();
-    if (settings.window.rightCollapsed) rightRef.current?.collapse();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
-
+  /** 左栏展开/收起的目标百分比：收起 0；展开回设置里存的用户宽度 l。 */
   const toggleLeftSidebar = (): void => {
     const collapsed = Boolean(useSettingsStore.getState().settings.window.leftCollapsed);
-    (collapsed ? leftRef.current?.expand : leftRef.current?.collapse)?.call(leftRef.current);
+    const group = outerGroupRef.current;
+    const layout = group?.getLayout() ?? {};
+    const current = layout.left ?? (collapsed ? 0 : l);
+    const target = collapsed ? l : 0;
     void useSettingsStore.getState().patch({ window: { leftCollapsed: !collapsed } });
+    if (!group) {
+      // group 未就绪（理论上不该发生）：退回库瞬时路径兜底
+      (collapsed ? leftRef.current?.expand : leftRef.current?.collapse)?.call(leftRef.current);
+      return;
+    }
+    animatingRef.current = true;
+    animateLayout(group, "left", "content", current, target, () => {
+      animatingRef.current = false;
+    });
   };
+
+  const toggleRightSidebar = (): void => {
+    const collapsed = Boolean(useSettingsStore.getState().settings.window.rightCollapsed);
+    const group = innerGroupRef.current;
+    // 补间进行中连点：先停掉旧补间（onInterrupt 会清动画标志），再以当前真实宽度为起点反向，
+    // 避免「旧 tween 继续跑、标志被清、两补间打架」。
+    const layout = group?.getLayout() ?? {};
+    const currentRight = layout.right ?? (collapsed ? 0 : ri);
+    const targetRight = collapsed ? ri : 0;
+    void useSettingsStore.getState().patch({ window: { rightCollapsed: !collapsed } });
+    if (!group) {
+      (collapsed ? rightRef.current?.expand : rightRef.current?.collapse)?.call(rightRef.current);
+      return;
+    }
+    animatingRef.current = true;
+    animateLayout(group, "right", "center", currentRight, targetRight, () => {
+      animatingRef.current = false;
+    });
+  };
+
+  // 首次加载恢复折叠态：瞬时（无补间），启动不该放动画
+  useEffect(() => {
+    if (!loaded) return;
+    if (settings.window.leftCollapsed) outerGroupRef.current?.setLayout({ left: 0, content: 100 });
+    if (settings.window.rightCollapsed) innerGroupRef.current?.setLayout({ right: 0, center: 100 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   // v4 无 onCollapse 回调：拖拽把面板收到 0 时设置值不会变，用 onResize 反同步真实折叠态，
   // 保证「收起态接力开关」等依赖设置的渲染不漏出（仅在布尔翻转时写回，避免拖拽期高频 patch）
   const syncCollapsed = (key: "leftCollapsed" | "rightCollapsed", sizePct: number): void => {
+    if (animatingRef.current) return; // 补间中间帧不是用户意图
     const collapsed = sizePct < 0.5;
     if (useSettingsStore.getState().settings.window[key] !== collapsed) {
       void useSettingsStore.getState().patch({ window: { [key]: collapsed } });
@@ -94,36 +200,32 @@ export function AppShell({
   };
 
   useEffect(() => {
-    const toggleInspector = (): void => {
-      const collapsed = useSettingsStore.getState().settings.window.rightCollapsed;
-      (collapsed ? rightRef.current?.expand : rightRef.current?.collapse)?.call(rightRef.current);
-      void useSettingsStore.getState().patch({ window: { rightCollapsed: !collapsed } });
-    };
     // 打开某个面板时确保右侧栏可见（收起态自动展开，已展开则不动）
     const revealInspector = (): void => {
       if (useSettingsStore.getState().settings.window.rightCollapsed) {
-        rightRef.current?.expand();
-        void useSettingsStore.getState().patch({ window: { rightCollapsed: false } });
+        toggleRightSidebar();
       }
     };
     // 左栏开关两态分别渲染在 LeftPane（拖拽栏内，no-drag 子元素）与 ConversationHeader（收起态）
     window.addEventListener("piwood:toggle-sidebar", toggleLeftSidebar);
-    window.addEventListener("piwood:toggle-inspector", toggleInspector);
+    window.addEventListener("piwood:toggle-inspector", toggleRightSidebar);
     window.addEventListener("piwood:reveal-inspector", revealInspector);
     return () => {
       window.removeEventListener("piwood:toggle-sidebar", toggleLeftSidebar);
-      window.removeEventListener("piwood:toggle-inspector", toggleInspector);
+      window.removeEventListener("piwood:toggle-inspector", toggleRightSidebar);
       window.removeEventListener("piwood:reveal-inspector", revealInspector);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!loaded) return <div className="h-full bg-surface-app" />;
 
   return (
-    <div ref={rootRef} className={cn("relative flex h-full min-h-0 flex-col overflow-hidden bg-surface-chrome", paneTransition && "pane-anim")}>
+    <div ref={rootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface-chrome">
       <Group
         orientation="horizontal"
         className="min-h-0 flex-1"
+        groupRef={outerGroupRef}
         onLayoutChanged={(layout, meta) => {
           if (!meta.isUserInteraction) return;
           const total = (layout.left ?? 0) + (layout.content ?? 0);
@@ -142,43 +244,64 @@ export function AppShell({
         </Panel>
         {/* 收起时不卸载只收窄（w-0）：hidden 卸载会让相邻栏瞬移一个手柄宽度 */}
         <Separator
-          onPointerDown={() => setPaneTransition(false)}
-          onPointerUp={() => setPaneTransition(true)}
           className={cn("bg-transparent transition-[width]", Boolean(settings.window.leftCollapsed) ? "w-0 pointer-events-none" : "w-1")}
         />
-        <Panel id="content" defaultSize={`${100 - l}%`}>
-          {/* 中栏+右栏合并为一个圆角矩形整体：距窗口四边均 6px（环带可拖拽移窗），内部再分栏 */}
-          <div className="app-drag h-full p-1.5">
-            <div className="app-no-drag flex h-full min-w-0 overflow-hidden rounded-lg bg-surface-app">
-              <Group
-                orientation="horizontal"
-                className="h-full min-w-0 flex-1"
-                onLayoutChanged={(layout, meta) => {
-                  if (!meta.isUserInteraction) return;
-                  const total = (layout.center ?? 0) + (layout.right ?? 0);
-                  if (total <= 0) return;
-                  const saved = useSettingsStore.getState().settings.window.layout;
-                  setLayout([saved[0], Math.round(((layout.center ?? 0) / total) * 100), Math.round(((layout.right ?? 0) / total) * 100)]);
-                }}
+        <Panel id="content" defaultSize={`${100 - l}%`} minSize={0}>
+          {/* 中栏+右栏各为独立圆角卡片（参考图样式）：两张卡片间透出 chrome 底色间隙，
+              拖拽环带（p-1.5）统一承载移窗区；卡片自带 border+rounded，底线不再跨栏通铺 */}
+          <div className="app-drag flex h-full min-w-0 gap-1.5 p-1.5">
+            <Group
+              orientation="horizontal"
+              className="h-full min-w-0 flex-1"
+              groupRef={innerGroupRef}
+              onLayoutChanged={(layout, meta) => {
+                if (!meta.isUserInteraction) return;
+                const total = (layout.center ?? 0) + (layout.right ?? 0);
+                if (total <= 0) return;
+                const saved = useSettingsStore.getState().settings.window.layout;
+                setLayout([saved[0], Math.round(((layout.center ?? 0) / total) * 100), Math.round(((layout.right ?? 0) / total) * 100)]);
+              }}
+            >
+              <Panel id="center" defaultSize={`${ci}%`} minSize="25%">
+                <div className="app-no-drag h-full min-w-0 overflow-hidden rounded-lg border border-border/60 bg-surface-app">{center}</div>
+              </Panel>
+              {/* 拖拽手柄：透明占位（两张卡片的间隙就是命中区），col-resize 光标提示可拖 */}
+              <Separator
+                className={cn("bg-transparent transition-[width]", Boolean(settings.window.rightCollapsed) ? "w-0 pointer-events-none" : "w-px")}
+              />
+              {/* minSize/maxSize 随折叠态换挡（关键修复）：
+                  库的 px→% 约束按「panel 实际像素宽之和」换算。右栏展开时基线≈整组宽，260px≈18% 正常；
+                  一旦右栏被钳到 0 宽、基线塌成只剩中栏，260px 会膨胀成 40%+——此后每帧 setLayout 想写 <45%
+                  都被「minSize 兜底」拦下，want→0 applied 恒 45（实机日志实证），右栏再也收不掉。
+                  折叠期干脆摘掉像素约束（min=0 max=100），补间畅通归零；展开时恢复。 */}
+              <Panel
+                id="right"
+                panelRef={rightRef}
+                defaultSize={`${ri}%`}
+                minSize={settings.window.rightCollapsed ? 0 : "260px"}
+                maxSize={settings.window.rightCollapsed ? 100 : "55%"}
+                collapsible
+                collapsedSize={0}
+                className="!overflow-hidden"
+                onResize={(size) => syncCollapsed("rightCollapsed", size.asPercentage)}
               >
-                <Panel id="center" defaultSize={`${ci}%`} minSize="25%">
-                  <div className="h-full min-w-0 overflow-hidden">{center}</div>
-                </Panel>
-                {/* 拖拽手柄保留（col-resize 光标），可见纵线由 RightPane 内容区 border-l 提供——不进头部带 */}
-                <Separator
-                  onPointerDown={() => setPaneTransition(false)}
-                  onPointerUp={() => setPaneTransition(true)}
-                  className={cn("bg-transparent transition-[width]", Boolean(settings.window.rightCollapsed) ? "w-0 pointer-events-none" : "w-px")}
-                />
-                <Panel id="right" panelRef={rightRef} defaultSize={`${ri}%`} minSize="260px" maxSize="55%" collapsible collapsedSize={0} className="!overflow-hidden" onResize={(size) => syncCollapsed("rightCollapsed", size.asPercentage)}>
-                  <div className="h-full min-w-[260px] overflow-hidden">
-                    <PanelFade collapsed={Boolean(settings.window.rightCollapsed)}>
-                      {right}
-                    </PanelFade>
-                  </div>
-                </Panel>
-              </Group>
-            </div>
+                {/* 两闸齐下防「站位一直在」：
+                    ① min-w 只在展开时挂——收起时卡 0 宽会让库把 0 钳回最小尺寸（0 < minSize 时库 Z() 会弹回 minSize 或 collapsedSize，配合 min-w 就把 0 宽判成非法）；
+                    ② collapsed 时 border/rounded/bg 全摘——否则哪怕宽=0，边框/背景仍在窗右缘画一条细条（截图右侧那条灰） */}
+                <div
+                  className={cn(
+                    "app-no-drag h-full overflow-hidden",
+                    settings.window.rightCollapsed
+                      ? "border-transparent"
+                      : "min-w-[260px] rounded-lg border border-border/60 bg-surface-app",
+                  )}
+                >
+                  <PanelFade collapsed={Boolean(settings.window.rightCollapsed)}>
+                    {right}
+                  </PanelFade>
+                </div>
+              </Panel>
+            </Group>
           </div>
         </Panel>
       </Group>

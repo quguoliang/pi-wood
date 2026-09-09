@@ -125,22 +125,22 @@ function TabButton({
   );
 }
 
-/** 空态启动器（图一）：居中列出基础功能，点击创建对应面板。 */
+/** 空态启动器（参考图）：居中列出基础功能，点击创建对应面板。 */
 function Launcher({ onPick }: { onPick(tab: WorkbenchTab): void }): React.JSX.Element {
   return (
     <div className="flex h-full items-center justify-center px-5">
-      <div className="flex w-full max-w-72 flex-col gap-1.5">
+      <div className="flex w-full max-w-60 flex-col gap-2">
         {LAUNCH_ORDER.map((tab, i) => (
           <button
             key={tab}
             type="button"
             onClick={() => onPick(tab)}
             style={{ animationDelay: `${i * 55}ms` }}
-            className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out [animation-fill-mode:both] flex items-center gap-2.5 rounded-lg border border-border/60 bg-white/[0.03] px-3.5 py-3 text-left transition-colors hover:border-border hover:bg-white/[0.06]"
+            className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500 ease-out [animation-fill-mode:both] flex items-center gap-2.5 rounded-md bg-white/[0.04] px-3 py-2 text-left transition-colors hover:bg-white/[0.08]"
           >
             <Icon name={panelMeta[tab].icon} className="size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-sm text-foreground">{panelMeta[tab].title}</span>
-            <kbd className="shrink-0 font-mono text-[11px] text-muted-foreground">{panelMeta[tab].kbd}</kbd>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{panelMeta[tab].title}</span>
+            <kbd className="shrink-0 rounded-full bg-white/[0.08] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{panelMeta[tab].kbd}</kbd>
           </button>
         ))}
       </div>
@@ -171,8 +171,8 @@ export function RightPane(): React.JSX.Element {
 
   if (openTabs.length === 0) {
     return (
-      <div className="flex h-full min-w-0 flex-col bg-surface-app">
-        {/* 空头条与中栏 header 同高（h-11）同色（透明）+ 同为拖拽区：底线照样通铺；收起按钮贴窗口控制左侧 */}
+      <div className="flex h-full min-w-0 flex-col">
+        {/* 空头条与中栏 header 同高（h-11）同色（透明）+ 同为拖拽区；收起按钮贴窗口控制左侧 */}
         <div
           className={cn(
             "app-drag relative flex h-11 shrink-0 select-none items-center justify-end border-b border-border/60 pr-6",
@@ -183,7 +183,7 @@ export function RightPane(): React.JSX.Element {
             <ClosePaneButton />
           </div>
         </div>
-        <div className="relative min-h-0 flex-1 border-l border-border">
+        <div className="relative min-h-0 flex-1">
           <Launcher onPick={openTab} />
         </div>
       </div>
@@ -191,7 +191,7 @@ export function RightPane(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-surface-app">
+    <div className="flex h-full min-w-0 flex-col">
       {/* Windows 自绘窗口控制悬浮在窗口右上角（AppShell z-30），nav 右侧为其预留 104px */}
       {/* 与中栏 header 同高（h-11）同色（透明，用户裁定顶部色彩不分栏）+ 同为拖拽区；右侧为窗口控制预留 104px */}
       <nav
@@ -214,8 +214,7 @@ export function RightPane(): React.JSX.Element {
         <AddTabMenu onPick={openTab} />
         <ClosePaneButton />
       </nav>
-      {/* 纵向分割线从这里才开始：不进头部带（与中栏 header 之间无线） */}
-      <div className="relative min-h-0 flex-1 border-l border-border">
+      <div className="relative min-h-0 flex-1">
         {openTabs.map((tab) => (
           <div key={tab} className={cn("absolute inset-0", tab === activeTab ? "block" : "hidden")}>
             <Suspense fallback={<LoadingPanel />}>{panelNode(tab)}</Suspense>
