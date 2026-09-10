@@ -10,7 +10,6 @@ import { CommandPalette } from "./components/center/CommandPalette";
 import { LeftPane } from "./components/left/LeftPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
-import { ConversationAssist } from "./components/center/ConversationAssist";
 import { Toaster } from "./components/ui/sonner";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
 import { activeSlice, useActiveConversation, useSessionStore } from "./stores/session-store";
@@ -270,7 +269,6 @@ export default function App() {
               <MessageList />
               <MessageMinimap />
               <ForkedFromChip />
-              <ConversationAssist className="pt-1" />
               <PromptTray />
             </div>
             <Composer />

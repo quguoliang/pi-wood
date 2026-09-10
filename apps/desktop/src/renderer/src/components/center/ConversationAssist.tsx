@@ -3,7 +3,16 @@ import { Icon } from "../ui/Icon";
 import { useAssistStore } from "../../stores/assist-store";
 import { useActiveConversation } from "../../stores/session-store";
 
-/** T7.9 会话辅助条：一轮结束后在主会话上方淡显回顾 + 可点击的追问建议；新消息/切会话/手动关闭即隐。 */
+/**
+ * T7.9 会话辅助块：一轮结束后在**对话流末尾**（最后一条回复之后）淡显回顾 + 可点击的追问建议。
+ *
+ * 失效规则（三者任一即隐）：
+ * - 手动关闭（✕）；
+ * - 点掉任意一条建议（点击即隐，而不是常驻——建议已被采纳，继续挂着只会挤占对话流）；
+ * - 关联失效：主会话 items 变长（下一轮已开始）或切换到别的会话。
+ *
+ * 宽度/对齐由调用方（MessageList 的对话流容器）负责，本组件只画内容，便于贴在最后一条消息后面。
+ */
 export function ConversationAssist({ className }: { className?: string }): React.JSX.Element | null {
   const recap = useAssistStore((s) => s.recap);
   const suggestions = useAssistStore((s) => s.suggestions);
@@ -20,38 +29,47 @@ export function ConversationAssist({ className }: { className?: string }): React
 
   const ask = (text: string): void => {
     window.dispatchEvent(new CustomEvent("piwood:composer-insert", { detail: { text, replace: false } }));
+    // 建议已落到输入框：本块功成身退，不再常驻
+    dismiss();
   };
 
   return (
-    <div className={cn("mx-auto w-full max-w-[var(--pk-chat-width,48rem)] px-8", className)}>
-      <div className="flex items-start gap-2 rounded-lg border border-border/50 bg-white/[0.02] px-3 py-2">
-        <Icon name="brain" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          {recap && <p className="text-xs leading-relaxed text-muted-foreground">{recap}</p>}
-          {suggestions.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => ask(s)}
-                  className="max-w-full truncate rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-[11px] text-muted-foreground transition-[transform,background-color,color,border-color] motion-safe:hover:border-primary/50 motion-safe:hover:text-foreground motion-safe:active:scale-[0.97]"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
+    <div className={cn("w-full", className)}>
+      {/* 回顾：限高 2 行（短内容自然只占 1 行，长内容截断，完整文本挂在 title 上），
+          避免一段小字灰文把整块撑高 */}
+      {recap && (
+        <div className="mb-1.5 flex items-start gap-2">
+          <Icon name="sparkles" className="mt-[3px] size-3.5 shrink-0 text-muted-foreground/60" />
+          <p title={recap} className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-[1.5] text-muted-foreground">
+            {recap}
+          </p>
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="忽略本次建议"
+            className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Icon name="x" className="size-3.5" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="忽略本次建议"
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Icon name="x" className="size-3.5" />
-        </button>
-      </div>
+      )}
+      {/* 建议：竖排 + 左对齐，胶囊宽度随内容伸缩（不铺满、不横排挤成一行） */}
+      {suggestions.length > 0 && (
+        <div className="flex flex-col items-start gap-1.5">
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => ask(s)}
+              title={s}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-2.5 py-1 text-left text-[12.5px] text-foreground/85 transition-[transform,background-color,border-color,color] motion-safe:hover:border-primary/45 motion-safe:hover:bg-accent/40 motion-safe:hover:text-foreground motion-safe:active:scale-[0.98]"
+            >
+              <span className="min-w-0 truncate">{s}</span>
+              <Icon name="arrowRight" className="size-3 shrink-0 text-muted-foreground/70" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

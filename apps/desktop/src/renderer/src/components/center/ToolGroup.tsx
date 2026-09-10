@@ -31,6 +31,14 @@ export const ToolGroup = memo(function ToolGroup({ group }: { group: ToolGroupIt
     setOpen(useToolGroupsStore.getState().allOpen);
   }, [nonce]);
 
+  // 设置页「工具组默认展开 / 对话信息默认展开」变更：已挂载的组也跟随（一次性，之后仍可单独折叠）
+  const prevDefaultOpen = useRef(defaultOpen);
+  useEffect(() => {
+    if (prevDefaultOpen.current === defaultOpen) return;
+    prevDefaultOpen.current = defaultOpen;
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
+
   // 运行中 → 完成：未被手动/全局操作过时按 defaultOpen 收起，避免长任务列表持续占用高度。
   useEffect(() => {
     if (prevStatus.current === "running" && group.status !== "running" && !userTouched.current) {
@@ -49,21 +57,23 @@ export const ToolGroup = memo(function ToolGroup({ group }: { group: ToolGroupIt
 
   return (
     <div className="group/tg">
+      {/* 无框一行：与思考行 / 单条工具行同款（图标 + 文案 + hover 淡底），
+          不再用描边圆角条——满宽方框在时间线里过重，且与展开后的子行形成双层框感 */}
       <button
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-left text-[13px] text-muted-foreground transition-colors hover:bg-muted/50"
+        className="-mx-2 inline-flex max-w-full min-w-0 items-center gap-2 self-start rounded-lg px-2 py-1.5 text-left text-[13.5px] text-muted-foreground transition-colors hover:bg-accent/50"
       >
         {running ? (
-          <Wrench className="size-3.5 shrink-0 text-primary" />
+          <Wrench className="size-4 shrink-0 text-primary" />
         ) : hasError ? (
-          <CircleX className="size-3.5 shrink-0 text-destructive/70" />
+          <CircleX className="size-4 shrink-0 text-destructive/70" />
         ) : (
-          <CircleCheck className="size-3.5 shrink-0 text-success/80" />
+          <CircleCheck className="size-4 shrink-0 text-success/80" />
         )}
         <span className="shrink-0 font-medium text-foreground/80">{group.tools.length} 个工具调用</span>
-        <span className="min-w-0 flex-1 truncate">
+        <span className="min-w-0 truncate">
           {running ? (
             <span className="pk-shimmer-text">运行中…</span>
           ) : (

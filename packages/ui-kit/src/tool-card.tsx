@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Brain, ChevronDown, CircleSlash, FileCode2, FilePen, FilePlus2, FolderOpen, Globe,
   Search, Sparkles, Terminal, XCircle,
@@ -183,6 +183,11 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
 export function ToolCard(props: ToolCardProps): React.JSX.Element {
   const { name, args, status, diffStat, defaultOpen = false, className } = props;
   const [open, setOpen] = useState(defaultOpen);
+  // 默认展开策略变更（设置页开关）时让**已挂载**的卡片跟随：否则虚拟列表里的老行要等重挂载才生效，
+  // 用户改完设置看不到任何变化。一次性应用，之后仍可单独点开/收起。
+  useEffect(() => {
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
   const { verb, target, mono } = describe(name, args);
   const hasStat = Boolean(diffStat && (diffStat.added > 0 || diffStat.deleted > 0));
   const shell = isShellTool(name);
@@ -249,6 +254,10 @@ export function ThinkingCard({
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
   const isOpen = streaming ? true : open;
+  // 同 ToolCard：设置页改「思考过程默认展开」后已挂载的思考块立即跟随
+  useEffect(() => {
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
   const pv = (preview ?? "").replace(/\s+/g, " ").trim();
   return (
     <div className="group/tool">

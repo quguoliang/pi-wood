@@ -1,17 +1,19 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ArrowDown, Check, Copy, GitFork, OctagonX, RotateCcw } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, CircleCheck, CircleX, Copy, GitFork, OctagonX, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Markdown, ThinkingCard, ToolCard } from "@pi-wood/ui-kit";
 import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem } from "../../stores/session-store";
+import { useAssistStore } from "../../stores/assist-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useConversationsStore } from "../../stores/conversations-store";
 import { useSessionMetaStore } from "../../stores/session-meta-store";
 import { useContextTreeStore } from "../../stores/context-tree-store";
-import { groupToolRows, isToolGroup, type DisplayRow } from "../../lib/tool-groups";
+import { collapseTurnProcess, groupToolRows, isToolGroup, isTurnProcess, type DisplayRow, type TurnProcessItem } from "../../lib/tool-groups";
 import { publishOutlineAnchor } from "../../lib/outline-bus";
 import { ToolGroup } from "./ToolGroup";
+import { ConversationAssist } from "./ConversationAssist";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------ 单条渲染 ------------------------------ */
@@ -95,7 +97,7 @@ const ThinkingRow = memo(function ThinkingRow({ item }: { item: Extract<Conversa
   return <ThinkingCard text={item.text} durationMs={item.durationMs} preview={item.text.slice(-60)} defaultOpen={defaultOpen} />;
 });
 
-const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extract<ConversationItem, { kind: "assistant" }>; isLast: boolean }) {
+const AssistantRow = memo(function AssistantRow({ item, isLatest }: { item: Extract<ConversationItem, { kind: "assistant" }>; isLatest: boolean }) {
   const [copied, setCopied] = useState(false);
   const retry = useCallback(() => {
     const items = activeSlice().items;
@@ -137,7 +139,14 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
   return (
     <div className="group/assistant">
       <AssistantProse text={item.text} />
-      <div className="mt-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/assistant:opacity-100">
+      {/* 操作栏：最新一轮回答常驻可见（鼠标不在消息上也能看到），历史回答仍 hover 才显；
+          用 opacity 而非条件渲染 —— 显隐都不改占位，列表高度与滚动位置不会跳 */}
+      <div
+        className={cn(
+          "mt-1 flex items-center gap-0.5 transition-opacity",
+          isLatest ? "opacity-100" : "opacity-0 group-hover/assistant:opacity-100 group-focus-within/assistant:opacity-100",
+        )}
+      >
         <Button
           variant="ghost"
           size="icon-sm"
@@ -157,7 +166,7 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
         >
           <GitFork className="size-3.5" />
         </Button>
-        {isLast && (
+        {isLatest && (
           <Button variant="ghost" size="icon-sm" className="size-7 text-muted-foreground hover:text-foreground" aria-label="重试" onClick={retry}>
             <RotateCcw className="size-3.5" />
           </Button>
@@ -167,16 +176,69 @@ const AssistantRow = memo(function AssistantRow({ item, isLast }: { item: Extrac
   );
 });
 
-function ConversationRow({ item, isLast }: { item: DisplayRow; isLast: boolean }): React.JSX.Element {
+function ConversationRow({ item, isLatest }: { item: DisplayRow; isLatest: boolean }): React.JSX.Element {
   if (isToolGroup(item)) return <ToolGroup group={item} />;
+  if (isTurnProcess(item)) return <TurnProcessRow turn={item} />;
   switch (item.kind) {
     case "user": return <UserBubble text={item.text} />;
-    case "assistant": return <AssistantRow item={item} isLast={isLast} />;
+    case "assistant": return <AssistantRow item={item} isLatest={isLatest} />;
     case "thinking": return <ThinkingRow item={item} />;
     case "tool": return <ToolRow item={item} />;
     case "system": return <SystemNote text={item.text} tone={item.tone} align={item.align} />;
   }
 }
+
+function fmtTurnDuration(ms?: number): string {
+  if (!ms || ms < 1000) return "";
+  const s = ms / 1000;
+  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)}s`;
+  return `${Math.floor(s / 60)}m${Math.round(s % 60)}s`;
+}
+
+/**
+ * T10 轮次过程折叠行：一轮跑完后，思考 / 工具过程收成这一行（正文留在它下方）。
+ * 默认收起——用户要的正是「完成后只看到正文」；展开按原顺序还原全部过程行。
+ */
+const TurnProcessRow = memo(function TurnProcessRow({ turn }: { turn: TurnProcessItem }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const duration = fmtTurnDuration(turn.durationMs);
+  const failed = turn.errorCount > 0;
+  const steps = [
+    turn.thinkingCount > 0 ? `${turn.thinkingCount} 次思考` : "",
+    turn.toolCount > 0 ? `${turn.toolCount} 个工具调用` : "",
+  ].filter(Boolean).join(" · ");
+  return (
+    <div className="group/tp">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={open ? "收起本轮过程" : "展开本轮思考与工具调用"}
+        className="-mx-2 inline-flex max-w-full min-w-0 items-center gap-2 self-start rounded-lg px-2 py-1.5 text-left text-[13.5px] text-muted-foreground transition-colors hover:bg-accent/50"
+      >
+        {failed ? (
+          <CircleX className="size-4 shrink-0 text-destructive/70" />
+        ) : (
+          <CircleCheck className="size-4 shrink-0 text-success/80" />
+        )}
+        <span className="shrink-0 font-medium text-foreground/80">{failed ? `已完成 · ${turn.errorCount} 个失败` : "已完成"}</span>
+        {duration && <span className="shrink-0 text-muted-foreground/70">· {duration}</span>}
+        {steps && <span className="min-w-0 truncate text-muted-foreground/70">· {steps}</span>}
+        <ChevronDown
+          className={cn("shrink-0 transition", open ? "opacity-100 rotate-180" : "opacity-0 group-hover/tp:opacity-100")}
+          size={14}
+        />
+      </button>
+      {open && (
+        <div className="mt-0.5 mb-1 ml-[7px] space-y-0.5 border-l-2 border-border pl-3">
+          {turn.rows.map((row) => (
+            <ConversationRow key={row.id} item={row} isLatest={false} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
 
 /* ------------------------------ 列表容器 ------------------------------ */
 
@@ -191,8 +253,27 @@ export function MessageList(): React.JSX.Element | null {
   const renderedConvRef = useRef(activeConversationId);
   const [atBottom, setAtBottom] = useState(true);
   const toolGroupsEnabled = useSettingsStore((s) => s.settings.ui.toolGroupsEnabled);
-  const displayRows = useMemo(() => groupToolRows(items, toolGroupsEnabled), [items, toolGroupsEnabled]);
-  const lastRowId = displayRows.length > 0 ? displayRows[displayRows.length - 1].id : undefined;
+  // T7.9 会话辅助块贴在流末尾，它到达的时机要在下面补一次贴底（见对应 effect）
+  const assistSession = useAssistStore((s) => s.session);
+  const assistForItemsLen = useAssistStore((s) => s.forItemsLen);
+  // 两级变换：连续工具先成组，再把**已结束轮次**的思考/工具过程折叠成一行（T10）。
+  // streaming 参与依赖：轮次跑完那一刻（streaming→false）历史过程自动收起，只留正文。
+  const displayRows = useMemo(
+    () => collapseTurnProcess(groupToolRows(items, toolGroupsEnabled), streaming),
+    [items, toolGroupsEnabled, streaming],
+  );
+  /**
+   * 「最新一轮回复」= 最后一条 assistant 行，而不是「最后一行」——一轮收尾后仍可能尾随
+   * system 提示或工具卡，按最后一行判断会让重试按钮凭空消失。它用于两处：
+   * 底部操作栏常驻可见（历史行仍 hover 才显）、重试按钮只挂它。
+   */
+  const latestAssistantId = useMemo(() => {
+    for (let i = displayRows.length - 1; i >= 0; i -= 1) {
+      const r = displayRows[i];
+      if (r?.kind === "assistant") return r.id;
+    }
+    return undefined;
+  }, [displayRows]);
   // T9.1 缩略树联动：rowsRef 供 onScroll 闭包读最新行表；flashId=被跳转行的高亮
   const rowsRef = useRef<DisplayRow[]>(displayRows);
   rowsRef.current = displayRows;
@@ -280,6 +361,17 @@ export function MessageList(): React.JSX.Element | null {
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [items.length, liveText, liveThinking, streaming, activeConversationId]);
 
+  /**
+   * 会话辅助（回顾 + 追问建议）贴在流末尾，而它是**本轮结束后由辅助模型异步回推**的：
+   * 那时 items 长度早已固定，上面的跟底 effect 不会再触发，建议会静静落在可视区之外。
+   * 故单独补一次：结果到达且用户仍在底部时贴底。切会话/首帧不参与（session 对不上即跳过）。
+   */
+  useLayoutEffect(() => {
+    if (!assistSession || assistSession !== activeConversationId) return;
+    const el = scrollRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, [assistSession, assistForItemsLen, activeConversationId]);
+
   // T8.3：切换可见对话 → 恢复该对话自己的滚动位置，只有它记住「跟底」时才贴底
   useEffect(() => {
     renderedConvRef.current = activeConversationId;
@@ -330,7 +422,7 @@ export function MessageList(): React.JSX.Element | null {
                     className={cn(streamEnter && "pk-stream-in")}
                     style={streamEnter ? ({ "--pk-stream-delay": `${Math.min(row.index * 36, 240)}ms` } as React.CSSProperties) : undefined}
                   >
-                    <ConversationRow item={r} isLast={r.id === lastRowId} />
+                    <ConversationRow item={r} isLatest={r.id === latestAssistantId} />
                   </div>
                 </div>
               </div>
@@ -358,9 +450,13 @@ export function MessageList(): React.JSX.Element | null {
               )}
             </div>
           )}
+          {/* T7.9 会话辅助（回顾 + 追问建议）：贴在**最后一轮回复之后**，随对话流滚动，
+              不再悬浮在输入框上方；下一轮开始 / 点掉某条建议 / ✕ 都会让它消失 */}
+          <ConversationAssist className="pt-2" />
         </div>
       }
-      <div className="h-4" />
+      {/* 流末尾与底部输入框之间留白：辅助块/最后一条消息不贴着 Composer */}
+      <div className="h-12" />
     </div>
       {!atBottom && (
         <button
