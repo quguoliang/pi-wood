@@ -22,6 +22,11 @@ export interface SessionItem {
   firstMessage: string;
 }
 
+/** 左栏单一列表的一行：活跃对话（注册表认领）或历史会话（磁盘）；key=会话文件路径（认领前后原地换形态）；time=排序与展示共用的稳定时间 */
+export type SidebarRow =
+  | { kind: "conv"; key: string; time: string; item: ConversationTreeItem }
+  | { kind: "session"; key: string; time: string; session: SessionItem };
+
 /**
  * 左栏数据与交互逻辑（从 LeftPane 抽出，组件层只负责呈现）：
  * 项目列表 + 每项目会话、激活（启动引擎）、展开、新建、选中、添加。
@@ -50,7 +55,6 @@ export function useSidebarProjects() {
   const setStoreProject = useSessionStore((s) => s.setActiveProject);
   const setEngineReady = useSessionStore((s) => s.setEngineReady);
   const reset = useSessionStore((s) => s.reset);
-  const loadHistory = useSessionStore((s) => s.loadHistory);
   const refreshRuntime = useRuntimeStore((s) => s.refresh);
   const resetRuntime = useRuntimeStore((s) => s.reset);
 
@@ -142,19 +146,88 @@ export function useSidebarProjects() {
   }, [activateProject, refreshProjects]);
 
   const selectSession = useCallback(async (project: ProjectRecord, session: SessionItem) => {
-    if (activeProject !== project.path) await activateProject(project);
+    // 用 store 的 activeProject 判定（switchTo 只更新 store 侧，hook 本地值可能滞后）：
+    // 判错会跳过激活，把「别的项目的活跃对话」切去认领这条文件 → 行跨分组乱跳
+    if (useSessionStore.getState().activeProject !== project.path) await activateProject(project);
     setActiveSessionFile(session.file);
-    // T9.2：先切引擎（主进程会把新会话文件同步回注册表），再刷上下文树拿「当前视图叶」，
-    // 历史按 root→leaf 路径过滤装载——分叉过的会话不会把旁支文本混进主视图。
-    await window.pi.engineSwitchSession(session.file);
-    const convId = useSessionStore.getState().activeConversationId;
-    if (convId) await useContextTreeStore.getState().refresh(convId, session.file, { force: true });
-    const leafId = convId ? useContextTreeStore.getState().byConv[convId]?.leafId : undefined;
-    const messages = (await window.pi.sessionsMessages(session.file, leafId)) as { role: string; text: string }[];
-    loadHistory(messages);
-    void refreshRuntime();
-    void useSessionStore.getState().refreshSessionId();
-  }, [activeProject, activateProject, loadHistory, refreshRuntime]);
+
+    // 先定「谁来认领」：正常就是正在看的这条对话；草稿态下主进程活跃指针可能另有其主，
+    // 用 engineStart（引擎已起时毫秒返回）把活跃对话要回来。定不了人就不乐观切换。
+    let convId = useSessionStore.getState().activeConversationId;
+    if (!convId) {
+      const started = await window.pi.engineStart(project.path).catch(() => undefined);
+      convId = started?.conversationId ?? null;
+      if (convId) useSessionStore.setState({ activeConversationId: convId, draftProject: null });
+    }
+
+    const switchInBackground = async (): Promise<void> => {
+      // 引擎 switchSession 要在子进程里重建服务（Pi SDK/jiti 冷装配，实测 1~2s）——
+      // 绝不串在点击路径上：视图先换底，这里后台完成，期间该对话禁用发送。
+      const doSwitch = (): Promise<{ conversationId?: string } | undefined> =>
+        window.pi.engineSwitchSession(session.file, useSessionStore.getState().activeConversationId ?? undefined);
+      let res: { conversationId?: string } | undefined;
+      try {
+        res = await doSwitch();
+      } catch {
+        try {
+          await activateProject(project);
+          res = await doSwitch();
+        } catch (err) {
+          toast.error(`打开会话失败：${String((err as Error)?.message ?? err)}`, { duration: 6000 });
+          useSessionStore.getState().setEngineReady(true, useSessionStore.getState().activeConversationId);
+          return;
+        }
+      }
+      const claimed = res?.conversationId ?? convId ?? useSessionStore.getState().activeConversationId;
+      if (!claimed) return;
+      // 认领方与乐观换底的那条对话不一致（重试激活换了人）：重新锚定视图并再换一次底
+      // （activateProject 会清空切片——即便 claimed 已是当前活跃，它的切片里还没有这条会话的内容）
+      if (claimed !== convId) {
+        useSessionStore.getState().setActiveConversation(claimed);
+        await useContextTreeStore.getState().refresh(claimed, session.file, { force: true });
+        await useSessionStore.getState().rebaseToBranch(claimed);
+      }
+      useSessionStore.getState().setEngineReady(true, claimed);
+      void refreshRuntime();
+      void useSessionStore.getState().refreshSessionId(claimed);
+    };
+
+    if (!convId) {
+      // 兜底：定不了认领方，退回串行（慢但语义与旧一致），失败必须 toast 不静默
+      try {
+        const res = await window.pi.engineSwitchSession(session.file);
+        const bound = res?.conversationId ?? useSessionStore.getState().activeConversationId;
+        if (bound) {
+          useSessionStore.getState().setActiveConversation(bound);
+          await useContextTreeStore.getState().refresh(bound, session.file, { force: true });
+          await useSessionStore.getState().rebaseToBranch(bound);
+          void useSessionStore.getState().refreshSessionId(bound);
+        }
+        void refreshRuntime();
+      } catch (err) {
+        toast.error(`打开会话失败：${String((err as Error)?.message ?? err)}`, { duration: 6000 });
+      }
+      return;
+    }
+
+    // 乐观快路径：立刻锚定对话 + 按磁盘文件换底（纯读，毫秒级），引擎切换挂后台
+    useSessionStore.getState().markHistoryLoaded(convId); // 先封住 ensureHistoryLoaded 的 merge 装载：
+    // 后台切换完成前注册表还指向旧文件，放任它 merge 会把旧会话内容竞态混进刚换好的底
+    useSessionStore.getState().setActiveConversation(convId); // 退草稿态 + 清未读 + 告知主进程可见性
+    useSessionStore.getState().setEngineReady(false, convId); // 换会话完成前禁用发送，防止 prompt 打进旧会话
+    // 本地即时认领：注册表行的 sessionFile 当场改成被点文件——对话行与旧文件让出的会话行
+    // 在点击同一帧各自换位（行 key=文件路径，原地换形态），不存在「旧行对话高亮 + 新行会话
+    // 高亮」的双选中中间态。主进程认领前置保证下一轮轮询结果一致，无回弹；切换失败时
+    // 主进程回滚认领，本行随轮询自然退回。
+    useConversationsStore.setState((s) => ({
+      rows: s.rows.map((r) => (r.id === convId && r.sessionFile !== session.file ? { ...r, sessionFile: session.file } : r)),
+    }));
+    void (async () => {
+      await useContextTreeStore.getState().refresh(convId, session.file, { force: true });
+      await useSessionStore.getState().rebaseToBranch(convId);
+    })();
+    void switchInBackground();
+  }, [activateProject, refreshRuntime]);
 
   /**
    * 项目下「新任务」统一入口（点 + / 新建任务 / Ctrl+N）：进入草稿态，**不建对话、不 fork 引擎**。
@@ -163,6 +236,7 @@ export function useSidebarProjects() {
    */
   const startDraftIn = useCallback(async (project: ProjectRecord) => {
     setExpandedProjects((current) => new Set(current).add(project.path));
+    setActiveSessionFile(undefined); // 草稿态没有任何选中行，清掉残留的会话选中态
     if (activeProject !== project.path) await activateProject(project);
     useConversationsStore.getState().startDraft(project.path);
   }, [activeProject, activateProject]);
@@ -307,17 +381,22 @@ export function useSidebarProjects() {
    * 隐藏「空草稿」对话：还没发过任何用户消息的对话不算一个任务（配合「+」不预建，避免凭空多行）。
    * 判据用 firstUserById（有首条用户消息才有条目）；正在跑/等审批的对话必然已有消息，不会误隐藏。
    * T8.11：会话文件已归档的对话行同样移出活跃树（对话归档 = 元数据归档 + 关闭进程，双保险）。
+   * 标题优先取磁盘会话行同源（name/firstMessage）：同一文件被对话认领前后标题一字不差，
+   * 否则「点击后行标题变化」会以另一种形式回来（tabTitle 24 字截断 ≠ firstMessage 120 字）。
    */
   const conversationsByProject = useMemo(() => {
+    const sessionByFile = new Map<string, SessionItem>();
+    for (const list of Object.values(sessionsByProject)) for (const s of list) sessionByFile.set(s.file, s);
     const map: Record<string, ConversationTreeItem[]> = {};
     for (const row of convRows) {
       const first = firstUserById[row.id];
       if (!first) continue; // 空草稿：不展示
       const meta = row.sessionFile ? metaMap[row.sessionFile] : undefined;
       if (meta?.archived) continue;
+      const disk = row.sessionFile ? sessionByFile.get(row.sessionFile) : undefined;
       (map[row.projectDir] ??= []).push({
         row,
-        title: meta?.alias ?? conversationTreeTitle(first, row),
+        title: meta?.alias ?? disk?.name ?? disk?.firstMessage ?? conversationTreeTitle(first, row),
         unread: unreadIds.has(row.id),
         isTree: Boolean(row.worktreePath) && row.worktreePath !== row.projectDir,
       });
@@ -328,7 +407,7 @@ export function useSidebarProjects() {
       map[vdir].sort((a, b) => (b.row.lastActiveAt ?? 0) - (a.row.lastActiveAt ?? 0));
     }
     return map;
-  }, [convRows, firstUserById, unreadIds, metaMap, virtualProject]);
+  }, [convRows, firstUserById, unreadIds, metaMap, virtualProject, sessionsByProject]);
 
   /** 磁盘会话列表：被活跃对话认领的不重复展示；已归档的不在树里展示（设置「归档」页统一管理，T8.11-R2） */
   const activeSessionsByProject = useMemo(() => {
@@ -348,7 +427,42 @@ export function useSidebarProjects() {
     return next;
   }, [convRows, sessionsByProject, metaMap]);
 
+  /**
+   * 左栏单一列表（参考样式）：对话行与历史会话行不再分两段渲染——按「会话文件最近修改时间」
+   * 统一倒序（置顶恒最前）。行 key = 会话文件路径：会话被对话认领时同一行原地从
+   * 「会话行」换成「对话行」，位置与标题都不变，消除「点击后行飞到顶部」的跳动。
+   */
+  const treeRowsByProject = useMemo(() => {
+    const modifiedByFile = new Map<string, string>();
+    for (const list of Object.values(sessionsByProject)) for (const s of list) modifiedByFile.set(s.file, s.modified);
+    const map: Record<string, SidebarRow[]> = {};
+    const paths = new Set([...Object.keys(conversationsByProject), ...Object.keys(activeSessionsByProject)]);
+    for (const path of paths) {
+      const rows: SidebarRow[] = [
+        // 对话行的时间取「所认领会话文件的 mtime」：点击前后是同一个值，标签不会从 4天 跳成 刚刚
+        ...(conversationsByProject[path] ?? []).map((item): SidebarRow => {
+          const file = item.row.sessionFile;
+          const time =
+            (file ? modifiedByFile.get(file) : undefined) ?? (item.row.lastActiveAt ? new Date(item.row.lastActiveAt).toISOString() : "");
+          return { kind: "conv", key: file ?? item.row.id, time, item };
+        }),
+        ...(activeSessionsByProject[path] ?? []).map((session): SidebarRow => ({ kind: "session", key: session.file, time: session.modified, session })),
+      ];
+      rows.sort((a, b) => {
+        const fileA = a.kind === "conv" ? a.item.row.sessionFile : a.session.file;
+        const fileB = b.kind === "conv" ? b.item.row.sessionFile : b.session.file;
+        const pinAOk = fileA && metaMap[fileA]?.pinned ? 1 : 0;
+        const pinBOk = fileB && metaMap[fileB]?.pinned ? 1 : 0;
+        if (pinAOk !== pinBOk) return pinBOk - pinAOk;
+        return b.time.localeCompare(a.time);
+      });
+      map[path] = rows;
+    }
+    return map;
+  }, [conversationsByProject, activeSessionsByProject, sessionsByProject, metaMap]);
+
   const selectConversation = useCallback((row: ConversationRow) => {
+    setActiveSessionFile(undefined); // 直接点对话行：清掉上一条被点会话行的选中态，避免双高亮
     useConversationsStore.getState().switchTo(row.id, row.projectDir);
   }, []);
 
@@ -356,6 +470,7 @@ export function useSidebarProjects() {
     projects,
     virtualProject,
     conversationsByProject,
+    treeRowsByProject,
     sessionsByProject: activeSessionsByProject,
     metaMap,
     expandedProjects,

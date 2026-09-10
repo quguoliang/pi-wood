@@ -1199,15 +1199,35 @@ export function initEngineIpc(): void {
   });
 
   ipcMain.handle("engine:switchSession", async (_e, raw: unknown) => {
-    const { file } = z.object({ file: z.string().min(1) }).parse(raw);
+    const { file, conversationId } = z
+      .object({ file: z.string().min(1), conversationId: z.string().min(1).optional() })
+      .parse(raw);
+    // 渲染层可显式指定「切到哪条对话」（乐观切换路径：视图已先换底，认领方必须就是它正在看的这条）；
+    // 未给或对话不存在/已死时回退主进程活跃指针（旧语义）。
+    if (conversationId && conversationId !== getActiveConversationId() && !setActiveConversation(conversationId)) {
+      throw new Error(`对话 ${conversationId} 不存在或已关闭`);
+    }
     const convId = await requireActiveConversationId();
-    const ref = await (await requireAdapter()).switchSession(file);
+    // 认领前置：record.sessionFile 立即指向目标文件，左栏归属在下一次轮询（≤1.5s）即可翻转，
+    // 不等子进程 1~2s 的冷装配完成——否则旧行的对话高亮与新行的会话高亮会长时间并存。
+    const handle = getConversation(convId);
+    const prevFile = handle?.record.sessionFile;
+    if (handle && handle.record.sessionFile !== file) handle.record.sessionFile = file;
+    let ref: unknown;
+    try {
+      ref = await (await requireAdapter()).switchSession(file);
+    } catch (err) {
+      // 切换失败回滚认领：注册表归属必须跟引擎实际所在一致
+      if (handle && handle.record.sessionFile === file) handle.record.sessionFile = prevFile;
+      throw err;
+    }
     // T9.2：把新会话文件同步回注册表。此前 record.sessionFile 停在旧值也不致命
     // （historyLoaded 门 + 引擎内存态指向正确文件），但缩略树/按叶过滤按**文件**取数，必须一致。
-    const handle = getConversation(convId);
     const nextFile = (ref as { sessionFile?: string } | void)?.sessionFile ?? file;
     if (handle && handle.record.sessionFile !== nextFile) handle.record.sessionFile = nextFile;
-    return true;
+    // 回传被切换的对话 id：渲染层据此把视图绑定到「真正认领了这条会话文件的对话」并整体换底，
+    // 不再把历史 merge 进可能属于另一条对话的旧切片（左栏点历史会话「标题错乱/中栏不生效」的根因）。
+    return { conversationId: convId, sessionFile: nextFile };
   });
   // ---- T1.3 压测钩子：注入 N 条消息事件验证虚拟列表（保留为 dev 工具）----
   ipcMain.handle("debug:stress", async (_e, raw: unknown) => {

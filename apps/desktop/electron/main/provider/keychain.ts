@@ -71,10 +71,16 @@ export function listStoredProviders(): string[] {
 /**
  * 内置 Provider → 凭据环境变量映射（对齐 pi env-api-keys 约定 <ID>_API_KEY）。
  * 启动引擎前注入 process.env，供 ModelRuntime 凭据解析。
+ * ⚠️ 统一走 providerEnvName：Pi SDK 的 ${VAR} 占位符只认 [A-Za-z_][A-Za-z0-9_]*，
+ * 自定义供应商 id 带 '-'（custom-abi）必须转成下划线，否则 models.json 占位解析不到。
  */
+export function providerEnvName(provider: string): string {
+  return `${provider.toUpperCase().replace(/-/g, "_")}_API_KEY`;
+}
+
 export function injectProviderEnv(keys: Record<string, string>): void {
   for (const [provider, key] of Object.entries(keys)) {
-    const envName = `${provider.toUpperCase()}_API_KEY`;
+    const envName = providerEnvName(provider);
     if (key) process.env[envName] = key;
   }
 }
@@ -85,5 +91,15 @@ export function loadAllKeysAsEnv(): Record<string, string> {
     const k = getProviderKey(p);
     if (k) out[p] = k;
   }
+  return out;
+}
+
+/**
+ * 凭据 env 快照（env 名 → 值）。child 的 process.env 是 fork 时快照，
+ * 供应商管理新配/改配的 Key 要靠它经 syncEnv RPC 补发给活体 child。
+ */
+export function providerEnvSnapshot(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [provider, key] of Object.entries(loadAllKeysAsEnv())) out[providerEnvName(provider)] = key;
   return out;
 }

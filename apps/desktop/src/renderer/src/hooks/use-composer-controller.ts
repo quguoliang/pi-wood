@@ -38,6 +38,8 @@ export function useComposerController() {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [models, setModels] = useState<Array<{ provider: string; id: string }>>([]);
+  /** 供应商 id → 显示名（内置 + 自定义都覆盖），模型下拉按供应商分组时的组标题用 */
+  const [providerNames, setProviderNames] = useState<Record<string, string>>({});
   const [thinkingLevels, setThinkingLevels] = useState<string[]>([]);
   const [runtime, setRuntime] = useState<RuntimeInfo | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -79,15 +81,28 @@ export function useComposerController() {
       setThinkingLevels([]);
       return;
     }
-    const [info, nextModels, nextLevels] = await Promise.all([
+    const [info, nextModels, nextLevels, providers] = await Promise.all([
       window.pi.runtimeInfo().catch(() => undefined),
       window.pi.engineModels().catch(() => []),
       window.pi.engineThinkingLevels().catch(() => []),
+      window.pi.providerList().catch(() => undefined),
     ]);
     setRuntime(info);
     setModels(nextModels);
     setThinkingLevels(nextLevels);
+    const p = providers as
+      | { builtin?: Array<{ id: string; name: string }>; custom?: Array<{ id: string; name: string }> }
+      | undefined;
+    setProviderNames(
+      Object.fromEntries([...(p?.builtin ?? []), ...(p?.custom ?? [])].map((item) => [item.id, item.name])),
+    );
   }, [engineReady]);
+
+  // 供应商增删改（models.json 已刷新）→ 重取模型列表与供应商显示名，下拉即时看到新供应商/模型
+  useEffect(() => {
+    const off = window.pi.onProviderChanged(() => void refreshRuntime());
+    return off;
+  }, [refreshRuntime]);
 
   useEffect(() => {
     void refreshRuntime().catch((err) => setError(String((err as Error)?.message ?? err)));
@@ -344,6 +359,7 @@ export function useComposerController() {
     attachments,
     removeAttachment,
     models,
+    providerNames,
     thinkingLevels,
     runtime,
     approvalMode,

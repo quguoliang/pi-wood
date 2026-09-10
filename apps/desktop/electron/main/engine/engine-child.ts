@@ -308,6 +308,8 @@ const HANDLERS: Record<EngineRpcMethod, Handler> = {
   // T9.2 缩略树 v2：同文件内切 leaf（SDK navigateTree；流式中会抛错，由主进程回执透传给渲染层 toast）
   navigateTree: async (p) => (await requireAdapter()).navigateTree(String(p?.targetId), { summarize: p?.summarize === true }),
   reload: async () => (await requireAdapter()).reload(),
+  syncEnv: async (p) => (await requireAdapter()).syncEnv((p as { env?: Record<string, string> })?.env ?? {}),
+  refreshModels: async () => (await requireAdapter()).refreshModels(),
   getState: async () => (await requireAdapter()).getState(),
   getSessionId: async () => ({ sessionId: E.adapter ? E.adapter.getSessionId() : E.sessionId }),
   getRuntimeInfo: async () => (await requireAdapter()).getRuntimeInfo(),

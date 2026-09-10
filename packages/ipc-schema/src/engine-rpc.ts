@@ -40,6 +40,10 @@ export const ENGINE_RPC_METHODS = [
   /** T9.2：同文件内切会话树 leaf（SDK navigateTree），上下文缩略树 v2 的「切分支」 */
   "navigateTree",
   "reload",
+  /** 供应商管理：主进程把最新凭据 env 补进活体 child（child env 是 fork 时快照） */
+  "syncEnv",
+  /** 供应商管理：child 重读 models.json 并重建模型目录（ModelRuntime.refresh） */
+  "refreshModels",
   "getState",
   "getSessionId",
   "getRuntimeInfo",
@@ -104,6 +108,8 @@ export const NavigateTreeParamsSchema = z.object({ targetId: z.string().min(1), 
 export const NewSessionParamsSchema = z.object({ parentSession: z.string().optional() });
 export const CompactParamsSchema = z.object({ custom: z.string().optional() });
 export const TextParamsSchema = z.object({ text: z.string() });
+/** 供应商管理：凭据 env 快照（键已是大写 env 名，值非空才下发） */
+export const SyncEnvParamsSchema = z.object({ env: z.record(z.string()) });
 export const StatsParamsSchema = z.object({ tag: z.string().optional() });
 /** T8.9 探针合成量（上限防手滑把 child 与主进程管道灌爆） */
 export const DebugEchoParamsSchema = z.object({
@@ -400,6 +406,8 @@ export const ENGINE_RPC_PARAM_SCHEMAS: Record<EngineRpcMethod, z.ZodTypeAny> = {
   fork: ForkParamsSchema,
   navigateTree: NavigateTreeParamsSchema,
   reload: VOID_PARAMS,
+  syncEnv: SyncEnvParamsSchema,
+  refreshModels: VOID_PARAMS,
   getState: VOID_PARAMS,
   getSessionId: VOID_PARAMS,
   getRuntimeInfo: VOID_PARAMS,

@@ -54,6 +54,8 @@ const METHOD_TIMEOUTS: Partial<Record<EngineRpcMethod, number>> = {
   shutdown: 15_000,
   compact: 180_000,
   reload: 90_000,
+  // 模型目录刷新：多数供应商只是重读 models.json（毫秒级），个别带远端列表刷新的会走网络，给 60s
+  refreshModels: 60_000,
   prompt: 0, // 一轮对话可达数十分钟；child 死亡时由 transport 主动 reject
   steer: 0,
   followUp: 0,
@@ -143,6 +145,12 @@ export class RemoteEngineAdapter implements EngineAdapter {
   }
   async reload(): Promise<void> {
     await this.call("reload");
+  }
+  async syncEnv(env: Record<string, string>): Promise<void> {
+    await this.call("syncEnv", { env });
+  }
+  async refreshModels(): Promise<void> {
+    await this.call("refreshModels");
   }
 
   async newSession(opts?: { parentSession?: string }): Promise<EngineSessionRef> {

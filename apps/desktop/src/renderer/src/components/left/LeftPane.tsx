@@ -14,8 +14,7 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
   const {
     projects,
     virtualProject,
-    conversationsByProject,
-    sessionsByProject,
+    treeRowsByProject,
     metaMap,
     expandedProjects,
     activeProject,
@@ -70,12 +69,12 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
       />
 
       <section className="flex min-h-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center justify-between px-4 pb-1 pt-1">
-          <span className="text-xs font-medium text-muted-foreground">项目</span>
+        <header className="group/head flex shrink-0 items-center justify-between px-4 pb-1 pt-1">
+          <span className="text-caption font-medium tracking-wider text-ink-muted">项目</span>
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-6 gap-1 px-1.5 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/head:opacity-100"
             onClick={() => void addProject()}
           >
             <Icon name="add" className="size-3.5" /> 添加
@@ -87,8 +86,7 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
             <ProjectGroup
               key={project.path}
               project={project}
-              conversations={conversationsByProject[project.path] ?? []}
-              sessions={sessionsByProject[project.path] ?? []}
+              rows={treeRowsByProject[project.path] ?? []}
               metaMap={metaMap}
               isActiveProject={activeProject === project.path}
               isExpanded={expandedProjects.has(project.path)}
@@ -123,8 +121,7 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
             <ProjectGroup
               virtual
               project={virtualProject}
-              conversations={conversationsByProject[virtualProject.path] ?? []}
-              sessions={sessionsByProject[virtualProject.path] ?? []}
+              rows={treeRowsByProject[virtualProject.path] ?? []}
               metaMap={metaMap}
               isActiveProject={activeProject === virtualProject.path}
               isExpanded={expandedProjects.has(virtualProject.path)}
@@ -154,7 +151,7 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
 
       <footer className="flex shrink-0 items-center justify-between gap-2 p-2 pt-1">
         <div className="flex min-w-0 items-center gap-2 pl-1" aria-label="pi-wood">
-          <span className="grid size-[22px] shrink-0 place-items-center rounded-md bg-primary text-[12px] font-bold text-primary-foreground">π</span>
+          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-avatar text-[12px] font-bold text-white">π</span>
           <span className="truncate text-[13px] font-semibold tracking-tight">pi-wood</span>
         </div>
         <Button

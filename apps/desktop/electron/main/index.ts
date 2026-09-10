@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from "electron";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { release as osRelease } from "node:os";
 import { fileURLToPath } from "node:url";
 
 // T8.P：主进程产物已切 ESM（out/main/index.js 在 type:module 下即 ESM；electron-vite 只把 preload 改名 .mjs），
@@ -8,10 +9,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { isExtensionProbeMode, runExtensionProbe } from "./extension-probe";
 import { isE2EMode, startE2E } from "./engine/e2e-service";
-import { initSettingsIpc } from "./settings-service";
+import { initSettingsIpc, getSettings } from "./settings-service";
 import { initDataIpc } from "./ipc/data.ipc";
 import { initEngineIpc, getActiveWorkspaceDir, getActiveConversationIdSafe } from "./engine/engine-manager";
-import { shutdownAllConversations, busyConversations } from "./engine/conversation-registry"; // T8.1：退出前广播 shutdown；T8.8：退出确认
+import { shutdownAllConversations, busyConversations, reloadLiveModelConfigs } from "./engine/conversation-registry"; // T8.1：退出前广播 shutdown；T8.8：退出确认
 import { isEngineProcessProbeMode, runEngineProcessProbe } from "./engine/engine-process-probe";
 import { isConversationProbeMode, runConversationProbe } from "./engine/conversation-probe";
 import { runConcurrencyProbe } from "./engine/concurrency-probe";
@@ -26,6 +27,7 @@ import { initTerminalIpc, killAllTerminals } from "./workbench/terminal-service"
 import { initBrowserIpc, configureBrowserScope } from "./workbench/browser-service";
 import { initDevServerIpc } from "./workbench/dev-server-detector";
 import { initProviderIpc } from "./provider/provider-manager";
+import { providerEnvSnapshot } from "./provider/keychain";
 import { initPluginsIpc, stopAllPlugins } from "./plugins/plugins.ipc";
 import { isPluginProbeMode, runPluginProbe } from "./plugins/plugin-probe";
 import { initSubagentPermissionsIpc } from "./subagent/permissions.ipc";
@@ -40,6 +42,9 @@ import { isUiChatMode, runUiChat } from "./engine/ui-chat-harness";
 import { loadPrivateEnv } from "./private-env";
 
 let mainWindowRef: BrowserWindow | undefined;
+/** 本次建窗实际启用的磨砂玻璃态（供 preload 同步查询，作为 additionalArguments 的兜底通道）。 */
+let glassEnabledNow = false;
+let glassIpcRegistered = false;
 function sendToRenderer(channel: string, data: unknown): void {
   // 关窗/退出时子进程 exit 等异步回调可能晚于窗口销毁到达 → 挡掉已销毁窗口，防 "Object has been destroyed"
   if (!mainWindowRef || mainWindowRef.isDestroyed()) return;
@@ -61,6 +66,22 @@ const debugLog = (line: string): void => {
 };
 
 function createWindow(): void {
+  // 磨砂玻璃（系统级）：读用户开关 + 平台能力判定。
+  // macOS→vibrancy:'sidebar'（要求非 transparent 窗，交系统自绘圆角）；Windows 11 22H2+→acrylic；
+  // 其余（Win10 / Linux）自动降级为关闭。transparent 是建窗期一次性属性，故开关改后**重启生效**。
+  const glassRequested = getSettings().appearance?.glass !== false; // 默认开
+  const win11OrLater =
+    process.platform === "win32" && Number(osRelease().split(".")[2] ?? "0") >= 22621;
+  const glassEnabled = glassRequested && (process.platform === "darwin" || win11OrLater);
+  glassEnabledNow = glassEnabled;
+  // 兜底通道：preload 经同步 IPC 拿生效玻璃态（不单独依赖 additionalArguments 落到 process.argv）。
+  if (!glassIpcRegistered) {
+    ipcMain.on("pi:glass-sync", (event) => {
+      event.returnValue = glassEnabledNow;
+    });
+    glassIpcRegistered = true;
+  }
+
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -72,12 +93,16 @@ function createWindow(): void {
     // UI v3：Windows 无边框 + 渲染层自绘 TitleBar；macOS 透明窗（无系统白线/圆角自绘）。
     // 透明窗下系统忽略 trafficLightPosition → 红绿灯由渲染层自绘（WindowLights），
     // 功能对齐原生：关闭/最小化/全屏。
+    // 磨砂玻璃开启时改走系统材质：macOS vibrancy（非透明窗 + 系统圆角）、Win11 acrylic。
     ...(process.platform === "win32"
-      ? { frame: false }
+      ? { frame: false, ...(glassEnabled ? { backgroundMaterial: "acrylic" as const } : {}) }
       : process.platform === "darwin"
-        ? { titleBarStyle: "hidden" as const, transparent: true }
+        ? glassEnabled
+          ? { titleBarStyle: "hidden" as const, vibrancy: "sidebar" as const, visualEffectState: "active" as const }
+          : { titleBarStyle: "hidden" as const, transparent: true }
         : { titleBarStyle: "default" as const }),
-    backgroundColor: process.platform === "darwin" ? "#00000000" : "#202020",
+    // 玻璃态需窗口底色全透明才能透出系统模糊材质；关闭态维持各平台原底色。
+    backgroundColor: process.platform === "darwin" || glassEnabled ? "#00000000" : "#202020",
     webPreferences: {
       // T8.P：electron-vite ESM 产物入口为 [name].mjs；sandbox:false 是 ESM preload 的硬依赖（不得改回 true）
       preload: join(__dirname, "../preload/index.mjs"),
@@ -86,12 +111,17 @@ function createWindow(): void {
       nodeIntegration: false,
       // 浏览器面板用 <webview> 渲染真实可交互页面（截图流方案已弃用）
       webviewTag: true,
+      // 把生效的玻璃态同步给 preload（→ window.pi.glass → html.glass），免异步闪烁
+      additionalArguments: [`--pi-glass=${glassEnabled ? 1 : 0}`],
     },
   });
   mainWindowRef = win;
 
   // 自绘红绿灯，隐藏原生按钮
   if (process.platform === "darwin") win.setWindowButtonVisibility(false);
+
+  // macOS 兜底：构造期设的 vibrancy 偶发不合成，建窗后再显式设一次（已知 Electron 行为）。
+  if (process.platform === "darwin" && glassEnabled) win.setVibrancy("sidebar");
 
   win.on("ready-to-show", () => win.show());
 
@@ -255,7 +285,10 @@ if (!gotLock) {
       node: process.versions.node,
     }));
     initSettingsIpc();
-    initProviderIpc();
+    initProviderIpc(() => {
+      reloadLiveModelConfigs(providerEnvSnapshot()); // 供应商增删改 → 空闲活体 child 补凭据 + 重读 models.json
+      sendToRenderer("provider:changed", null); // 渲染层拉新模型列表（composer/默认模型下拉）
+    });
     initWindowIpc(() => mainWindowRef);
     // T8.P 保留动态 import（非格式原因）：Pi 已随 sdk-adapter 静态进入启动图，此处仅命中模块缓存；
     // 保留动态写法以维持「先取 agentDir、再注册依赖它的数据域 IPC」的注册时序，改动面最小。

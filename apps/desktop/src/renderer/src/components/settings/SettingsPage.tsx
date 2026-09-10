@@ -61,7 +61,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }): React.JSX.El
   }, [install.spec, install.running]);
 
   return (
-    <div className="fixed inset-0 z-20 flex animate-in fade-in-0 duration-200 bg-surface-app" role="region" aria-label="设置">
+    <div className="fixed inset-0 z-20 flex animate-in fade-in-0 duration-200 bg-surface-chrome" role="region" aria-label="设置">
       <div
         aria-hidden
         className={cn(
@@ -70,8 +70,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }): React.JSX.El
         )}
       />
       <SettingsNav section={section} onPick={select} onClose={onClose} />
-      <main className="app-no-drag min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-10 pb-16 pt-14">
+      {/* 内容区对齐主界面：外层 p-1.5 让 chrome（磨砂）在卡片四边留白，内层圆角描边卡片浮起 */}
+      <div className="app-drag flex min-w-0 flex-1 p-1.5">
+        <main className="app-no-drag min-w-0 flex-1 overflow-y-auto rounded-lg border border-border/60 bg-surface-app">
+        {/* 模型源是双栏布局（供应商清单 + 表单），比单列表页吃宽；其余 section 维持 3xl 阅读宽度 */}
+        <div className={cn("mx-auto px-10 pb-16 pt-14", section === "providers" ? "max-w-5xl" : "max-w-3xl")}>
           <h1 key={section} className="mb-6 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 text-2xl font-semibold tracking-tight">
             {settingsSectionLabel(section)}
           </h1>
@@ -92,7 +95,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }): React.JSX.El
             {section === "worktree" && <WorktreeSettingsPanel />}
           </div>
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

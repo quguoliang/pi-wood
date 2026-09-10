@@ -14,57 +14,72 @@
 :root {
   color-scheme: dark;
 
-  --radius: 0.7rem;
+  /* 圆角：对齐规范 card 8px（rounded-md/lg/xl 由下方 @theme 的 calc 派生）；code 3px、pill 6px 见 @theme */
+  --radius: 8px;
 
-  /* 分层主题（UI v3，唯一色彩来源）：chrome（顶栏/侧栏）比内容区浅一档。
-     换肤/调分层只改这里，组件层禁止散落面板底色。
-     内容区取色对齐参考稿 #181818（柔和深灰，非纯黑，减小白字对比刺眼）。 */
-  --surface-app: #000000; /* 内容区（对话流）：暗模式纯黑，与右栏一致 */
-  --surface-chrome: #1e1e1e; /* 顶栏 + 侧栏（比内容区浅一档） */
-  --surface-right: #000000; /* 右栏工作台：暗模式纯黑（对齐 ZCode 参考稿），亮模式白 */
+  /* 分层主题（唯一色彩来源）：规范「越靠前景的表面越亮」的亮度阶梯——
+     侧栏最暗 #181818（后退）→ 内容 #1f1f1f → 卡片/输入 #2a2a2a → 悬浮 #2d2d2d → 选中 #2a2d2e。
+     换肤/调分层只改这里，组件层禁止散落面板底色。 */
+  --surface-app: #1f1f1f; /* 内容区（对话流）：规范主区中性深灰 */
+  --surface-chrome: #181818; /* 顶栏 + 侧栏：最暗，形成后退感 */
+  --surface-right: #1f1f1f; /* 右栏工作台：与内容同层 */
 
   /* 空态 Composer 的两层表面（卡片 / 芯片条）：默认保持手调值，Pi 主题可覆盖 */
   --composer-bg: #2a2a2a;
   --composer-chip-bg: #1c1c1c;
 
   --background: var(--surface-app);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.19 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  --foreground: #e0e0e0;
+  --card: #2a2a2a;
+  --card-foreground: #e0e0e0;
+  --popover: #2d2d2d;
+  --popover-foreground: #e0e0e0;
   --primary: oklch(0.623 0.214 259);
   --primary-foreground: oklch(0.985 0.005 255);
-  --secondary: oklch(0.268 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.268 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.285 0.02 259);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.636 0.208 25.3);
-  --success: oklch(0.72 0.17 155);
-  --warning: oklch(0.8 0.15 78);
+  --secondary: #2a2a2a;
+  --secondary-foreground: #e0e0e0;
+  --muted: #2a2a2a;
+  --muted-foreground: #b0b0b0;
+  --accent: #2a2d2e;
+  --accent-foreground: #e0e0e0;
+  --destructive: #f14c4c;
+  --success: #6a9955;
+  --warning: #d0a44c;
 
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 13%);
+  --border: #3a3a3a;
+  --input: #3a3a3a;
   --ring: oklch(0.623 0.214 259);
 
   --sidebar: var(--surface-chrome);
-  --sidebar-foreground: oklch(0.92 0 0);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-accent: oklch(0.24 0.015 259);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-foreground: #cccccc;
+  --sidebar-border: #2a2a2a;
+  --sidebar-accent: #2a2d2e;
+  --sidebar-accent-foreground: #e8e8e8;
   --sidebar-primary: oklch(0.623 0.214 259);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-ring: oklch(0.623 0.214 259);
+
+  /* 规范三级文字亮度 ramp + 状态/代码/头像强调（供正文层与组件按需取用）。
+     用 --ink-* 前缀命名，避开 Tailwind @theme 的 --text-* 字号命名空间。 */
+  --ink-heading: #f0f0f0;
+  --ink-body: #dcdcdc;
+  --ink-secondary: #b0b0b0;
+  --ink-muted: #7e7e7e;
+  --ink-tertiary: #6e6e6e;
+  --ink-icon: #9a9a9a;
+  --code-token: #ce9178;
+  --avatar: #7c5cff;
+  --code-surface: #333333;
+  --selected-surface: #2a2d2e;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
 
-  /* 亮色下 chrome 比内容区暗一档（同理唯一来源） */
-  --surface-app: oklch(0.99 0 0);
-  --surface-chrome: oklch(0.962 0.002 255);
+  /* 亮色派生：沿用规范「越靠前景越亮」的层级逻辑，反向为「越靠前景越接近纯白、越后退越灰」。
+     侧栏最灰 #f2f2f2（后退）→ 内容 #ffffff → 卡片 #fafafa → 悬浮 #ffffff + 描边 → 选中 #e8eaeb。 */
+  --surface-app: #ffffff;
+  --surface-chrome: #f2f2f2;
   --surface-right: #ffffff; /* 亮色右栏 = 白 */
 
   /* 亮色下 composer：卡片白、芯片条浅灰（与深色层关系相反，符合 light 惯例） */
@@ -72,35 +87,66 @@
   --composer-chip-bg: #ececec;
 
   --background: var(--surface-app);
-  --foreground: oklch(0.205 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.205 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.205 0 0);
+  --foreground: #1f1f1f;
+  --card: #fafafa;
+  --card-foreground: #1f1f1f;
+  --popover: #ffffff;
+  --popover-foreground: #1f1f1f;
   --primary: oklch(0.58 0.22 259);
   --primary-foreground: oklch(0.985 0.005 255);
-  --secondary: oklch(0.968 0.002 255);
-  --secondary-foreground: oklch(0.28 0 0);
-  --muted: oklch(0.968 0.002 255);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.955 0.012 259);
-  --accent-foreground: oklch(0.28 0 0);
-  --destructive: oklch(0.577 0.245 27.3);
-  --success: oklch(0.6 0.16 155);
-  --warning: oklch(0.66 0.15 70);
+  --secondary: #f0f0f0;
+  --secondary-foreground: #1f1f1f;
+  --muted: #f2f2f2;
+  --muted-foreground: #6e6e6e;
+  --accent: #e8eaeb;
+  --accent-foreground: #1f1f1f;
+  --destructive: #d13438;
+  --success: #4a7c3a;
+  --warning: #a8791f;
 
-  --border: oklch(0.922 0.002 255);
-  --input: oklch(0.922 0.002 255);
+  --border: #e2e2e2;
+  --input: #e2e2e2;
   --ring: oklch(0.58 0.22 259);
 
   --sidebar: var(--surface-chrome);
-  --sidebar-foreground: oklch(0.28 0 0);
-  --sidebar-border: oklch(0.9 0.002 255);
-  --sidebar-accent: oklch(0.955 0.012 259);
-  --sidebar-accent-foreground: oklch(0.28 0 0);
+  --sidebar-foreground: #3a3a3a;
+  --sidebar-border: #e2e2e2;
+  --sidebar-accent: #e8eaeb;
+  --sidebar-accent-foreground: #1f1f1f;
   --sidebar-primary: oklch(0.58 0.22 259);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-ring: oklch(0.58 0.22 259);
+
+  /* 亮色文字/语义 ramp：与深色同角色结构、亮度反向（heading 最黑、tertiary 最淡）。 */
+  --ink-heading: #111111;
+  --ink-body: #1f1f1f;
+  --ink-secondary: #555555;
+  --ink-muted: #7a7a7a;
+  --ink-tertiary: #9a9a9a;
+  --ink-icon: #6a6a6a;
+  --code-token: #b0562a;
+  --avatar: #7c5cff;
+  --code-surface: #ececec;
+  --selected-surface: #e8eaeb;
+}
+
+/* ============================ 磨砂玻璃（系统级 vibrancy / acrylic） ============================ */
+/* html.glass 由 main.tsx 依 window.pi.glass 挂载（主进程已按用户开关 + 平台能力判定）。
+   目标：整块 chrome（侧栏 + 卡片四周/间隙）透明，透出窗口背后的系统模糊材质；
+   中/右卡片仍用不透明 --surface-app / --surface-right 盖住，保持可读。
+   选择器用 :root.glass（特异度 0,2,0）与浅色块 :root[data-theme=light] 持平，靠源码顺序压过它。 */
+:root.glass {
+  --surface-chrome: transparent;
+}
+/* body 默认铺不透明 --background，会在最底层挡住 vibrancy/acrylic → 玻璃态强制透明。
+   此规则非 @layer，层叠优先级高于 @layer base 的 body 背景。 */
+html.glass body {
+  background-color: transparent;
+}
+/* 玻璃窗为非透明窗（vibrancy/acrylic 要求 transparent:false），圆角交系统绘制，
+   撤掉自绘 #root 圆角，避免与系统圆角双重裁切在角上漏出一圈材质。 */
+html.glass.mac-frameless #root {
+  border-radius: 0;
 }
 
 @theme inline {
@@ -137,14 +183,38 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
 
+  /* 规范文字/语义 ramp → Tailwind 颜色工具（ink-* 命名避开 --text-* 字号命名空间） */
+  --color-ink-heading: var(--ink-heading);
+  --color-ink-body: var(--ink-body);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-tertiary: var(--ink-tertiary);
+  --color-ink-icon: var(--ink-icon);
+  --color-code-token: var(--code-token);
+  --color-avatar: var(--avatar);
+  --color-code-surface: var(--code-surface);
+  --color-selected-surface: var(--selected-surface);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-code: 3px;
+  --radius-pill: 6px;
 
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+  /* 规范三级字号体系：caption 11 / meta 12 / ui 13 / body 14 */
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
+  --text-meta: 12px;
+  --text-meta--line-height: 18px;
+  --text-ui: 13px;
+  --text-ui--line-height: 20px;
+  --text-body: 14px;
+  --text-body--line-height: 1.65;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "SF Mono", Menlo, Monaco, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 /* ============================ Base layer ============================ */
@@ -207,7 +277,8 @@
 /* ===================== Markdown prose (prompt-kit Response) ===================== */
 @layer components {
   .pk-prose {
-    @apply text-[0.9375rem] leading-[1.7] break-words;
+    @apply text-[0.875rem] leading-[1.7] break-words;
+    color: var(--ink-body);
   }
   .pk-prose :where(p, ul, ol, pre, table, blockquote) {
     margin-top: 0;
@@ -217,6 +288,7 @@
     margin: 1.6em 0 0.6em;
     font-weight: 700;
     line-height: 1.4;
+    color: var(--ink-heading);
   }
   .pk-prose :where(h1) { font-size: 1.31em; }
   .pk-prose :where(h2) { font-size: 1.25em; }
@@ -237,9 +309,9 @@
   .pk-prose :where(hr) { border: 0; border-top: 1px solid var(--border); margin: 1.1rem 0; }
   .pk-prose :where(:not(pre) > code) {
     padding: 0.12rem 0.4rem;
-    border-radius: 5px;
-    background: color-mix(in oklab, var(--foreground) 16%, transparent);
-    color: color-mix(in oklab, var(--foreground) 82%, transparent);
+    border-radius: 3px;
+    background: var(--code-surface);
+    color: var(--code-token);
     font-family: var(--font-mono);
     font-weight: 500;
     font-size: 0.92em;

@@ -106,6 +106,18 @@ export interface EngineAdapter {
   /** 重载扩展资源（Pi /reload）：安装/卸载扩展包后热重启用 */
   reload(): Promise<void>;
 
+  /**
+   * 供应商管理：把主进程最新的凭据 env（<PROVIDER>_API_KEY → 值）写进本进程的 process.env。
+   * child 的 env 是 fork 时快照——运行期新配的 Key 必须经此同步，refreshModels 才解析得到。
+   */
+  syncEnv(env: Record<string, string>): Promise<void>;
+
+  /**
+   * 重读 models.json 并重建模型目录（ModelRuntime.refresh）。
+   * ⚠️ Pi 的 session.reload() 只重载设置/扩展，**不**重读模型目录——供应商增删改后必须走这条。
+   */
+  refreshModels(): Promise<void>;
+
   /** R-2：以下三个经 AgentSessionRuntime */
   newSession(opts?: { parentSession?: string }): Promise<EngineSessionRef | void>;
   switchSession(file: string): Promise<EngineSessionRef | void>;

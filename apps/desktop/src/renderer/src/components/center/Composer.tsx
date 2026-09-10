@@ -101,6 +101,7 @@ function InputCard({ c, raised }: { c: ComposerController; raised: boolean }): R
         approvalMode={c.approvalMode}
         runtime={c.runtime ?? {}}
         models={c.models}
+        providerNames={c.providerNames}
         thinkingLevels={c.thinkingLevels}
         onPickFiles={() => void c.pickFiles()}
         onOpenPalette={() => window.dispatchEvent(new Event("piwood:open-command-palette"))}

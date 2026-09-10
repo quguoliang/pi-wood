@@ -221,6 +221,8 @@ export default function App() {
     });
     // T7.5 目标模式：状态推送落 store（settle/暂停/完成等即时刷新状态条）。
     const offGoalStatus = window.pi.onGoalStatus((state) => useGoalStore.getState().applyStatus(state));
+    // 供应商增删改 → 拉新模型目录（composer/默认模型下拉即时看到新增供应商/模型）
+    const offProviderChanged = window.pi.onProviderChanged(() => void useRuntimeStore.getState().refresh());
     return () => {
       stopLatencyOutlet(); // T8.10：停帧表与上报定时器（与 startLatencyOutlet 配对）
       offNotify();
@@ -235,6 +237,7 @@ export default function App() {
       offPluginStatusbar();
       offPluginOpenFile();
       offGoalStatus();
+      offProviderChanged();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("piwood:open-command-palette", openPalette);
       window.removeEventListener("piwood:open-settings", openSettings);
@@ -246,6 +249,7 @@ export default function App() {
   return (
     <>
       <AppShell
+        hideContent={settingsOpen}
         left={
           <div data-col-region="left" tabIndex={-1} className="h-full min-h-0 outline-none">
             <LeftPane onOpenSettings={() => setSettingsOpen(true)} />

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { ipcMain } from "electron";
+import { ipcMain, nativeTheme } from "electron";
 import { fileWriteQueue } from "./workbench/write-queue.ts";
 
 // 与 project-manager.ts 的 DEFAULT_APP_DATA_DIR 保持一致（~/.pi-wood）
@@ -13,6 +13,13 @@ const APP_DATA_DIR = join(process.env["USERPROFILE"] ?? process.env["HOME"] ?? "
 export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
   theme: { fallback: "light" | "dark" | "system"; pi?: string };
+  /**
+   * 界面外观。glass=系统级磨砂玻璃（macOS vibrancy / Windows 11 acrylic）：
+   * 开启时整块 chrome（侧栏 + 卡片四周间隙）透出桌面模糊，中/右卡片保持不透明。
+   * 默认开；关闭 = 纯实色 chrome（历史行为）。因 transparent 是建窗期一次性属性，改后**重启生效**。
+   * 平台不支持（如 Windows 10）时主进程自动降级为关闭。
+   */
+  appearance: { glass: boolean };
   editor: { fontSize: number; tabSize: number };
   recentProjects: string[];
   model: { provider: string; id: string };
@@ -54,6 +61,7 @@ export function defaultSettings(): PiWoodSettings {
   return {
     window: { layout: [22, 48, 30], leftCollapsed: false, rightCollapsed: false },
     theme: { fallback: "dark" },
+    appearance: { glass: true },
     editor: { fontSize: 14, tabSize: 2 },
     recentProjects: [],
     model: { provider: "deepseek", id: "deepseek-v4-flash" },
@@ -85,6 +93,18 @@ export function saveSettings(next: PiWoodSettings): void {
   const p = settingsPath();
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(p, JSON.stringify(next, null, 2));
+  applyNativeTheme(next);
+}
+
+/**
+ * 把应用主题映射到 Electron nativeTheme.themeSource——macOS 的 vibrancy / Windows 的 acrylic
+ * 材质明暗跟随「系统外观」而非渲染层 data-theme；不同步就会出现「应用深色、侧栏磨砂发白」。
+ * 口径对齐渲染层实际观感：仅显式 light 走浅色，其余（dark / system / 缺省）走深色
+ * （本应用 CSS 里 system 也渲染深色，故与 vibrancy 保持一致）。
+ */
+function applyNativeTheme(s: PiWoodSettings): void {
+  const source = s.theme?.fallback === "light" ? "light" : "dark";
+  if (nativeTheme.themeSource !== source) nativeTheme.themeSource = source;
 }
 
 function deepMerge<T>(base: T, patch: unknown): T {
@@ -132,6 +152,7 @@ export function replaceSection<K extends keyof PiWoodSettings>(
 
 export function initSettingsIpc(): PiWoodSettings {
   const initial = ensureLoaded();
+  applyNativeTheme(initial); // 建窗前先对齐明暗，避免首帧 vibrancy 走系统浅色
   ipcMain.handle("settings:get", () => ensureLoaded());
   // T8.7 写并发保护：settings:set 走 per-file 串行临界区（多对话/多来源并发 patch 不丢更新）
   ipcMain.handle("settings:set", (_e, patch: unknown) => fileWriteQueue.withLock("settings.json", () => updateSettings(patch)));

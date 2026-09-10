@@ -135,10 +135,14 @@ export function AppShell({
   left,
   center,
   right,
+  hideContent = false,
 }: {
   left: React.ReactNode;
   center: React.ReactNode;
   right: React.ReactNode;
+  /** 有全窗口覆盖层（如设置页）打开时置 true：隐藏三栏面板内容但保持挂载，
+   *  使覆盖层的透明磨砂区只透出窗口级 vibrancy、不叠出底层侧栏文字；返回零成本恢复。 */
+  hideContent?: boolean;
 }) {
   const { settings, loaded, load, setLayout } = useSettingsStore();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -253,7 +257,7 @@ export function AppShell({
     <div ref={rootRef} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface-chrome">
       <Group
         orientation="horizontal"
-        className="min-h-0 flex-1"
+        className={cn("min-h-0 flex-1", hideContent && "invisible")}
         groupRef={outerGroupRef}
         onLayoutChanged={(layout, meta) => {
           if (!meta.isUserInteraction) return;

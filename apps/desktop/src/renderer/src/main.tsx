@@ -14,6 +14,11 @@ if (window.pi.platform === "darwin") {
   window.pi.onWinFullscreenChanged((fs) => document.documentElement.classList.toggle("mac-fs", fs));
 }
 
+// 磨砂玻璃生效（主进程已按开关 + 平台能力判定）：挂 html.glass → chrome 令牌转透明，透出系统材质
+if (window.pi.glass) {
+  document.documentElement.classList.add("glass");
+}
+
 createRoot(container).render(
   <React.StrictMode>
     <App />

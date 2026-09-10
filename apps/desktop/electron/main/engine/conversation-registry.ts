@@ -489,6 +489,27 @@ function isSuspendable(h: ConversationHandle): boolean {
   return h.record.status === "idle" && !h.record.inFlightPrompt && h.record.pendingApprovals === 0;
 }
 
+/**
+ * models.json 变更（供应商增删改/追加模型）→ 让**空闲**活体 child 真正应用：
+ * 1) syncEnv：child 的 env 是 fork 时快照，运行期新存的 Key 必须补发，否则 ${ENV} 占位解析不到；
+ * 2) refreshModels：重读 models.json 重建模型目录——Pi 的 session.reload 只重载设置/扩展，
+ *    不碰模型目录，此前「保存即热生效」其实只对新建/重启的 child 成立（本函数补上活体这条）。
+ * 在跑/等审批的对话一律跳过（不打扰）；它们下次装配时自然带上新配置。fire-and-forget。
+ */
+export function reloadLiveModelConfigs(env: Record<string, string>): void {
+  for (const h of handles.values()) {
+    if (!h.host.alive || !isSuspendable(h)) continue;
+    void (async () => {
+      try {
+        await h.adapter.syncEnv(env);
+        await h.adapter.refreshModels();
+      } catch {
+        /* child 可能恰在此刻退出/转忙，忽略——下次装配兜底 */
+      }
+    })();
+  }
+}
+
 /** 关停并摘表（用户显式关闭对话）。T8.6：随对话回收其 worktree（keepAfterClose=true 留树；脏树保留并提示） */
 export async function closeConversation(id: string): Promise<boolean> {
   const h = handles.get(id);

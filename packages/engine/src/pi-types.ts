@@ -54,6 +54,8 @@ export interface AgentSessionServicesLike {
     getAvailable(): Promise<readonly { provider: string; id: string }[]>;
     /** 完整 Model 对象（含 api/baseUrl 等），setModel 必须用它而非裸 {provider,id} */
     getModel(providerId: string, modelId: string): unknown;
+    /** 重读 models.json 并重建模型目录（供应商增删改后热生效） */
+    refresh(): Promise<unknown>;
   };
 }
 

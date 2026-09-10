@@ -46,6 +46,8 @@ declare global {
     pi: {
       ping(): Promise<{ pong: boolean; electron: string; node: string }>;
       platform: NodeJS.Platform;
+      /** 磨砂玻璃生效态（主进程按开关 + 平台能力算好后同步传入）；渲染层据此挂 html.glass。 */
+      glass: boolean;
       winMinimize(): Promise<void>;
       winMaximizeToggle(): Promise<void>;
       winClose(): Promise<void>;
@@ -114,7 +116,7 @@ declare global {
       sessionsTree(file: string): Promise<unknown>;
       sessionsMessages(file: string, leafId?: string): Promise<unknown>;
       exportSessionMarkdown(defaultFileName: string, markdown: string): Promise<string | undefined>;
-      engineSwitchSession(file: string): Promise<boolean>;
+      engineSwitchSession(file: string, conversationId?: string): Promise<{ conversationId?: string; sessionFile?: string }>;
       /** T9.2 上下文缩略树 v2：同文件内切分支（navigateTree）；目标为 user 消息时回填原文到 editorText。summarize=弃枝摘要（模型成本） */
       engineNavigateTree(
         conversationId: string,
@@ -138,7 +140,10 @@ declare global {
       providerList(): Promise<unknown>;
       providerSetKey(provider: string, key: string): Promise<boolean>;
       providerRemoveKey(provider: string): Promise<boolean>;
-      providerAddCustom(cfg: unknown): Promise<boolean>;
+      providerUpsertCustom(cfg: unknown): Promise<{ id: string }>;
+      providerRemoveCustom(id: string): Promise<boolean>;
+      providerSetBuiltinModels(provider: string, models: unknown[]): Promise<boolean>;
+      onProviderChanged(cb: () => void): () => void;
       // T8.4：conversationId = 应答者所处的对话（主进程校验「应答者必须是发起对话」，跨对话一律拒绝）
       approvalDecide(id: number, allow: boolean, conversationId?: string | null): Promise<boolean>;
       approvalAcceptAll(): Promise<number>;

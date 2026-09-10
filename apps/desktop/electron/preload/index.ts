@@ -54,6 +54,9 @@ const api = {
     ipcRenderer.invoke("app:ping"),
   // UI v3：平台判定 + 无边框窗口控制（Windows 自绘 TitleBar；macOS 走系统红绿灯不使用）
   platform: process.platform,
+  // 磨砂玻璃生效态（主进程按用户开关 + 平台能力算好后经 additionalArguments 同步传入）：
+  // 渲染层据此挂 html.glass，让 chrome 透明透出系统 vibrancy/acrylic 材质。
+  glass: process.argv.includes("--pi-glass=1") || ipcRenderer.sendSync("pi:glass-sync") === true,
   winMinimize: (): Promise<void> => ipcRenderer.invoke("win:minimize"),
   winMaximizeToggle: (): Promise<void> => ipcRenderer.invoke("win:maximizeToggle"),
   winClose: (): Promise<void> => ipcRenderer.invoke("win:close"),
@@ -201,8 +204,8 @@ const api = {
     ipcRenderer.invoke("sessions:messages", { file, leafId }),
   exportSessionMarkdown: (defaultFileName: string, markdown: string): Promise<string | undefined> =>
     ipcRenderer.invoke("session:export", { defaultFileName, markdown }),
-  engineSwitchSession: (file: string): Promise<boolean> =>
-    ipcRenderer.invoke("engine:switchSession", { file }),
+  engineSwitchSession: (file: string, conversationId?: string): Promise<{ conversationId?: string; sessionFile?: string }> =>
+    ipcRenderer.invoke("engine:switchSession", { file, ...(conversationId ? { conversationId } : {}) }),
   /** T9.2 缩略树 v2：在该对话的会话树内切分支（不截断；目标为 user 消息时回执 editorText 供回填输入框）。
    *  summarize=true（T9.2 v2.1 弃枝摘要）：切换前先让模型摘要被放弃分支——有 token 成本、耗时较长 */
   engineNavigateTree: (
@@ -282,8 +285,12 @@ const api = {
     ipcRenderer.invoke("provider:setKey", { provider, key }),
   providerRemoveKey: (provider: string): Promise<boolean> =>
     ipcRenderer.invoke("provider:removeKey", { provider }),
-  providerAddCustom: (cfg: unknown): Promise<boolean> =>
-    ipcRenderer.invoke("provider:addCustom", cfg),
+  providerUpsertCustom: (cfg: unknown): Promise<{ id: string }> =>
+    ipcRenderer.invoke("provider:upsertCustom", cfg),
+  providerRemoveCustom: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("provider:removeCustom", { id }),
+  providerSetBuiltinModels: (provider: string, models: unknown[]): Promise<boolean> =>
+    ipcRenderer.invoke("provider:setBuiltinModels", { provider, models }),
   // T8.4：approval:decide 带「应答者所处对话」——主进程据此校验应答者必须是发起对话
   approvalDecide: (id: number, allow: boolean, conversationId?: string | null): Promise<boolean> =>
     ipcRenderer.invoke("approval:decide", { id, allow, conversationId: conversationId ?? null }),
@@ -366,6 +373,12 @@ const api = {
     const h = (_e: unknown, state: unknown): void => cb(state);
     ipcRenderer.on("goal:status", h);
     return () => ipcRenderer.removeListener("goal:status", h);
+  },
+  /** 供应商增删改（models.json 已变更且引擎侧刷新已触发）→ 渲染层拉新模型列表 */
+  onProviderChanged: (cb: () => void): (() => void) => {
+    const h = (): void => cb();
+    ipcRenderer.on("provider:changed", h);
+    return () => ipcRenderer.removeListener("provider:changed", h);
   },
   // T7.7 代码审查
   reviewRun: (): Promise<unknown> => ipcRenderer.invoke("review:run"),

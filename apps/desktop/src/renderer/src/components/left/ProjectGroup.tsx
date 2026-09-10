@@ -14,7 +14,7 @@ import { Icon } from "../ui/Icon";
 import { badgeFor, tabTitle } from "../../stores/conversation-badge";
 import type { SessionMeta } from "../../stores/session-meta-store";
 import type { ConversationRow } from "../../stores/conversations-store";
-import type { ProjectRecord, SessionItem } from "./useSidebarProjects";
+import type { ProjectRecord, SessionItem, SidebarRow } from "./useSidebarProjects";
 
 /** 树里的一条「活跃对话」行：注册表行 + 渲染层派生（标题/未读），纯呈现。 */
 export interface ConversationTreeItem {
@@ -44,6 +44,9 @@ export function ConversationDot({ badge }: { badge: ReturnType<typeof badgeFor> 
 }
 
 type Editing = { kind: "project" | "conversation" | "session"; file?: string } | null;
+
+/** 参考样式：分组默认只露 5 行，其余收进「显示更多」（置顶/活跃行排序在前，不会被折叠藏掉） */
+const SIDEBAR_ROW_LIMIT = 5;
 
 /** 「⋯」触发钮：悬停浮现，stopPropagation 防触发行点击 */
 function RowMenu({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
@@ -91,12 +94,11 @@ function MenuItem({
   );
 }
 
-/** 单个项目分组：项目行 + 对话列表（活跃对话）+ 历史会话 + 「已归档」组。纯呈现，操作经回调上行。 */
+/** 单个项目分组：项目行 + 单一任务列表（活跃对话与历史会话按文件时间混排）+ 内联确认条。纯呈现，操作经回调上行。 */
 export function ProjectGroup({
   project,
   virtual = false,
-  conversations,
-  sessions,
+  rows,
   metaMap,
   isActiveProject,
   isExpanded,
@@ -123,8 +125,7 @@ export function ProjectGroup({
   project: ProjectRecord;
   /** 「最近」虚拟项目分组：无项目管理菜单（重命名/移除），图标用对话语义 */
   virtual?: boolean;
-  conversations: ConversationTreeItem[];
-  sessions: SessionItem[];
+  rows: SidebarRow[];
   metaMap: Record<string, SessionMeta>;
   isActiveProject: boolean;
   isExpanded: boolean;
@@ -152,6 +153,12 @@ export function ProjectGroup({
   const [editValue, setEditValue] = useState("");
   const [pendingDeleteFile, setPendingDeleteFile] = useState<string | null>(null);
   const [pendingRemoveProject, setPendingRemoveProject] = useState(false);
+  // 「显示更多」：分组行数超过上限时默认折叠（参考样式）
+  const [showAll, setShowAll] = useState(false);
+
+  const totalRows = rows.length;
+  const collapsed = !showAll && totalRows > SIDEBAR_ROW_LIMIT;
+  const visibleRows = collapsed ? rows.slice(0, SIDEBAR_ROW_LIMIT) : rows;
 
   const commitEdit = (): void => {
     if (!editing) return;
@@ -193,33 +200,116 @@ export function ProjectGroup({
       );
     }
     return (
-      <div key={session.file} className="group flex min-w-0 items-center gap-1 rounded-md pr-1 hover:bg-sidebar-accent/60">
+      <div
+        key={session.file}
+        className={cn(
+          "group relative flex min-w-0 items-center rounded-md",
+          activeSessionFile === session.file ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/25",
+        )}
+      >
         <button
-          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:text-sidebar-foreground"
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[13px]",
+            activeSessionFile === session.file ? "font-medium text-sidebar-foreground" : "text-muted-foreground hover:text-sidebar-foreground",
+          )}
           type="button"
           title={session.firstMessage || title}
           onClick={() => onSelectSession(session)}
         >
           {meta?.pinned && <Pin className="size-3 shrink-0 rotate-45 text-primary" aria-label="已置顶" />}
-          <span className={cn("min-w-0 flex-1 truncate", activeSessionFile === session.file && "font-medium text-sidebar-foreground")}>
-            {title}
-          </span>
+          <span className="min-w-0 flex-1 truncate">{title}</span>
           <span className="shrink-0 text-[11px] text-muted-foreground/70 group-hover:opacity-0 transition-opacity">{formatRelativeTime(session.modified)}</span>
         </button>
-        <RowMenu label={`${title} 的操作`}>
-          <MenuItem
-            icon={<Pencil className="size-3.5" />}
-            label="重命名"
-            onSelect={() => beginEdit({ kind: "session", file: session.file }, meta?.alias ?? "")}
-          />
-          <MenuItem
-            icon={meta?.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-            label={meta?.pinned ? "取消置顶" : "置顶"}
-            onSelect={() => onToggleSessionPin(session.file, !meta?.pinned)}
-          />
-          <MenuItem icon={<Archive className="size-3.5" />} label="归档" onSelect={() => onArchiveSession(session.file, true)} />
-          <MenuItem icon={<Trash2 className="size-3.5" />} label="删除…" destructive onSelect={() => setPendingDeleteFile(session.file)} />
-        </RowMenu>
+        {/* 悬停操作簇绝对定位覆盖在行尾：不占 flex 空间，时间标签右缘才能跨行型对齐 */}
+        <div className="absolute right-0.5 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <RowMenu label={`${title} 的操作`}>
+            <MenuItem
+              icon={<Pencil className="size-3.5" />}
+              label="重命名"
+              onSelect={() => beginEdit({ kind: "session", file: session.file }, meta?.alias ?? "")}
+            />
+            <MenuItem
+              icon={meta?.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+              label={meta?.pinned ? "取消置顶" : "置顶"}
+              onSelect={() => onToggleSessionPin(session.file, !meta?.pinned)}
+            />
+            <MenuItem icon={<Archive className="size-3.5" />} label="归档" onSelect={() => onArchiveSession(session.file, true)} />
+            <MenuItem icon={<Trash2 className="size-3.5" />} label="删除…" destructive onSelect={() => setPendingDeleteFile(session.file)} />
+          </RowMenu>
+        </div>
+      </div>
+    );
+  };
+
+  const renderConversationRow = (item: ConversationTreeItem, key: string, time: string): React.JSX.Element => {
+    const badge = badgeFor(item.row.status, {
+      pendingApprovals: item.row.pendingApprovals,
+      inFlightPrompt: item.row.inFlightPrompt,
+      unread: item.unread ? 1 : 0,
+    });
+    const active = item.row.id === activeConversationId;
+    const meta = item.row.sessionFile ? metaMap[item.row.sessionFile] : undefined;
+    return (
+      <div
+        key={key}
+        className={cn(
+          "group relative flex min-w-0 items-center rounded-md",
+          active ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/25",
+        )}
+      >
+        <button
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[13px]",
+            active ? "font-medium text-sidebar-foreground" : "text-muted-foreground hover:text-sidebar-foreground",
+          )}
+          type="button"
+          data-conversation-id={item.row.id}
+          title={item.isTree ? `${item.title}\n独立工作树：${item.row.worktreePath}` : item.title}
+          onClick={() => onSelectConversation(item.row)}
+        >
+          {/* 参考样式：常态无状态圆点也不留占位（占位会让「会话行→对话行」原地换形态时标题右移一块）；
+              只有真有状态（在跑/待审批/未读/关停）才浮现圆点 */}
+          {badge !== "none" && <ConversationDot badge={badge} />}
+          <span className="min-w-0 flex-1 truncate">{item.title}</span>
+          {time ? (
+            <span className="shrink-0 text-[11px] text-muted-foreground/70 transition-opacity group-hover:opacity-0">
+              {formatRelativeTime(time)}
+            </span>
+          ) : null}
+        </button>
+        {/* 悬停操作簇（菜单+关闭）绝对定位覆盖行尾：与历史会话行共用同一时间右缘 */}
+        <div className="absolute right-0.5 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <RowMenu label={`${item.title} 的操作`}>
+            <MenuItem
+              icon={<Pencil className="size-3.5" />}
+              label="重命名"
+              onSelect={() => {
+                if (!item.row.sessionFile) {
+                  // 无会话文件（首轮消息未落盘）：回调内 toast 提示，不进编辑态
+                  onRenameConversation(item.row, "");
+                  return;
+                }
+                beginEdit({ kind: "conversation", file: item.row.sessionFile }, meta?.alias ?? "");
+              }}
+            />
+            {meta && (
+              <MenuItem
+                icon={meta.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+                label={meta.pinned ? "取消置顶" : "置顶"}
+                onSelect={() => onToggleConversationPin(item.row, !meta.pinned)}
+              />
+            )}
+            <MenuItem icon={<Archive className="size-3.5" />} label="归档并关闭" onSelect={() => onArchiveConversation(item.row)} />
+          </RowMenu>
+          <button
+            type="button"
+            aria-label={`关闭 ${item.title}`}
+            onClick={() => onRequestCloseConversation(item.row)}
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-white/10 hover:text-foreground"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
       </div>
     );
   };
@@ -229,7 +319,7 @@ export function ProjectGroup({
       <div
         className={cn(
           "group flex items-center gap-1 rounded-md",
-          isActiveProject ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
+          isActiveProject ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/25",
         )}
       >
         {editing?.kind === "project" ? (
@@ -291,76 +381,24 @@ export function ProjectGroup({
       </div>
 
       {isExpanded && (
-        <div className="ml-[15px] flex flex-col gap-0.5 border-l border-sidebar-border pl-1.5">
-          {conversations.map((item) => {
-            const badge = badgeFor(item.row.status, {
-              pendingApprovals: item.row.pendingApprovals,
-              inFlightPrompt: item.row.inFlightPrompt,
-              unread: item.unread ? 1 : 0,
-            });
-            const active = item.row.id === activeConversationId;
-            const meta = item.row.sessionFile ? metaMap[item.row.sessionFile] : undefined;
-            return (
-              <div
-                key={item.row.id}
-                className={cn(
-                  "group flex min-w-0 items-center gap-1 rounded-md pr-1",
-                  active ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
-                )}
-              >
-                <button
-                  className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-[13px] text-muted-foreground hover:text-sidebar-foreground"
-                  type="button"
-                  data-conversation-id={item.row.id}
-                  title={item.isTree ? `${item.title}\n工作树：${item.row.worktreePath}` : item.title}
-                  onClick={() => onSelectConversation(item.row)}
-                >
-                  <ConversationDot badge={badge} />
-                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                  {item.isTree && (
-                    <span className="shrink-0 rounded-sm bg-primary/10 px-1 text-[9px] leading-4 text-primary transition-opacity group-hover:opacity-0" title={`独立工作树：${item.row.worktreePath}`}>
-                      树
-                    </span>
-                  )}
-                </button>
-                <RowMenu label={`${item.title} 的操作`}>
-                  <MenuItem
-                    icon={<Pencil className="size-3.5" />}
-                    label="重命名"
-                    onSelect={() => {
-                      if (!item.row.sessionFile) {
-                        // 无会话文件（首轮消息未落盘）：回调内 toast 提示，不进编辑态
-                        onRenameConversation(item.row, "");
-                        return;
-                      }
-                      beginEdit({ kind: "conversation", file: item.row.sessionFile }, meta?.alias ?? "");
-                    }}
-                  />
-                  {meta && (
-                    <MenuItem
-                      icon={meta.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
-                      label={meta.pinned ? "取消置顶" : "置顶"}
-                      onSelect={() => onToggleConversationPin(item.row, !meta.pinned)}
-                    />
-                  )}
-                  <MenuItem icon={<Archive className="size-3.5" />} label="归档并关闭" onSelect={() => onArchiveConversation(item.row)} />
-                </RowMenu>
-                <button
-                  type="button"
-                  aria-label={`关闭 ${item.title}`}
-                  onClick={() => onRequestCloseConversation(item.row)}
-                  className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-white/10 hover:text-foreground group-hover:opacity-100"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            );
-          })}
+        <div className="ml-[15px] flex flex-col gap-0.5 pl-1.5">
+          {visibleRows.map((row) =>
+            row.kind === "conv" ? renderConversationRow(row.item, row.key, row.time) : renderSessionRow(row.session),
+          )}
 
-          {sessions.map((session) => renderSessionRow(session))}
-
-          {conversations.length === 0 && sessions.length === 0 && (
+          {rows.length === 0 && (
             <div className="px-2 py-1 text-[11px] text-muted-foreground/60">还没有会话</div>
+          )}
+
+          {/* 参考样式：超过 5 行折叠为「显示更多」，展开后可收起 */}
+          {totalRows > SIDEBAR_ROW_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="self-start rounded-md px-2 py-1 text-left text-[12px] text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+            >
+              {collapsed ? "显示更多" : "收起"}
+            </button>
           )}
 
           {/* 删除会话：内联确认（不可逆，明示 CLI 亦不可恢复） */}

@@ -21,6 +21,8 @@ interface ComposerControlsProps {
   approvalMode: ApprovalMode;
   runtime: RuntimeState;
   models: Array<{ provider: string; id: string }>;
+  /** 供应商 id → 显示名（内置 + 自定义）；模型下拉按供应商分组时用作组标题 */
+  providerNames?: Record<string, string>;
   thinkingLevels: string[];
   onPickFiles(): void;
   onOpenPalette(): void;
@@ -46,6 +48,22 @@ const thinkingLabels: Record<string, string> = {
 };
 
 const formatCount = (value: number): string => (value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k` : String(value));
+
+/** 模型按供应商分组（保持首次出现顺序），供下拉按组渲染 */
+function groupModelsByProvider(models: Array<{ provider: string; id: string }>): Array<{ provider: string; models: Array<{ provider: string; id: string }> }> {
+  const order: string[] = [];
+  const byProvider = new Map<string, Array<{ provider: string; id: string }>>();
+  for (const m of models) {
+    let bucket = byProvider.get(m.provider);
+    if (!bucket) {
+      bucket = [];
+      byProvider.set(m.provider, bucket);
+      order.push(m.provider);
+    }
+    bucket.push(m);
+  }
+  return order.map((provider) => ({ provider, models: byProvider.get(provider) ?? [] }));
+}
 
 const controlBtn = "h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground";
 
@@ -146,14 +164,22 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
               <span className="truncate">{currentModel}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent side="top" align="end" className="w-72 gap-0.5 p-1.5">
+          <PopoverContent side="top" align="end" className="w-80 gap-0.5 p-1.5">
             <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">本项目可用模型</div>
             {props.models.length === 0 && <p className="px-2.5 pb-2 text-[11px] text-muted-foreground">未从 Pi ModelRuntime 获取到模型。</p>}
             <div className="max-h-72 overflow-auto">
-              {props.models.map((model) => {
-                const key = `${model.provider}/${model.id}`;
-                return <MenuRow key={key} title={model.id} detail={model.provider} checked={props.runtime.model === key} onClick={() => { close(); props.onModelChange(model); }} />;
-              })}
+              {groupModelsByProvider(props.models).map((group, gi) => (
+                <div key={group.provider} className={cn(gi > 0 && "mt-1.5 border-t border-border/60 pt-0.5")}>
+                  <div className="sticky top-0 flex items-center gap-1.5 bg-popover px-2.5 pb-0.5 pt-2 text-[11px] font-medium text-muted-foreground">
+                    <span className="truncate">{props.providerNames?.[group.provider] ?? group.provider}</span>
+                    <span className="text-muted-foreground/50">{group.models.length}</span>
+                  </div>
+                  {group.models.map((model) => {
+                    const key = `${model.provider}/${model.id}`;
+                    return <MenuRow key={key} title={model.id} checked={props.runtime.model === key} onClick={() => { close(); props.onModelChange(model); }} />;
+                  })}
+                </div>
+              ))}
             </div>
           </PopoverContent>
         </Popover>

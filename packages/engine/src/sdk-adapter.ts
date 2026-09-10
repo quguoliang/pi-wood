@@ -301,6 +301,16 @@ export class SdkAdapter implements EngineAdapter {
     await this.session().reload();
   }
 
+  /** 供应商管理：把主进程同步来的凭据写进本进程 env（child env 是 fork 时快照，新 Key 只能这样补） */
+  async syncEnv(env: Record<string, string>): Promise<void> {
+    for (const [name, value] of Object.entries(env)) if (value) process.env[name] = value;
+  }
+
+  /** 重读 models.json 并重建模型目录；session.reload() 不覆盖模型目录，必须走 ModelRuntime.refresh */
+  async refreshModels(): Promise<void> {
+    await this.services().modelRuntime.refresh();
+  }
+
   async switchSession(file: string): Promise<EngineSessionRef> {
     await this.runtimeSession().switchSession(file);
     this.rebindSession();
