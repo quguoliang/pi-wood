@@ -100,7 +100,9 @@ export function useSidebarProjects() {
         (await window.pi.sessionsList(project.path).catch(() => [])) as SessionItem[],
       ] as const),
     );
-    setSessionsByProject((current) => ({ ...Object.fromEntries(grouped), ...current }));
+    // 顺序必须是「旧值打底、新值覆盖」：反写（{...fresh, ...current}）会让已有项目永远保留旧列表——
+    // 删掉的会话行因此「删了还在」，直到重启重读磁盘。虚拟目录在上面单独写入，此处不在 grouped 内，不受影响。
+    setSessionsByProject((current) => ({ ...current, ...Object.fromEntries(grouped) }));
   }, []);
 
   const activateProject = useCallback(async (project: ProjectRecord) => {
@@ -330,6 +332,13 @@ export function useSidebarProjects() {
   const rowBusy = (row: ConversationRow): boolean =>
     row.status === "streaming" || row.inFlightPrompt || row.pendingApprovals > 0;
 
+  /** IPC 报错会被包一层 "Error invoking remote method 'sessions:delete': Error: xxx"——剥壳只留人话 */
+  const formatDeleteError = (err: unknown): string => {
+    const raw = String((err as Error)?.message ?? err);
+    const idx = raw.lastIndexOf("Error: ");
+    return idx >= 0 ? raw.slice(idx + 7).trim() : raw;
+  };
+
   /** 归档对话：元数据归档其会话文件 + 关闭引擎进程（关闭语义不变，归档负责「从列表消失」） */
   const archiveConversation = useCallback(async (row: ConversationRow) => {
     if (rowBusy(row)) {
@@ -362,19 +371,56 @@ export function useSidebarProjects() {
     void setSessionMeta(file, { archived });
   }, [setSessionMeta]);
 
-  /** 删除会话文件（不可逆，CLI 亦不可恢复）；主进程守卫「被活跃对话认领即拒」 */
+  /**
+   * 删除会话文件（不可逆，CLI 亦不可恢复）；主进程守卫「被活跃对话认领即拒」。
+   * ⚠️ 2026-09-11：被拒时**必须如实告知且让行留在原地**。旧实现只弹一条瞬时 toast，而随后的
+   * 「该文件被对话认领 → 会话行隐去」会让用户把**渲染层的隐去**误读成删除成功——
+   * 文件其实还在磁盘上，重启后照旧出现（本次用户报障即此形态）。
+   */
   const deleteSession = useCallback(async (file: string): Promise<boolean> => {
-    try {
-      await window.pi.sessionsDelete?.(file);
-    } catch (err) {
-      toast.error(String((err as Error)?.message ?? err));
+    // 不能写成 `window.pi.sessionsDelete?.(file)`：可选链在 API 缺失时**静默变成空操作**，
+    // 而下面照样会弹「会话已删除」——用户以为删了、文件仍在盘上。
+    if (typeof window.pi.sessionsDelete !== "function") {
+      toast.error("当前构建未注入会话删除能力（preload 缺 sessionsDelete），请重启应用后再试", { duration: 8000 });
       return false;
     }
-    toast("会话已删除", { description: "会话文件已永久删除" });
+    // 该文件当前挂在哪个目录：删除后要在**同一目录**复核它是否真的消失（见下）
+    let ownerDir: string | undefined;
+    for (const [path, list] of Object.entries(sessionsByProject)) {
+      if (list.some((s) => s.file === file)) {
+        ownerDir = path;
+        break;
+      }
+    }
+    try {
+      await window.pi.sessionsDelete(file);
+    } catch (err) {
+      // 主进程拒绝（最常见＝该会话正被某条对话占用）：先把对话表刷成权威态，
+      // 让认领关系显形（该行随之变回对话行、可经其「关闭」入口解开占用），并给出可执行指引
+      void useConversationsStore.getState().refresh();
+      toast.error(formatDeleteError(err), { duration: 8000 });
+      return false;
+    }
     await refreshProjects();
+    // ⚠️ 复核：IPC 不抛错 ≠ 文件真的没了。只要它在磁盘列表里还在，就**绝不**提示「已删除」——
+    // 这正是用户报障的形态（以为删掉了，其实文件仍在，重启后又出现）。宁可报「未生效」也不假成功。
+    if (ownerDir) {
+      const after = (await window.pi.sessionsList(ownerDir).catch(() => [])) as SessionItem[];
+      if (after.some((s) => s.file === file)) {
+        toast.error("删除未生效：会话文件仍在磁盘上。请先关闭占用它的对话，再删除该会话。", { duration: 10000 });
+        return false;
+      }
+    }
+    // 乐观摘除：不等下一轮刷新，避免任何窗口期里被删的行仍挂在树上（「删了还在」）
+    setSessionsByProject((current) => {
+      const next: Record<string, SessionItem[]> = {};
+      for (const [path, list] of Object.entries(current)) next[path] = list.filter((s) => s.file !== file);
+      return next;
+    });
+    toast("会话已删除", { description: "会话文件已永久删除" });
     if (activeSessionFile === file) setActiveSessionFile(undefined);
     return true;
-  }, [activeSessionFile, refreshProjects]);
+  }, [activeSessionFile, refreshProjects, sessionsByProject]);
 
   /**
    * 注册表对话按项目归组 → ConversationTreeItem（标题/未读/树标）。
@@ -411,11 +457,19 @@ export function useSidebarProjects() {
 
   /** 磁盘会话列表：被活跃对话认领的不重复展示；已归档的不在树里展示（设置「归档」页统一管理，T8.11-R2） */
   const activeSessionsByProject = useMemo(() => {
-    const claimed = new Set(convRows.map((r) => r.sessionFile).filter(Boolean) as string[]);
+    // ⚠️ 2026-09-11 修：可隐掉会话行的只有「真的会渲染出一行」的对话——对话行的渲染条件是
+    // firstUserById（有首条用户消息）且有会话文件、且未归档，与 conversationsByProject 完全同源。
+    // 旧实现按「所有对话的 sessionFile」一律隐掉：对话行因缺首条消息不渲染时，磁盘会话行也被隐，
+    // 该文件在左栏**彻底消失**（文件其实还在）→ 表现为「删了却还在、切一下就没了、重启又回来」的假象。
+    const renderedByConv = new Set(
+      convRows
+        .filter((r) => r.sessionFile && firstUserById[r.id] && !metaMap[r.sessionFile]?.archived)
+        .map((r) => r.sessionFile as string),
+    );
     const next: Record<string, SessionItem[]> = {};
     for (const [path, sessions] of Object.entries(sessionsByProject)) {
       next[path] = sessions
-        .filter((s) => !claimed.has(s.file) && !metaMap[s.file]?.archived)
+        .filter((s) => !renderedByConv.has(s.file) && !metaMap[s.file]?.archived)
         // 置顶恒最前（T8.11），其余按最近修改
         .sort((a, b) => {
           const pa = metaMap[a.file]?.pinned ? 1 : 0;
@@ -425,7 +479,7 @@ export function useSidebarProjects() {
         });
     }
     return next;
-  }, [convRows, sessionsByProject, metaMap]);
+  }, [convRows, sessionsByProject, metaMap, firstUserById]);
 
   /**
    * 左栏单一列表（参考样式）：对话行与历史会话行不再分两段渲染——按「会话文件最近修改时间」

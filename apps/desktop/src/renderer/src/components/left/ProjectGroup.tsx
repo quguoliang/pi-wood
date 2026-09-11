@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -12,6 +13,7 @@ import { formatRelativeTime } from "@/lib/time";
 import { Archive, MoreHorizontal, Pencil, Pin, PinOff, Trash2, X } from "lucide-react";
 import { Icon } from "../ui/Icon";
 import { badgeFor, tabTitle } from "../../stores/conversation-badge";
+import { useSettingsStore } from "../../stores/settings-store";
 import type { SessionMeta } from "../../stores/session-meta-store";
 import type { ConversationRow } from "../../stores/conversations-store";
 import type { ProjectRecord, SessionItem, SidebarRow } from "./useSidebarProjects";
@@ -155,6 +157,28 @@ export function ProjectGroup({
   const [pendingRemoveProject, setPendingRemoveProject] = useState(false);
   // 「显示更多」：分组行数超过上限时默认折叠（参考样式）
   const [showAll, setShowAll] = useState(false);
+  /** 移除项目前的模态确认（弹窗内「不再提醒」可关，落盘 ui.confirmRemoveProject） */
+  const confirmRemoveProject = useSettingsStore((s) => s.settings.ui.confirmRemoveProject);
+  const patchSettings = useSettingsStore((s) => s.patch);
+  const deleteRowRef = useRef<HTMLDivElement | null>(null);
+
+  // 内联删除确认的退出路径：Esc 或点击该行以外即取消。
+  // （旧交互把确认条追加在分组列表末尾，列表越长离被删行越远，用户判定「反人类」）
+  useEffect(() => {
+    if (!pendingDeleteFile) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setPendingDeleteFile(null);
+    };
+    const onPointerDown = (event: PointerEvent): void => {
+      if (deleteRowRef.current && !deleteRowRef.current.contains(event.target as Node)) setPendingDeleteFile(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [pendingDeleteFile]);
 
   const totalRows = rows.length;
   const collapsed = !showAll && totalRows > SIDEBAR_ROW_LIMIT;
@@ -196,6 +220,40 @@ export function ProjectGroup({
             className="h-6 text-[13px]"
             aria-label="会话名称"
           />
+        </div>
+      );
+    }
+    // 永久删除会话：确认按钮直接挂在该行上（不再于列表末尾追加独立确认条）。
+    // 不可逆后果（CLI 亦无法恢复）收进按钮 tooltip／aria，行内只留一个红色动词按钮 + 取消「×」。
+    if (pendingDeleteFile === session.file) {
+      return (
+        <div
+          key={session.file}
+          ref={deleteRowRef}
+          className="flex min-w-0 items-center gap-1.5 rounded-md bg-destructive/10 px-2 py-1 ring-1 ring-inset ring-destructive/30"
+        >
+          <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{title}</span>
+          <button
+            type="button"
+            title="永久删除该会话，CLI 亦无法恢复"
+            aria-label={`永久删除 ${title}`}
+            onClick={async () => {
+              const file = pendingDeleteFile;
+              setPendingDeleteFile(null);
+              if (file) await onDeleteSession(file);
+            }}
+            className="shrink-0 rounded bg-destructive px-1.5 py-0.5 text-[11px] font-medium text-white transition-colors hover:bg-destructive/90"
+          >
+            删除
+          </button>
+          <button
+            type="button"
+            aria-label="取消删除"
+            onClick={() => setPendingDeleteFile(null)}
+            className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+          >
+            <X className="size-3" />
+          </button>
         </div>
       );
     }
@@ -374,7 +432,16 @@ export function ProjectGroup({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-36 text-[13px]">
             <MenuItem icon={<Pencil className="size-3.5" />} label="重命名项目" onSelect={() => beginEdit({ kind: "project" }, project.name)} />
-            <MenuItem icon={<Trash2 className="size-3.5" />} label="移除项目…" destructive onSelect={() => setPendingRemoveProject(true)} />
+            <MenuItem
+              icon={<Trash2 className="size-3.5" />}
+              label="移除项目…"
+              destructive
+              onSelect={() => {
+                // 「不再提醒」已开启时直接移除（弹窗内勾选落盘 ui.confirmRemoveProject=false）
+                if (confirmRemoveProject) setPendingRemoveProject(true);
+                else onProjectRemove();
+              }}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
         )}
@@ -401,47 +468,6 @@ export function ProjectGroup({
             </button>
           )}
 
-          {/* 删除会话：内联确认（不可逆，明示 CLI 亦不可恢复） */}
-          {pendingDeleteFile && (
-            <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-foreground">
-              <span className="min-w-0 shrink">永久删除该会话？CLI 亦无法恢复。</span>
-              <button
-                type="button"
-                onClick={async () => {
-                  const file = pendingDeleteFile;
-                  setPendingDeleteFile(null);
-                  if (file) await onDeleteSession(file);
-                }}
-                className="rounded bg-destructive/20 px-1.5 py-0.5 text-destructive hover:bg-destructive/30"
-              >
-                删除
-              </button>
-              <button type="button" aria-label="取消" onClick={() => setPendingDeleteFile(null)} className="rounded p-0.5 hover:bg-white/10">
-                <X className="size-3" />
-              </button>
-            </div>
-          )}
-
-          {/* 移除项目：内联确认（明示只解除关联） */}
-          {pendingRemoveProject && (
-            <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] text-foreground">
-              <span className="min-w-0 shrink">移除该项目？磁盘代码与会话均不会删除。</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingRemoveProject(false);
-                  onProjectRemove();
-                }}
-                className="rounded bg-destructive/20 px-1.5 py-0.5 text-destructive hover:bg-destructive/30"
-              >
-                移除
-              </button>
-              <button type="button" aria-label="取消" onClick={() => setPendingRemoveProject(false)} className="rounded p-0.5 hover:bg-white/10">
-                <X className="size-3" />
-              </button>
-            </div>
-          )}
-
           {/* 关闭在跑任务的对话：内联二选一（贴项目树行，不弹全局模态） */}
           {pendingCloseConversationId && (
             <div className="flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[11px] text-foreground">
@@ -466,6 +492,27 @@ export function ProjectGroup({
             </div>
           )}
         </div>
+      )}
+
+      {/* 移除项目：模态确认。刻意放在 isExpanded 之外——旧内联确认条在分组折叠时根本不渲染；
+          Radix Dialog 走 portal，不受左栏 overflow 裁剪 */}
+      {!virtual && (
+        <ConfirmDialog
+          open={pendingRemoveProject}
+          onOpenChange={(open) => {
+            if (!open) setPendingRemoveProject(false);
+          }}
+          title={`移除项目「${project.name}」？`}
+          description="仅从侧栏解除关联：磁盘上的代码与会话文件都不会删除，之后可重新「添加」找回。"
+          confirmLabel="移除"
+          destructive
+          dontRemind={{
+            onConfirm: (checked) => {
+              if (checked) void patchSettings({ ui: { confirmRemoveProject: false } });
+            },
+          }}
+          onConfirm={onProjectRemove}
+        />
       )}
     </section>
   );
