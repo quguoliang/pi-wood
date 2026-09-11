@@ -427,7 +427,12 @@ export function MessageList(): React.JSX.Element | null {
       if (idx < 0) return;
       atBottomRef.current = false;
       setAtBottom(false);
-      virtualizer.scrollToIndex(idx, { align: "center" });
+      // 长回复比视口高：center 对齐会落在回复中段（用户报障）。回复对齐到行首（开头），
+      // 提问等短行保持居中（露出上下文）。动态行高下目标行未渲染时按估计值定位，
+      // 首测后会有漂移——两帧后按实测 offset 校正一次。
+      const align = rowsRef.current[idx].kind === "assistant" ? "start" : "center";
+      virtualizer.scrollToIndex(idx, { align });
+      requestAnimationFrame(() => virtualizer.scrollToIndex(idx, { align }));
       setFlashId(itemId);
     };
     window.addEventListener("piwood:outline-jump", onJump);
