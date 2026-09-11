@@ -76,9 +76,16 @@ export function useComposerController() {
 
   const refreshRuntime = useCallback(async (): Promise<void> => {
     if (!engineReady) {
-      setRuntime(undefined);
-      setModels([]);
-      setThinkingLevels([]);
+      // 切换对话的 1~2s（selectSession 置 engineReady=false，防止 prompt 打进旧会话）期间**不清场**：
+      // 这里一清，模型/思考/上下文控件就从真值闪回「选择模型／思考」占位，等引擎就绪再弹回——
+      // 正是「切对话底部闪动」的主因。这些值是引擎/项目级的，不是对话级的，跨对话短暂保留语义成立。
+      // 只有「真正没有活跃对话」（项目切换 activateProject 置 null／全部关闭回空态）才清——
+      // 那两条路径本来就是整屏换底，清掉才是正确语义。
+      if (useSessionStore.getState().activeConversationId === null) {
+        setRuntime(undefined);
+        setModels([]);
+        setThinkingLevels([]);
+      }
       return;
     }
     const [info, nextModels, nextLevels, providers] = await Promise.all([

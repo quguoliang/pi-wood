@@ -60,23 +60,28 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
           ))}
         </div>
       )}
-      <textarea
-        ref={c.textareaRef}
-        value={c.input}
-        onChange={(event) => c.setInput(event.target.value)}
-        onKeyDown={c.onKeyDown}
-        onPaste={(event) => {
-          const text = event.clipboardData.getData("text");
-          if (text && isLargePaste(text)) {
-            event.preventDefault();
-            void c.addPastedText(text);
-          }
-        }}
-        placeholder={c.canCompose ? "描述任务，或添加文件作为上下文" : "选择项目，或直接开始对话"}
-        rows={1}
-        disabled={!c.canCompose}
-        className="block max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
-      />
+        {/*
+          刻意不给 disabled:opacity-60：切对话的 1~2s 里 canCompose 会短暂为 false，
+          整块输入框闪暗再亮回来（与模型名闪回占位同源，用户报障「底部闪动」）。
+          禁用语义保留（不可输入 + cursor-not-allowed），只是不再做视觉降档。
+        */}
+        <textarea
+          ref={c.textareaRef}
+          value={c.input}
+          onChange={(event) => c.setInput(event.target.value)}
+          onKeyDown={c.onKeyDown}
+          onPaste={(event) => {
+            const text = event.clipboardData.getData("text");
+            if (text && isLargePaste(text)) {
+              event.preventDefault();
+              void c.addPastedText(text);
+            }
+          }}
+          placeholder={c.canCompose ? "描述任务，或添加文件作为上下文" : "选择项目，或直接开始对话"}
+          rows={1}
+          disabled={!c.canCompose}
+          className="block max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+        />
     </div>
   );
 }

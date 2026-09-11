@@ -67,6 +67,15 @@ function groupModelsByProvider(models: Array<{ provider: string; id: string }>):
 
 const controlBtn = "h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground";
 
+/**
+ * 引擎未就绪期间（典型＝切对话的 1~2s，engineReady 被置 false 防 prompt 打进旧会话），
+ * 这些芯片会被短暂 disabled——若跟着全局 Button 的 disabled:opacity-50 走，
+ * 底栏就整体闪暗再亮回（与模型名闪回「选择模型」占位同源，用户报障「切对话底部闪动」）。
+ * 故压掉这一档的透明度（pointer-events-none 仍在，点不动）；streaming 导致的禁用
+ * **不**套用本类——那是长态，「不可点」需要可见线索。
+ */
+const keepEnabledLook = "disabled:opacity-100";
+
 function MenuRow({ leading, title, detail, checked, kbd, onClick, disabled }: { leading?: React.ReactNode; title: string; detail?: string; checked?: boolean; kbd?: string; onClick(): void; disabled?: boolean }) {
   return (
     <button type="button" disabled={disabled} onClick={onClick} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-40">
@@ -112,7 +121,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "permission"} onOpenChange={show("permission")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" disabled={!props.engineReady} className={cn(controlBtn, "text-warning hover:text-warning")} aria-label="Agent 权限">
+            <Button variant="ghost" size="sm" disabled={!props.engineReady} className={cn(controlBtn, "text-warning hover:text-warning", !props.engineReady && keepEnabledLook)} aria-label="Agent 权限">
               <Icon name="shield" /><span className="max-w-[9rem] truncate">{permission.label}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>
@@ -131,7 +140,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
           onClick={props.onToggleGoal}
           aria-pressed={props.goalArm}
           title="开启后，本次输入作为目标交给 agent 自主推进（小模型审计进度并自动续跑）"
-          className={cn(controlBtn, props.goalArm && "bg-primary/15 text-primary hover:text-primary")}
+          className={cn(controlBtn, props.goalArm && "bg-primary/15 text-primary hover:text-primary", !props.engineReady && keepEnabledLook)}
         >
           <Icon name="brain" />
           <span>{props.goalArm ? "目标模式开" : "目标"}</span>
@@ -141,7 +150,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
       <div className="flex items-center gap-1">
         <Popover open={open === "context"} onOpenChange={show("context")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={controlBtn} disabled={!props.engineReady}>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady}>
               <Icon name="context" /><span>{usage?.percent == null ? "上下文" : `${Math.round(usage.percent)}%`}</span>
             </Button>
           </PopoverTrigger>
@@ -160,7 +169,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "model"} onOpenChange={show("model")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem]")} disabled={!props.engineReady || props.streaming}>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem]", !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming}>
               <span className="truncate">{currentModel}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>
@@ -186,7 +195,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "thinking"} onOpenChange={show("thinking")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={controlBtn} disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1}>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1}>
               <Icon name="brain" /><span>{currentThinking}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>
