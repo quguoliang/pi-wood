@@ -113,7 +113,19 @@ export async function listSessionsAcrossTrees(
     .sort((a, b) => (a.modified < b.modified ? 1 : -1));
 }
 
+/**
+ * 会话文件尚未落盘（Pi SessionManager 惰性创建：第一条 assistant 消息到达才写 .jsonl）。
+ * 这是合法状态——「新建了对话但还没聊过」——不是错误，按空数据降级而不是抛 ENOENT
+ * （此前 sessions:tree / sessions:messages 都会在 Electron 控制台刷原始堆栈）。
+ */
+export function sessionFileMissing(file: string): boolean {
+  return !existsSync(file);
+}
+
 export async function openSessionTree(file: string): Promise<SessionTreeResult> {
+  if (sessionFileMissing(file)) {
+    return { totalEntries: 0, rows: [] };
+  }
   const { parseSessionEntries } = await loadPi();
   const entries = parseSessionEntries(readFileSync(file, "utf-8")) as unknown as TreeEntry[];
   const tree = buildSessionTree(entries);
@@ -193,6 +205,7 @@ export interface SessionMessageItem {
  * leafId 不在条目集内 → 降级为不过滤（宁可多显示，不可把历史清没）。
  */
 export async function loadSessionMessages(file: string, leafId?: string): Promise<SessionMessageItem[]> {
+  if (sessionFileMissing(file)) return [];
   const { SessionManager } = await loadPi();
   const manager = SessionManager.open(file);
   const all = manager.getEntries() as unknown as TreeEntry[];
