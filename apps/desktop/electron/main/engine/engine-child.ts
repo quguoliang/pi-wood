@@ -29,6 +29,7 @@ import {
 } from "@pi-wood/ipc-schema";
 import { ALL_HOST_TOOL_SPECS } from "../agent-tools/host-tool-specs";
 import type { PiWoodSubagentBridge, PiWoodSubagentRuntimeRef } from "../subagent/bridge";
+import { readGenUiAppendPrompt } from "./gen-ui-prompt";
 
 /* ---------------- parentPort 帧管道 ---------------- */
 
@@ -250,6 +251,10 @@ async function doStart(params: {
     ...(params.additionalExtensionPaths && params.additionalExtensionPaths.length > 0
       ? { additionalExtensionPaths: params.additionalExtensionPaths }
       : {}),
+    // T11.1 生成式 UI：provider 刻意在 child 侧就近注入（函数不过进程边界）；
+    // 它每次资源加载/reload 读一次 ~/.pi-wood/settings.json，故主进程切换开关后触发
+    // engine:reload 即热生效。
+    appendSystemPromptProvider: readGenUiAppendPrompt,
   });
   E.adapter = adapter;
   E.sessionId = info.sessionId;

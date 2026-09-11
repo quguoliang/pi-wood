@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, Check, ChevronDown, CircleCheck, CircleX, Copy, GitFork, OctagonX, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Markdown, ThinkingCard, ToolCard } from "@pi-wood/ui-kit";
+import { Markdown, ThinkingCard, ToolCard, createMarkdownComponents } from "@pi-wood/ui-kit";
 import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem } from "../../stores/session-store";
 import { useAssistStore } from "../../stores/assist-store";
 import { useSettingsStore } from "../../stores/settings-store";
@@ -30,12 +30,23 @@ const UserBubble = memo(function UserBubble({ text }: { text: string }) {
 });
 
 const AssistantProse = memo(function AssistantProse({ text, streaming }: { text: string; streaming?: boolean }) {
+  /**
+   * T11.1 生成式 UI：只有**开关打开且这一轮已结束**时才把 ```genui 围栏换成沙箱 UI。
+   * 流式期间刻意走普通代码块——否则每个 token 都会重建一次 iframe（内容半截 + 抖动 + 白烧 CPU）。
+   * renderKey 把「开关状态」带进分块 memo：用户中途切换开关时历史消息要重新解析，
+   * 而 MemoizedMarkdownBlock 只按 content 比较，不给键就会静默不刷新。
+   */
+  const genUi = useSettingsStore((s) => s.settings.ui.generativeUi);
+  const genUiActive = genUi && !streaming;
+  const components = useMemo(() => createMarkdownComponents({ genUi: genUiActive }), [genUiActive]);
   return (
     <div
       className={cn("pk-prose max-w-none text-[14.5px]", streaming && "[&>*:last-child]:after:content-['▍'] [&>*:last-child]:after:ml-0.5 [&>*:last-child]:after:animate-pulse [&>*:last-child]:after:text-primary")}
       data-pk-stream-marker={streaming || undefined}
     >
-      <Markdown>{text}</Markdown>
+      <Markdown components={components} renderKey={genUiActive ? "genui-on" : "genui-off"}>
+        {text}
+      </Markdown>
     </div>
   );
 });

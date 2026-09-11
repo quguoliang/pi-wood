@@ -74,6 +74,17 @@ export class SdkAdapter implements EngineAdapter {
           ...(opts.additionalExtensionPaths && opts.additionalExtensionPaths.length > 0
             ? { additionalExtensionPaths: opts.additionalExtensionPaths }
             : {}),
+          // T11.1 生成式 UI：把宿主提供的动态追加段拼在 SDK 自发现的 APPEND_SYSTEM.md **之后**
+          // （base 是 SDK 已解析出的用户自定义追加段，覆盖式的 systemPrompt 会把它整段吃掉）。
+          // 用 override 而非静态数组的原因见 EngineStartOptions.appendSystemPromptProvider。
+          ...(opts.appendSystemPromptProvider
+            ? {
+                appendSystemPromptOverride: (base: string[]): string[] => [
+                  ...(Array.isArray(base) ? base : []),
+                  ...(opts.appendSystemPromptProvider?.() ?? []),
+                ],
+              }
+            : {}),
         } as never,
       });
       timings.servicesMs = Math.round(performance.now() - ts);

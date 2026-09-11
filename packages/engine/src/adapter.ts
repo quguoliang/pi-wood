@@ -38,6 +38,15 @@ export interface EngineStartOptions {
    * 用于 ESM-only 的第一方扩展（如 vendored pi-subagent）——不能被打进 CJS 主进程 bundle。
    */
   additionalExtensionPaths?: string[];
+  /**
+   * T11.1：动态追加系统提示词的提供者。SDK 的资源加载器每次 `reload()` 都会重跑
+   * `appendSystemPromptOverride`，故它返回什么就决定了「下一轮对话」的系统提示词——
+   * 用户切换「生成式 UI」开关后只需触发一次引擎 reload 即热生效，不必重启对话。
+   *
+   * ⚠ 这是**函数**，不可跨进程传输：主进程侧 `RemoteEngineAdapter` 刻意不转发它，
+   * 由引擎子进程（`engine-child.ts` 的 doStart）就近注入。
+   */
+  appendSystemPromptProvider?: () => string[];
 }
 
 /** 方案 §5.2：ctx.ui 桌面桥。阻塞式对话框（select/confirm/input）由宿主经 IPC 往返渲染层实现 */

@@ -55,6 +55,12 @@ export interface PiWoodSettings {
    * frontmatter——vendored profile 校验会把未知 frontmatter 键判为无效并跳过整份 profile。
    */
   subagentPermissions: Record<string, Record<string, "allow" | "ask" | "deny">>;
+  /**
+   * T11.1 渲染层界面偏好段的**主进程可见子集**（其余键由渲染层 store 自持，主进程只做深合并透传）。
+   * 引擎子进程的 `readGenUiAppendPrompt()` 直接读这份 JSON 判定是否追加生成式 UI 指令，
+   * 故默认值必须在这里落地——否则「设置项缺失」会被子进程当作关闭（静默降级）。
+   */
+  ui: { generativeUi: boolean };
 }
 
 export function defaultSettings(): PiWoodSettings {
@@ -72,6 +78,7 @@ export function defaultSettings(): PiWoodSettings {
     workbench: { layout: null },
     pluginsEnabled: {},
     subagentPermissions: {},
+    ui: { generativeUi: false },
   };
 }
 

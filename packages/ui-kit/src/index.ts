@@ -6,7 +6,25 @@ export {
   ChatContainerScrollAnchor,
 } from "./chat-container";
 export { CodeBlock, CodeBlockCode } from "./code-block";
-export { Markdown } from "./markdown";
+export {
+  Markdown,
+  createMarkdownComponents,
+  type MarkdownProps,
+  type MarkdownRenderOptions,
+} from "./markdown";
+export {
+  GenUiBlock,
+  type GenUiBlockProps,
+} from "./gen-ui";
+export {
+  GEN_UI_LANGUAGES,
+  GEN_UI_SANDBOX_ATTR,
+  TOKEN_SOURCES,
+  isGenUiLanguage,
+  buildGenUiSrcDoc,
+  genUiBaseStyles,
+  resolveTokenCss,
+} from "./gen-ui-core";
 export {
   Message,
   MessageAvatar,

@@ -5,7 +5,21 @@ export interface PiWoodSettings {
   window: { layout: [number, number, number]; leftCollapsed: boolean; rightCollapsed: boolean };
   theme: { fallback: "light" | "dark" | "system"; pi?: string };
   editor: { fontSize: number; tabSize: number };
-  ui: { toolCardsDefaultOpen: boolean; thinkingDefaultOpen: boolean; toolGroupsEnabled: boolean; toolGroupsDefaultOpen: boolean; lastSection?: string };
+  ui: {
+    toolCardsDefaultOpen: boolean;
+    thinkingDefaultOpen: boolean;
+    toolGroupsEnabled: boolean;
+    toolGroupsDefaultOpen: boolean;
+    lastSection?: string;
+    /** 移除项目前是否弹模态确认（弹窗内「不再提醒」把它置 false；默认每次确认） */
+    confirmRemoveProject: boolean;
+    /**
+     * T11.1 生成式 UI：开启后引擎向系统提示词追加内置指令，模型可在回复正文里输出
+     * ```genui 围栏代码块（自包含 HTML），渲染层在沙箱 iframe 内解析展示。
+     * 默认关闭——这是「模型产出可执行 HTML」的能力面，必须由用户显式开启。
+     */
+    generativeUi: boolean;
+  };
   recentProjects: string[];
   /** T8.6/T8.11：工作树开关（设置「工作树」页可改；主进程 conversation-registry 读同一段配置） */
   worktree: { enabled: boolean; keepAfterClose: boolean };
@@ -21,7 +35,7 @@ const defaults: PiWoodSettings = {
   window: { layout: [17, 55, 28], leftCollapsed: false, rightCollapsed: false },
   theme: { fallback: "dark" },
   editor: { fontSize: 14, tabSize: 2 },
-  ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false },
+  ui: { toolCardsDefaultOpen: false, thinkingDefaultOpen: false, toolGroupsEnabled: true, toolGroupsDefaultOpen: false, confirmRemoveProject: true, generativeUi: false },
   recentProjects: [],
   worktree: { enabled: true, keepAfterClose: false },
   approvalByConversation: {},
