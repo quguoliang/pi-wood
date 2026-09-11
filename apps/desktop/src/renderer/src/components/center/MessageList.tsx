@@ -307,7 +307,7 @@ const TurnProcessRow = memo(function TurnProcessRow({ turn }: { turn: TurnProces
         />
       </button>
       {open && (
-        <div className="mt-0.5 mb-1 ml-[7px] space-y-0.5 border-l-2 border-border pl-3">
+        <div className="mt-0.5 mb-1 ml-[7px] max-h-[360px] space-y-0.5 overflow-y-auto border-l-2 border-border pl-3">
           {turn.rows.map((row) => (
             <ConversationRow key={row.id} item={row} isLatest={false} />
           ))}
@@ -456,10 +456,15 @@ export function MessageList(): React.JSX.Element | null {
     renderedConvRef.current = activeConversationId;
     const el = scrollRef.current;
     if (!el) return;
-    const { scrollTop, followBottom } = useSessionStore.getState().sliceOf(activeConversationId);
-    atBottomRef.current = followBottom;
-    setAtBottom(followBottom);
-    const target = followBottom ? el.scrollHeight : scrollTop;
+    const { scrollTop, followBottom, historyLoaded, streaming: convStreaming } = useSessionStore.getState().sliceOf(activeConversationId);
+    // 历史尚未整读时 followBottom 是初始值（true 只因缺省，见 emptySlice）——不代表用户意愿。
+    // 「跟底是真实状态」（本段会话里滚动过/正在流式/没有历史的空对话）才贴底；
+    // 打开一条未读入的旧对话：先钉在顶部，等历史整读落地后由下面的 effect 一次性贴到最新。
+    const hasRealScrollState = convStreaming || scrollTop > 0;
+    const shouldFollow = followBottom && (hasRealScrollState || (historyLoaded && items.length === 0));
+    atBottomRef.current = shouldFollow;
+    setAtBottom(shouldFollow);
+    const target = shouldFollow ? el.scrollHeight : scrollTop;
     el.scrollTop = target;
     // 虚拟列表首帧还没测完行高，下一帧按同一目标补一次
     const raf = requestAnimationFrame(() => {
@@ -467,6 +472,26 @@ export function MessageList(): React.JSX.Element | null {
     });
     return () => cancelAnimationFrame(raf);
   }, [activeConversationId]);
+
+  // 首次打开一条有历史的对话：等整读对账落地后一次性贴到最新（无动画瞬时定位）。
+  // 只补偿「打开时没被滚过」的场景；用户中途上翻（followBottom 被滚事件置否）不再抢。
+  useLayoutEffect(() => {
+    const s = useSessionStore.getState().sliceOf(activeConversationId);
+    if (!s.historyLoaded || !s.followBottom || s.items.length === 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = true;
+    setAtBottom(true);
+    el.scrollTop = el.scrollHeight;
+    // 行高测量分两轮才稳定（图片/代码块首轮估计值偏差大），双帧补两次
+    const raf = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [activeConversationId, items, historyLoaded]);
 
   const empty = items.length === 0 && !liveText && !liveThinking && !streaming;
   const rows = virtualizer.getVirtualItems();
@@ -514,7 +539,7 @@ export function MessageList(): React.JSX.Element | null {
             <div className="pk-stream-in flex w-full flex-col gap-3 pb-2">
               {liveThinking && (
                 <div className="pk-stream-in">
-                  <ThinkingCard text={liveThinking} streaming preview={liveThinking.slice(-60)} />
+                  <ThinkingCard text={liveThinking} streaming preview={liveThinking.slice(-60)} defaultOpen={thinkingDefaultOpen} />
                 </div>
               )}
               {liveText && (

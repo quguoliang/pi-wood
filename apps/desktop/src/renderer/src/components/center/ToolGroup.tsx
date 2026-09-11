@@ -21,7 +21,7 @@ export const ToolGroup = memo(function ToolGroup({ group }: { group: ToolGroupIt
   const defaultOpen = useSettingsStore((s) => s.settings.ui.toolGroupsDefaultOpen);
   const cardDefaultOpen = useSettingsStore((s) => s.settings.ui.toolCardsDefaultOpen);
   const nonce = useToolGroupsStore((s) => s.nonce);
-  const [open, setOpen] = useState<boolean>(() => (group.status === "running" ? true : defaultOpen));
+  const [open, setOpen] = useState<boolean>(() => defaultOpen);
   const userTouched = useRef(false);
   const prevStatus = useRef(group.status);
 

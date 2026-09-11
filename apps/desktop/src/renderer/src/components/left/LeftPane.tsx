@@ -42,7 +42,8 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
   return (
     <aside className="flex h-full min-h-0 flex-col bg-surface-chrome text-sidebar-foreground" aria-label="项目与会话">
       {/* 双平台无全宽顶栏：本栏顶部 40px 为自定义拖拽栏——macOS 放红绿灯，Windows 仅有栏开关；
-          开关作为 no-drag 子元素嵌在拖拽区内（Electron 可靠模式），中心线对齐卡片 header（y≈26） */}
+          开关作为 no-drag 子元素嵌在拖拽区内（Electron 可靠模式），与红绿灯同一条水平线
+          （中心 y≈28.5，对齐内容区卡片 header 行的图标——窗口内边距 6 + header 高 44 的中心） */}
       <div className="app-drag relative h-10 shrink-0">
         {window.pi.platform === "darwin" && (
           /* 自绘红绿灯悬浮在本栏上方（AppShell z-30）：拖拽区会吞非后代元素的点击，
@@ -53,7 +54,7 @@ export function LeftPane({ onOpenSettings }: { onOpenSettings: () => void }): Re
           variant="ghost"
           size="icon-sm"
           className={cn(
-            "app-no-drag absolute top-[10px] text-muted-foreground hover:text-foreground active:scale-100!",
+            "app-no-drag absolute top-[12px] text-muted-foreground hover:text-foreground active:scale-100!",
             window.pi.platform === "win32" ? "left-2" : "left-[92px]",
           )}
           onClick={() => window.dispatchEvent(new Event("piwood:toggle-sidebar"))}

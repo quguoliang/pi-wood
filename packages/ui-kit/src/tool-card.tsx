@@ -238,7 +238,7 @@ function fmtDuration(ms?: number): string {
   return `耗时 ${Math.floor(s / 60)}m${Math.round(s % 60)}s`;
 }
 
-/** 思考过程：一行正文「思考 · 耗时 Ns · 尾部预览」，点击展开。流式时实时展开、预览随 token 更新。 */
+/** 思考过程：一行正文「思考 · 耗时 Ns · 尾部预览」，点击展开。展开态由 defaultOpen 决定（设置优先）；流式时只驱动「思考中…」指示与尾部实时预览，不再强制展开。 */
 export function ThinkingCard({
   text,
   streaming,
@@ -253,11 +253,18 @@ export function ThinkingCard({
   defaultOpen?: boolean;
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
-  const isOpen = streaming ? true : open;
+  const isOpen = open;
   // 同 ToolCard：设置页改「思考过程默认展开」后已挂载的思考块立即跟随
   useEffect(() => {
     setOpen(defaultOpen);
   }, [defaultOpen]);
+  // 流式生成时正文按 token 增长：到达最大高度后自动滚到底，始终露出最新思考内容（终端 tail 式跟随）。
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (streaming && isOpen && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [text, streaming, isOpen]);
   const pv = (preview ?? "").replace(/\s+/g, " ").trim();
   return (
     <div className="group/tool">
@@ -276,7 +283,10 @@ export function ThinkingCard({
         <ChevronDown className={cn("shrink-0 transition", isOpen ? "opacity-100 rotate-180" : "opacity-0 group-hover/tool:opacity-100")} size={14} />
       </button>
       {isOpen && (
-        <div className="mb-1 ml-[7px] mt-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/90">
+        <div
+          ref={bodyRef}
+          className="mb-1 ml-[7px] mt-1.5 max-h-[200px] overflow-y-auto border-l-2 border-border pb-1 pl-3.5 pt-1.5 text-[13px] leading-relaxed whitespace-pre-wrap text-muted-foreground/90"
+        >
           {text}
         </div>
       )}

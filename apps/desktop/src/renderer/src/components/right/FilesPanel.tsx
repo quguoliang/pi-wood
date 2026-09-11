@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import type { editor as monacoEditor } from "monaco-editor";
-import { Tree, type NodeRendererProps } from "react-arborist";
+import { Tree, type NodeRendererProps, type TreeApi } from "react-arborist";
 import { monaco, monacoLanguage } from "@/lib/monaco-setup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileIcon } from "@/lib/file-icons";
 import { Icon } from "../ui/Icon";
-import { useActiveConversation, useSessionStore } from "../../stores/session-store";
+import { useSessionStore } from "../../stores/session-store";
+import { useConversationsStore } from "../../stores/conversations-store";
 import { useWorkbenchStore } from "../../stores/workbench-store";
 import { usePendingContextStore } from "../../stores/pending-context-store";
 
@@ -58,6 +59,77 @@ function mergeChildren(root: FsEntry[], dirPath: string, children: FsEntry[]): F
   return walk(root);
 }
 
+/** 浅比较两个目录列表（name/type 序列相同即视为未变）——StrictMode 双拉同目录时保住树对象身份 */
+function sameEntries(a: FileEntry[] | undefined, b: FileEntry[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  const key = (e: FileEntry): string => `${e.type}:${e.name}`;
+  const sa = a.map(key).sort();
+  const sb = b.map(key).sort();
+  return sa.every((k, i) => k === sb[i]);
+}
+
+/** dirPath 目录在树里现有的 children（未展开过则为 undefined） */
+function findChildren(root: FsEntry[], dirPath: string): FsEntry[] | undefined {
+  if (dirPath === "") return root;
+  const walk = (nodes: FsEntry[]): FsEntry[] | undefined => {
+    for (const n of nodes) {
+      if (n.path === dirPath) return n.children;
+      const hit = n.children ? walk(n.children) : undefined;
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  return walk(root);
+}
+
+/** path 是否已作为节点存在于嵌套树中（含未展开目录下的子节点） */
+function nodeInTree(nodes: FsEntry[], path: string): boolean {
+  return nodes.some((n) => n.path === path || (n.children ? nodeInTree(n.children, path) : false));
+}
+
+/** arborist 行渲染器：缩进参考线 + 旋转 chevron + 文件类型彩色图标（VSCode 资源管理器样式）。
+ *  必须定义在模块级：定义在组件内会让每次 re-render 都是新的组件类型 → 所有行卸载重挂 = 整树抖动。
+ *  点击语义全走 arborist 自身（目录 toggle 触发 onToggle 拉 children；文件 select 触发 onSelect 打开），
+ *  因此不需要任何组件内闭包。 */
+function Node({ node, style, dragHandle }: NodeRendererProps<FsEntry>): React.JSX.Element {
+  const d = node.data;
+  const dir = d.type === "dir";
+  return (
+    <div
+      ref={dragHandle}
+      style={{ ...style, left: 0 }}
+      className={cn(
+        "flex cursor-pointer select-none items-center gap-1 pr-2 text-[13px] text-foreground outline-none",
+        node.isSelected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
+      )}
+      onClick={() => {
+        if (!dir) {
+          node.select();
+          return;
+        }
+        node.focus();
+        node.toggle(); // open/close 内部会回调 props.onToggle(id) → ensureChildren 拉取子目录
+      }}
+    >
+      {/* 缩进参考线：每级一条，落在上一级 chevron 中心下 */}
+      {Array.from({ length: node.level }).map((_, i) => (
+        <span key={i} className="pointer-events-none absolute inset-y-0 w-px bg-foreground/[0.07]" style={{ left: i * INDENT + 9 }} />
+      ))}
+      <span className="shrink-0" style={{ width: 4 + node.level * INDENT }} />
+      {dir ? (
+        <Icon
+          name="chevronRight"
+          className={cn("shrink-0 text-muted-foreground transition-transform", node.isOpen ? "rotate-90" : "")}
+        />
+      ) : (
+        <span className="size-4 shrink-0" />
+      )}
+      <FileIcon name={d.name} dir={dir} open={node.isOpen} />
+      <span className="truncate">{d.name}</span>
+    </div>
+  );
+}
+
 /** 面包屑：按 / 或 \ 切段，最后一段加粗 */
 function Breadcrumb({ path }: { path: string }): React.JSX.Element {
   const parts = path.split(/[\\/]/).filter(Boolean);
@@ -82,7 +154,13 @@ function Breadcrumb({ path }: { path: string }): React.JSX.Element {
 
 export function FilesPanel(): React.JSX.Element {
   const activeProject = useSessionStore((s) => s.activeProject);
-  const engineReady = useActiveConversation((c) => c.engineReady);
+  const activeConversationId = useSessionStore((s) => s.activeConversationId);
+  // 文件树根 = fs:* 解析的工作区根（当前对话 worktree → 主项目），reveal 绝对路径时优先按它归一
+  const worktreeRoot = useConversationsStore((s) => s.rows.find((r) => r.id === activeConversationId)?.worktreePath);
+  // 「工作区键」= 树的作废边界：只有当前对话的 worktree 或主项目变了才重建树。
+  // 切对话（同工作区）不在此列——engineReady 是发送防护不是清场信号（T8.3 后续结论），
+  // 拿它清树会把同一项目的文件树在切对话时整块闪成「引擎未就绪」空屏（用户报障）。
+  const wsKey = worktreeRoot ?? activeProject ?? "";
   const requestedFile = useWorkbenchStore((s) => s.requestedFile);
   const clearRequestedFile = useWorkbenchStore((s) => s.clearRequestedFile);
   const [treeRoot, setTreeRoot] = useState<FsEntry[]>([]);
@@ -97,12 +175,22 @@ export function FilesPanel(): React.JSX.Element {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ path: string }> | null>(null);
   const [status, setStatus] = useState("");
+  // 根目录拉取中（首屏/换工作区）；与「引擎没起来」区分，别把加载态写成失败文案
+  const [rootLoading, setRootLoading] = useState(false);
   const [treeW, setTreeW] = useState(TREE_DEFAULT_W);
   const [pendingReveal, setPendingReveal] = useState<{ path: string; line: number } | null>(null);
   // react-arborist：懒加载目录集合（"" = 根）+ 树高度测量（react-window 需要像素值）
   const loadedDirs = useRef<Set<string>>(new Set());
+  // 目录 children 缓存：revealPath 逐层展开时要按 name 找到真实节点 id（分隔符/大小写与树一致）
+  const dirEntriesCache = useRef<Map<string, FileEntry[]>>(new Map());
+  // 进行中拉取去重：StrictMode effect 双跑 / reveal 下钻与手动展开并发时，同目录只发一次 fs:tree
+  const dirLoadsInflight = useRef<Map<string, Promise<FileEntry[]>>>(new Map());
+  // 命令式树 API（展开祖先 + 滚动定位到文件）
+  const treeRef = useRef<TreeApi<FsEntry> | null>(null);
   const treeWrapRef = useRef<HTMLDivElement>(null);
   const [treeSize, setTreeSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // 待定位文件：等树数据提交 + Tree 挂载（treeSize 有值）后，由 effect 执行 openParents/scrollTo
+  const [revealTarget, setRevealTarget] = useState<string | null>(null);
   // Monaco 实例（行定位用）；编辑器默认可编辑；Cmd/Ctrl+S 保存经 ref 取最新闭包
   const rootRef = useRef<HTMLDivElement>(null);
   const saveRef = useRef<() => void>(() => undefined);
@@ -119,25 +207,38 @@ export function FilesPanel(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    // fs:tree 依赖主进程引擎已启动——以 engineReady 为准（activeProject 在引擎启动失败时仍保留）
-    if (!engineReady) {
-      setTreeRoot([]);
-      loadedDirs.current = new Set();
-      // 项目切换/引擎重启：已打开文件与新项目无关，全部作废（含去重 ref，防跨项目残留）
-      setOpenFiles([]);
-      setActiveFile(undefined);
-      setSelectedPath(undefined);
-      loadedPaths.current.clear();
-      inflightLoads.current.clear();
-      return;
-    }
+    // 工作区根 = fs:* 解析口径（当前对话 worktree → 主项目）。只有切项目/换 worktree 才作废树，
+    // 切对话（同一工作区）不动它——engineReady 是**发送防护**，不是清场信号（T8.3 后续结论）。
+    // 旧实现拿 engineReady 当清场开关，切对话的 1~2s 里 engineReady=false → 整块树被清空、
+    // 亮出「引擎未就绪：启动失败…」空屏，引擎就绪后若该切片没被重新置位就永久卡死（用户报障）。
+    setTreeRoot([]);
+    loadedDirs.current = new Set();
+    dirEntriesCache.current.clear();
+    dirLoadsInflight.current.clear();
+    setOpenFiles([]);
+    setActiveFile(undefined);
+    setSelectedPath(undefined);
+    loadedPaths.current.clear();
+    inflightLoads.current.clear();
+    setPendingReveal(null);
+    setRevealTarget(null);
+    setStatus("");
+    // 首屏/换工作区主动拉根目录：树不能只靠用户先点开某个目录才懒加载，
+    // 否则根目录永远不进树（loadedDirs 只记被展开的目录，根没人点）。
+    if (!wsKey) return;
+    setRootLoading(true);
+    loadedDirs.current.add("");
     void loadChildren(undefined)
       .then((entries) => {
-        loadedDirs.current.add("");
+        dirEntriesCache.current.set("", entries);
         setTreeRoot(toFsEntries(entries));
       })
-      .catch((err) => setStatus(String(err?.message ?? err)));
-  }, [engineReady, loadChildren]);
+      .catch((err) => {
+        loadedDirs.current.delete("");
+        setStatus(String(err?.message ?? err));
+      })
+      .finally(() => setRootLoading(false));
+  }, [wsKey, loadChildren]);
 
   // 展开目录前确保 children 已拉取（onToggle 对点击与键盘展开都生效，幂等）
   const ensureChildren = useCallback(
@@ -145,11 +246,110 @@ export function FilesPanel(): React.JSX.Element {
       if (loadedDirs.current.has(dirPath)) return;
       loadedDirs.current.add(dirPath);
       void loadChildren(dirPath || undefined)
-        .then((entries) => setTreeRoot((root) => mergeChildren(root, dirPath, toFsEntries(entries))))
+        .then((entries) => {
+          dirEntriesCache.current.set(dirPath, entries);
+          setTreeRoot((root) =>
+            sameEntries(findChildren(root, dirPath), entries) ? root : mergeChildren(root, dirPath, toFsEntries(entries)),
+          );
+        })
         .catch(() => loadedDirs.current.delete(dirPath));
     },
     [loadChildren],
   );
+
+  /** 取某目录 children（缓存优先；未缓存则拉取 + 合入树 + 返回）。"" / undefined = 项目根。 */
+  const loadDirEntries = useCallback(
+    async (dir: string | undefined): Promise<FileEntry[]> => {
+      const key = dir ?? "";
+      const cached = dirEntriesCache.current.get(key);
+      if (cached) return cached;
+      // 同目录并发拉取只发一次：后到调用直接复用 pending（StrictMode 双跑的关键去重）
+      const pending = dirLoadsInflight.current.get(key);
+      if (pending) return pending;
+      loadedDirs.current.add(key);
+      const p = (loadChildren(dir) as Promise<FileEntry[]>)
+        .then((entries) => {
+          dirEntriesCache.current.set(key, entries);
+          // 内容没变的重复拉取不替换树对象——否则整体新数组会把 arborist 的展开状态冲掉
+          setTreeRoot((root) =>
+            sameEntries(findChildren(root, key), entries) ? root : mergeChildren(root, key, toFsEntries(entries)),
+          );
+          return entries;
+        })
+        .catch((err) => {
+          loadedDirs.current.delete(key);
+          throw err;
+        })
+        .finally(() => dirLoadsInflight.current.delete(key));
+      dirLoadsInflight.current.set(key, p);
+      return p;
+    },
+    [loadChildren],
+  );
+
+  /**
+   * 把文件树逐层展开到 path（「打开」联动）：自顶向下用真实子节点 id 定位每一级目录，
+   * 数据合入树后再经 TreeApi.openParents + scrollTo 完成展开与定位。
+   * 任何一级在树里找不到（被忽略/已删除）就安静放弃展开——文件本身照常打开。
+   */
+  const revealPath = useCallback(
+    async (path: string): Promise<void> => {
+      // 树节点 id 是「相对工作区根、正斜杠」路径（fs:tree 口径，与 git status 输出一致）；
+      // 入参可能是绝对路径（其它调用方）→ 先归一到相对 id，后面全部按相对 id 走。
+      let rel = path.replace(/\\/g, "/").replace(/\/+$/, "");
+      const candidates = [worktreeRoot, activeProject].filter((r): r is string => Boolean(r));
+      for (const root of candidates) {
+        const rootNorm = root.replace(/[\\/]+$/, "").replace(/\\/g, "/");
+        if (rootNorm && rel.startsWith(`${rootNorm}/`)) {
+          rel = rel.slice(rootNorm.length + 1);
+          break;
+        }
+      }
+      rel = rel.replace(/^\/+/, "");
+      if (!rel) return;
+      const dirs = rel.split("/").slice(0, -1).filter(Boolean);
+      let parentDir: string | undefined; // undefined = 项目根
+      for (const seg of dirs) {
+        const entries = await loadDirEntries(parentDir);
+        const hit = entries.find((e) => e.name === seg && e.type === "dir");
+        if (!hit) return;
+        parentDir = hit.path;
+      }
+      // 关键：目标文件节点只有在其**直接父目录**的 children 合入树后才存在。
+      // 循环只把各级目录自身载入（最后一个 parentDir 的 children 还没拉），这里补上——
+      // 否则 arborist 的 openParents/scrollTo 按 id 找不到节点，展开与定位全部静默失效。
+      await loadDirEntries(parentDir);
+      setSelectedPath(rel);
+      setRevealTarget(rel); // 交给下面的 effect：等树数据/Tree 就绪后再展开 + 滚动
+    },
+    [activeProject, worktreeRoot, loadDirEntries],
+  );
+
+  // 树就绪（数据已提交 + Tree 已挂载测得高度）后，才执行命令式展开/滚动——
+  // 早于此刻 treeRef.current 为 null 或目标节点尚未进树，openParents/scrollTo 会静默失效。
+  useEffect(() => {
+    if (!revealTarget) return;
+    const api = treeRef.current;
+    if (!api || treeSize.h <= 0) return; // Tree 未挂载 → 等 treeSize 变化后本 effect 重跑
+    // 目标节点此刻必须已在树里（revealPath 已把直接父目录 children 合入）；找不到就放弃，不再挂起重试。
+    // 注意不能用 api.get()——它只查「可见」节点，而祖先目录尚未展开，目标必然不可见；须查整棵树数据。
+    if (!nodeInTree(treeRoot, revealTarget)) {
+      setRevealTarget(null);
+      return;
+    }
+    api.openParents(revealTarget);
+    const raf = requestAnimationFrame(() => {
+      // scrollTo 内部 waitFor 到目标进入可见列表；resolve 后目标才可选中，这时显式 select。
+      // 不能只靠 selection={selectedPath} 属性：arborist 的选中 effect 只在属性**变化**时跑，
+      // 而设置 selectedPath 时祖先还没展开、目标不可见 → 选中落空，之后属性没变也不会补。
+      const reveal = (): void => api.select(revealTarget, { focus: false });
+      const p = api.scrollTo(revealTarget);
+      if (p) void p.then(reveal).catch(() => reveal());
+      else reveal();
+    });
+    setRevealTarget(null);
+    return () => cancelAnimationFrame(raf);
+  }, [revealTarget, treeRoot, treeSize.h]);
 
   // 树列尺寸跟随拖拽/面板宽度
   useEffect(() => {
@@ -185,8 +385,9 @@ export function FilesPanel(): React.JSX.Element {
     const { path, line } = requestedFile;
     openFile({ path, name: path.split(/[\\/]/).pop() ?? path, type: "file" });
     if (line != null) setPendingReveal({ path, line });
+    void revealPath(path).catch(() => undefined); // 目录树逐层展开到该文件并滚动定位；失败不影响已打开的文件
     clearRequestedFile();
-  }, [clearRequestedFile, openFile, requestedFile]);
+  }, [clearRequestedFile, openFile, requestedFile, revealPath]);
 
   // 待定位文件已加载且编辑器就绪 → 定位到行（1-based）并居中滚动，随后清除
   useEffect(() => {
@@ -299,52 +500,11 @@ export function FilesPanel(): React.JSX.Element {
     return () => clearTimeout(t);
   }, [search]);
 
-  /** arborist 行渲染器：缩进参考线 + 旋转 chevron + 文件类型彩色图标（VSCode 资源管理器样式） */
-  function Node({ node, style, dragHandle }: NodeRendererProps<FsEntry>): React.JSX.Element {
-    const d = node.data;
-    const dir = d.type === "dir";
-    return (
-      <div
-        ref={dragHandle}
-        style={{ ...style, left: 0 }}
-        className={cn(
-          "flex cursor-pointer select-none items-center gap-1 pr-2 text-[13px] text-foreground outline-none",
-          node.isSelected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/60",
-        )}
-        onClick={() => {
-          if (!dir) {
-            node.select();
-            return;
-          }
-          node.focus();
-          ensureChildren(d.path);
-          node.toggle();
-        }}
-      >
-        {/* 缩进参考线：每级一条，落在上一级 chevron 中心下 */}
-        {Array.from({ length: node.level }).map((_, i) => (
-          <span key={i} className="pointer-events-none absolute inset-y-0 w-px bg-foreground/[0.07]" style={{ left: i * INDENT + 9 }} />
-        ))}
-        <span className="shrink-0" style={{ width: 4 + node.level * INDENT }} />
-        {dir ? (
-          <Icon
-            name="chevronRight"
-            className={cn("shrink-0 text-muted-foreground transition-transform", node.isOpen ? "rotate-90" : "")}
-          />
-        ) : (
-          <span className="size-4 shrink-0" />
-        )}
-        <FileIcon name={d.name} dir={dir} open={node.isOpen} />
-        <span className="truncate">{d.name}</span>
-      </div>
-    );
-  }
-
   return (
     <div ref={rootRef} className="flex h-full min-h-0">
-      {!engineReady ? (
+      {!wsKey ? (
         <div className="flex h-full flex-1 items-center justify-center p-4 text-center text-xs text-muted-foreground">
-          <p>{activeProject ? "引擎未就绪：启动失败，请在设置中检查模型与 API Key 后重选项目。" : "选择一个项目后即可浏览和编辑文件。"}</p>
+          <p>选择一个项目后即可浏览和编辑文件。</p>
         </div>
       ) : (
         <>
@@ -473,6 +633,7 @@ export function FilesPanel(): React.JSX.Element {
                 <>
                   {treeSize.h > 0 && (
                     <Tree
+                      ref={treeRef}
                       data={treeRoot}
                       idAccessor="path"
                       childrenAccessor={(d) => d.children ?? (d.type === "dir" ? [] : null)}
@@ -498,7 +659,9 @@ export function FilesPanel(): React.JSX.Element {
                     </Tree>
                   )}
                   {treeRoot.length === 0 && (
-                    <p className="p-2 text-xs text-muted-foreground">{status || "（空目录）"}</p>
+                    <p className="p-2 text-xs text-muted-foreground">
+                      {rootLoading ? "载入中…" : status || "（空目录）"}
+                    </p>
                   )}
                 </>
               )}
