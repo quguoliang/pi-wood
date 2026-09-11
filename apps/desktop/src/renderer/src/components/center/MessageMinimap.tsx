@@ -11,11 +11,11 @@ import { useContextTreeStore } from "../../stores/context-tree-store";
 /**
  * T9.2 v2.2 MessageMinimap：消息列左缘**竖向居中**的浮层刻度条（不占布局宽度）。
  *
- * 形态（2026-09-11 裁决迭代）：
+ * 形态（2026-09-12 裁决迭代）：
  * - **每个 user 轮次 + 每条 agent 正文回复各一条刻度**（thinking/tool/system 不成刻度）：
- *   提问 = 长刻度（10px），回复 = 短刻度（6px、更淡）——两种常态各自等长，靠长度/深浅区分种类；
+ *   问/答**等长**（10px），只靠深浅区分种类——回复刻度更淡；hover 浮层加「问/答」前缀；
  *   回复摘要只取正文首行、超长省略号截断（lib/message-nav firstLine）；
- * - **常态所有刻度完全一样**（同种内等长等色）——**不做默认高亮**，当前阅读轮次也不例外；
+ * - **常态所有刻度完全一样**（等长）——**不做默认高亮**，当前阅读轮次也不例外；
  * - **hover 才动**：以目标为中心做正态分布衰减（目标 20px、相邻按高斯渐次变长、远端回 10px，200ms ease），
  *   离开后整列回到等长；
  * - hover 只在右侧浮出**当前这一条**的摘要（diff bars + 首行标题），**不列出其他轮次**；
@@ -26,10 +26,8 @@ import { useContextTreeStore } from "../../stores/context-tree-store";
  * 刻度/衰减/bars 的纯逻辑在 lib/message-nav.ts（单测覆盖）；颜色全走主题 token，浅暗色自动适配。
  */
 
-const TICK_BASE = 10; // user（提问）刻度常态长度
-const TICK_BASE_ASST = 6; // assistant（agent 回复）刻度常态长度——短一线区分种类，同色系更淡
+const TICK_BASE = 10; // 刻度常态长度（问/答等长，靠深浅区分种类：回复更淡）
 const TICK_MAX = 20; // hover 目标刻度长度（邻居按高斯衰减介于两者之间）
-const TICK_MAX_ASST = 12;
 const SIGMA = 1.6; // 正态衰减系数（越大→邻居被带得越长）
 const RAIL_WIDTH = TICK_MAX; // 容器预留满宽，展开时不推动布局
 const RAIL_ROW_HEIGHT = 12; // 刻度行高
@@ -45,14 +43,6 @@ export function MessageMinimap(): React.JSX.Element | null {
   const refreshTree = useContextTreeStore((s) => s.refresh);
 
   const ticks = useMemo(() => buildNavTicks(items), [items]);
-  // applyHover 的 GSAP 回调要按刻度种类取 base/max：ref 持最新 ticks，避免闭包过期
-  const ticksRef = useRef(ticks);
-  ticksRef.current = ticks;
-  const dimsOf = useCallback(
-    (i: number): { base: number; max: number } =>
-      ticksRef.current[i]?.kind === "assistant" ? { base: TICK_BASE_ASST, max: TICK_MAX_ASST } : { base: TICK_BASE, max: TICK_MAX },
-    [],
-  );
 
   // 会话树刷新：切对话/会话文件变化刷一次，轮末（streaming true→false）强刷一次。
   // 树数据供消息级「分叉」做 行↔会话树条目 序号对齐（fork 需要 user 条目的 entry id）。
@@ -104,20 +94,19 @@ export function MessageMinimap(): React.JSX.Element | null {
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const duration = reduce ? 0 : 0.25;
     for (const [i, line] of lineRefs.current) {
-      const { base, max } = dimsOf(i);
-      const width = tickWidthAt(i, h, base, max, SIGMA);
+      const width = tickWidthAt(i, h, TICK_BASE, TICK_MAX, SIGMA);
       const hl = hlRefs.current.get(i);
-      gsap.to(line, { scaleX: width / base, duration, ease: "power3.out", overwrite: "auto" });
+      gsap.to(line, { scaleX: width / TICK_BASE, duration, ease: "power3.out", overwrite: "auto" });
       if (hl) {
         gsap.to(hl, {
-          autoAlpha: (width - base) / (max - base),
+          autoAlpha: (width - TICK_BASE) / (TICK_MAX - TICK_BASE),
           duration,
           ease: "power2.out",
           overwrite: "auto",
         });
       }
     }
-  }, [dimsOf]);
+  }, []);
   // 刻度集合变化（新轮次/切对话）：全部回常态并清掉在途 tween
   useEffect(() => {
     for (const el of lineRefs.current.values()) gsap.set(el, { scaleX: 1 });
@@ -235,7 +224,7 @@ export function MessageMinimap(): React.JSX.Element | null {
                 className="flex cursor-pointer items-center justify-start border-0 bg-transparent p-0"
                 style={{ width: RAIL_WIDTH, height: RAIL_ROW_HEIGHT }}
               >
-                {/* 基准宽固定（user 10px / assistant 6px），hover 只动 scaleX（合成层）；
+                {/* 基准宽固定（问/答等长），hover 只动 scaleX（合成层）；
                     高亮 = 前景叠加层的 opacity（代替 color-mix，同样零 reflow） */}
                 <span
                   ref={(el) => {
@@ -245,7 +234,7 @@ export function MessageMinimap(): React.JSX.Element | null {
                   aria-hidden
                   data-tick-line
                   className="relative block h-px rounded-[1px]"
-                  style={{ width: t.kind === "assistant" ? TICK_BASE_ASST : TICK_BASE, transformOrigin: "left center" }}
+                  style={{ width: TICK_BASE, transformOrigin: "left center" }}
                 >
                   <span
                     className={cn(
