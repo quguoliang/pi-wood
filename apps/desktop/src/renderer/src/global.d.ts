@@ -74,6 +74,7 @@ declare global {
       settingsGet(): Promise<Record<string, unknown>>;
       settingsSet(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
       engineStart(projectDir: string): Promise<{ conversationId: string }>;
+      peekConversation?(projectDir: string): Promise<{ conversationId?: string }>;
       // T8.3 对话域（preload 已实装；声明成可选以免桥与消费者必须同刻改完）
       setActiveConversation?(conversationId: string): Promise<unknown>;
       listConversations?(): Promise<unknown[]>;

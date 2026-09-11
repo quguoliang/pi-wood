@@ -113,25 +113,29 @@ export function useSidebarProjects() {
     setEngineReady(false);
     reset();
     resetRuntime();
-    // 换项目先清空视图归属，engineStart 回来后立刻用主进程返回的 conversationId 精确落位（见下）。
+    // 换项目先清空视图归属，认领回来后立刻精确落位（见下）。
     useSessionStore.setState({ activeConversationId: null, draftProject: null });
+    // 惰性启动：切项目只「认领」不 spawn——peek 解析该项目在本会话内已注册的对话并认领活跃指针，
+    // 绝不拉子进程。引擎的启动时机是第一次发送（send 内 engineStart：冷则拉起，热则毫秒认领）。
+    // 此前每次切换都 engineStart，浏览几个项目就把并发引擎占满（上限 3/4），频繁弹「已休眠后台对话」。
     try {
-      const res = await window.pi.engineStart(project.path);
+      const res = await window.pi.peekConversation?.(project.path);
       if (activation === activationSeq.current) {
-        // 立刻把视图归属到主进程新建/复用的对话（不再等 active:true 事件回采）——
-        // 否则首条 addUserMessage 会误落兜底切片，真实对话切片缺首条用户消息 → 被左栏隐藏。
-        if (res?.conversationId) useSessionStore.setState({ activeConversationId: res.conversationId, draftProject: null });
-        setEngineReady(true);
+        if (res?.conversationId) {
+          // 冷认领：可浏览/可输入（历史直接读会话文件），engineReady 保持 false，
+          // 模型/思考/审批控件冷态占位，发送后随引擎拉起自动点亮。
+          useSessionStore.setState({ activeConversationId: res.conversationId, draftProject: null });
+        } else {
+          // 本会话内该项目还没有对话 → 草稿态：首次发送走 createConversation（即既有惰性建对话路径）
+          useSessionStore.setState({ activeConversationId: null, draftProject: project.path });
+        }
         void refreshRuntime();
-        void useSessionStore.getState().refreshSessionId();
       }
     } catch (error) {
       if (activation === activationSeq.current) {
-        setEngineReady(false);
-        // 不吞错：失败原因（常见为模型凭据缺失）直接告知用户
-        toast.error(`引擎启动失败：${String((error as Error)?.message ?? error)}`, { duration: 8000 });
+        console.error("项目认领失败", error);
+        useSessionStore.setState({ activeConversationId: null, draftProject: project.path });
       }
-      console.error("项目引擎启动失败", error);
     }
   }, [reset, resetRuntime, refreshRuntime, setEngineReady, setStoreProject]);
 
@@ -159,10 +163,23 @@ export function useSidebarProjects() {
     if (!convId) {
       const started = await window.pi.engineStart(project.path).catch(() => undefined);
       convId = started?.conversationId ?? null;
-      if (convId) useSessionStore.setState({ activeConversationId: convId, draftProject: null });
+      if (convId) {
+        useSessionStore.setState({ activeConversationId: convId, draftProject: null });
+        // 显式打开历史会话是引擎的合理启动时机（本会话内该项目还没有对话可认领）；
+        // 这里置 ready 让下面的 switchInBackground 走热路径。
+        useSessionStore.getState().setEngineReady(true, convId);
+      }
     }
 
-    const switchInBackground = async (): Promise<void> => {
+    const switchInBackground = async (warm: boolean): Promise<void> => {
+      // 惰性启动：引擎未拉起时不在浏览路径 spawn——把待认领会话记进 conversations-store
+      // （refresh 轮询按它压盖行，防弹回旧分组），发送时先 engineStart + engineSwitchSession
+      // 再 prompt（见 use-composer-controller 的 send）。warm 判定须在乐观置 engineReady=false
+      // **之前**做（那只是为了挡旧会话 prompt，不代表引擎真死了）。
+      if (!warm || !convId) {
+        if (convId) useConversationsStore.getState().setPendingSessionFile(convId, session.file);
+        return;
+      }
       // 引擎 switchSession 要在子进程里重建服务（Pi SDK/jiti 冷装配，实测 1~2s）——
       // 绝不串在点击路径上：视图先换底，这里后台完成，期间该对话禁用发送。
       const doSwitch = (): Promise<{ conversationId?: string } | undefined> =>
@@ -212,6 +229,12 @@ export function useSidebarProjects() {
       return;
     }
 
+    // 引擎暖判定（在乐观置 engineReady=false 之前取）：注册表行非 suspended/dead/spawning
+    // 才有活着的子进程；suspended 的对话 engineReady 常被轮询标 true，不可作判据。
+    const rowNow = useConversationsStore.getState().rows.find((r) => r.id === convId);
+    const engineWarm =
+      rowNow?.status === "idle" || rowNow?.status === "streaming" || rowNow?.status === "waiting_approval" || rowNow?.status === "queued";
+
     // 乐观快路径：立刻锚定对话 + 按磁盘文件换底（纯读，毫秒级），引擎切换挂后台
     useSessionStore.getState().markHistoryLoaded(convId); // 先封住 ensureHistoryLoaded 的 merge 装载：
     // 后台切换完成前注册表还指向旧文件，放任它 merge 会把旧会话内容竞态混进刚换好的底
@@ -228,13 +251,13 @@ export function useSidebarProjects() {
       await useContextTreeStore.getState().refresh(convId, session.file, { force: true });
       await useSessionStore.getState().rebaseToBranch(convId);
     })();
-    void switchInBackground();
+    void switchInBackground(engineWarm);
   }, [activateProject, refreshRuntime]);
 
   /**
    * 项目下「新任务」统一入口（点 + / 新建任务 / Ctrl+N）：进入草稿态，**不建对话、不 fork 引擎**。
-   * 未激活的项目先激活（预热其引擎），再 startDraft——若该项目已有空的当前对话则直接复用聚焦。
-   * 真正落一个任务发生在草稿首次发送那一刻（见 use-composer-controller.send 的物化分支）。
+   * 未激活的项目先激活（惰性认领，不预热引擎——发送那一刻才拉起），再 startDraft——
+   * 若该项目已有空的当前对话则直接复用聚焦。真正落一个任务发生在草稿首次发送那一刻。
    */
   const startDraftIn = useCallback(async (project: ProjectRecord) => {
     setExpandedProjects((current) => new Set(current).add(project.path));

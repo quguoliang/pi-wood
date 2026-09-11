@@ -90,7 +90,10 @@ export function useComposerController() {
   // 只允许输入文本；首次发送才物化（见 send）。引擎相关配置控件（模型/思考/上下文/审批）
   // 依赖活跃引擎，草稿态下禁用——发送后随对话实体化自动启用。
   const drafting = conversationId === null && Boolean(draftProject);
-  const canCompose = engineReady || drafting;
+  // 惰性启动的冷认领态：切项目只 peek 认领、引擎未 spawn。可输入可发送（发送时拉起引擎），
+  // 模型/思考/审批控件冷态占位，拉起后自动点亮。
+  const coldClaimed = !drafting && conversationId !== null && !engineReady;
+  const canCompose = engineReady || drafting || coldClaimed;
   const approvalByConv = useSettingsStore((s) => s.settings.approvalByConversation);
   const globalMode = useSettingsStore(
     (s) => (s.settings as { approval?: { mode?: ConversationApprovalMode } }).approval?.mode,
@@ -224,6 +227,21 @@ export function useComposerController() {
       const snippets = usePendingContextStore.getState().items;
       const text = appendSnippetQuotes(raw, snippets);
 
+      // 惰性启动的「发送时机 = 引擎启动时机」：冷对话（浏览时只认领未 spawn）在首次发送时
+      // 才拉起引擎。热态毫秒认领零开销；冷态 spawn/唤醒 1~3s，由切片 warming 驱动的
+      // 「正在理解需求」扫光覆盖（气泡已乐观上屏）。无条件调用而不赌 engineReady——
+      // 轮询的 syncEngineReadyFor 会把休眠对话标成 ready，赌它会漏拉。
+      const ensureEngineForSend = async (): Promise<void> => {
+        if (drafting || conversationId == null) {
+          // 新建会话前先决定工作区：主树有未提交改动时这里会弹框让用户选「当前分支 / 独立 worktree」。
+          const choice = await resolveWorktreeChoice(draftProject ?? undefined);
+          await useConversationsStore.getState().createConversation(draftProject ?? undefined, choice);
+          return;
+        }
+        if (!activeProject) throw new Error("引擎未启动：请先选择项目");
+        await window.pi.engineStart(activeProject);
+      };
+
       // T7.6：/btw 前缀 → 走侧边问答的独立第二会话，绝不进主会话（主会话流式进行中也可用）
       if (mode === "prompt" && /^\/btw(\s|$)/.test(text)) {
         const question = text.replace(/^\/btw\s*/, "").trim();
@@ -231,6 +249,7 @@ export function useComposerController() {
           setError("请输入侧边问题，例如 /btw 这个函数是做什么的？");
           return;
         }
+        if (!engineReady) await ensureEngineForSend();
         setError("");
         setInput("");
         const parentId = activeSlice().currentSessionId;
@@ -247,6 +266,7 @@ export function useComposerController() {
       }
       // T7.5：「作为目标发送」开启 → 本次输入成为目标并 kickoff（goal-runtime 后续据审计自动续跑）
       if (mode === "prompt" && useGoalStore.getState().arm) {
+        if (!engineReady) await ensureEngineForSend();
         setInput("");
         setError("");
         void useGoalStore.getState().set(currentSessionId ?? "", text);
@@ -262,22 +282,37 @@ export function useComposerController() {
       setError("");
       setSending(true);
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      // 冷对话乐观气泡：复活可能换 id（suspended → respawn 新 id），先落当前切片保「发送即上屏」，
+      // ensure 后若换 id 再往新切片补一条——旧切片随对话 id 更替成为孤儿，不会双份展示。
+      const coldViewing = !drafting && !engineReady && conversationId != null;
+      const meta = {
+        ...(attachments.length ? { attachments } : {}),
+        ...(snippets.length ? { snippets: snippets.map(({ path, name, start, end, snippet }) => ({ path, name, start, end, snippet })) } : {}),
+      };
+      if (coldViewing) useSessionStore.getState().addUserMessage(raw, conversationId, meta);
       try {
         // 草稿态首次发送：先物化对话（createConversation 建引擎 + 注册 + 设为活跃），再落这条消息。
         // 「+」不提前建任务，正是靠这一步把「正式创建」推迟到发送这一刻。
-        if (drafting) {
-          // 新建会话前先决定工作区：主树有未提交改动时这里会弹框让用户选「当前分支 / 独立 worktree」。
-          const choice = await resolveWorktreeChoice(draftProject ?? undefined);
-          await useConversationsStore.getState().createConversation(draftProject ?? undefined, choice);
+        await ensureEngineForSend();
+        let targetId = useSessionStore.getState().activeConversationId ?? conversationId;
+        if (targetId && targetId !== conversationId) {
+          useSessionStore.setState({ activeConversationId: targetId, draftProject: null });
+        }
+        // 待认领的历史会话（冷态点开、switchSession 被推迟）：先在引擎里换到该会话再发，
+        // 否则 prompt 会打进这个对话此前的旧会话文件。
+        const pendingStore = useConversationsStore.getState();
+        const pendingFile = targetId != null ? pendingStore.pendingSessionFile[targetId] : undefined;
+        if (pendingFile && targetId != null) {
+          await window.pi.engineSwitchSession(pendingFile, targetId);
+          pendingStore.setPendingSessionFile(targetId, null);
         }
       if (mode === "followUp") await window.pi.engineFollowUp(text);
       else {
-        const meta = {
-          ...(attachments.length ? { attachments } : {}),
-          ...(snippets.length ? { snippets: snippets.map(({ path, name, start, end, snippet }) => ({ path, name, start, end, snippet })) } : {}),
-        };
-        // 气泡文本 = 用户实际输入（引用片段以芯片呈现，不再糊进文本）；引擎侧仍收展开版
-        useSessionStore.getState().addUserMessage(raw, undefined, meta);
+        // 气泡文本 = 用户实际输入（引用片段以芯片呈现，不再糊进文本）；引擎侧仍收展开版。
+        // 冷对话且 id 未变时乐观气泡已在，不重复；其余路径（含复活换 id 的补发）在这里落。
+        if (!coldViewing || targetId !== conversationId) {
+          useSessionStore.getState().addUserMessage(raw, targetId, meta);
+        }
         const ref = (await window.pi.prompt(text, attachments.map((item) => item.path))) as
           | { sessionFile?: string; entryId?: string }
           | undefined;
@@ -290,12 +325,14 @@ export function useComposerController() {
         clearDraft(currentSessionId ?? "");
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
+        // 引擎拉起失败等：没有 agent 事件来清 warming，这里兜底熄掉扫光
+        useSessionStore.getState().clearWarming();
       } finally {
         setSending(false);
         void refreshRuntime();
       }
     },
-    [input, canCompose, drafting, draftProject, streaming, attachments, items, currentSessionId, refreshRuntime],
+    [input, canCompose, drafting, draftProject, streaming, attachments, items, currentSessionId, conversationId, engineReady, activeProject, refreshRuntime],
   );
 
   const onKeyDown = useCallback(

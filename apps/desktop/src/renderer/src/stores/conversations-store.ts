@@ -36,6 +36,14 @@ interface ConversationsState {
   /** 对话 id → 首条用户消息（树行标题；未落消息的对话缺省，回落 tabTitle 的项目名兜底） */
   firstUserById: Record<string, string | undefined>;
   pendingClose: PendingClose | null;
+  /**
+   * 惰性启动下「点了历史会话但引擎未拉起」的待认领文件（convId → session 文件）。
+   * 点开时视图已按文件直接换底（纯读），引擎侧 switchSession 推迟到发送时执行
+   * （send：engineStart → engineSwitchSession → prompt）。refresh 轮询会原样返回注册表里的
+   * 旧 sessionFile，这里在轮询结果上**重新压盖**待认领值，防止行回弹到旧分组。
+   */
+  pendingSessionFile: Record<string, string>;
+  setPendingSessionFile(conversationId: string, file: string | null): void;
   refresh(): Promise<void>;
   switchTo(id: string, projectDir?: string): void;
   /**
@@ -74,13 +82,29 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
   unreadIds: new Set<string>(),
   firstUserById: {},
   pendingClose: null,
+  pendingSessionFile: {},
+
+  setPendingSessionFile(conversationId, file) {
+    set((s) => {
+      const next = { ...s.pendingSessionFile };
+      if (file) next[conversationId] = file;
+      else delete next[conversationId];
+      return { pendingSessionFile: next };
+    });
+  },
 
   async refresh() {
     try {
       const r = (await window.pi.listConversations?.()) as { conversations?: ConversationRow[] } | undefined;
       if (r?.conversations) {
-        set({ rows: r.conversations });
-        syncEngineReadyFor(useSessionStore.getState().activeConversationId, r.conversations);
+        // 待认领覆盖（惰性启动）：注册表还指向旧会话文件，轮询若原样落库会把刚点开的
+        // 历史会话行弹回旧分组；这里重新压盖，发送时真正 switchSession 后才解除。
+        const pending = get().pendingSessionFile;
+        const rows = pending && Object.keys(pending).length > 0
+          ? r.conversations.map((row) => (pending[row.id] ? { ...row, sessionFile: pending[row.id] } : row))
+          : r.conversations;
+        set({ rows });
+        syncEngineReadyFor(useSessionStore.getState().activeConversationId, rows);
       }
     } catch {
       /* 引擎未起时静默 */

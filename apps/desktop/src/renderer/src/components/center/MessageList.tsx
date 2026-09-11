@@ -324,6 +324,7 @@ export function MessageList(): React.JSX.Element | null {
   const liveText = useActiveConversation((c) => c.liveText);
   const liveThinking = useActiveConversation((c) => c.liveThinking);
   const streaming = useActiveConversation((c) => c.streaming);
+  const warming = useActiveConversation((c) => c.warming);
   const historyLoaded = useActiveConversation((c) => c.historyLoaded);
   const activeConversationId = useSessionStore((s) => s.activeConversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -438,7 +439,7 @@ export function MessageList(): React.JSX.Element | null {
     if (renderedConvRef.current !== activeConversationId) return; // 切对话那一帧交给下面的恢复逻辑定位
     const el = scrollRef.current;
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [items.length, liveText, liveThinking, streaming, activeConversationId]);
+  }, [items.length, liveText, liveThinking, streaming, warming, activeConversationId]);
 
   /**
    * 会话辅助（回顾 + 追问建议）贴在流末尾，而它是**本轮结束后由辅助模型异步回推**的：
@@ -535,7 +536,7 @@ export function MessageList(): React.JSX.Element | null {
           </div>
 
           {/* live 尾块：流式思考 / 流式正文（不进虚拟列表，避免每 token 重排） */}
-          {(liveThinking || liveText || streaming) && (
+          {(liveThinking || liveText || streaming || warming) && (
             <div className="pk-stream-in flex w-full flex-col gap-3 pb-2">
               {liveThinking && (
                 <div className="pk-stream-in">
@@ -545,6 +546,13 @@ export function MessageList(): React.JSX.Element | null {
               {liveText && (
                 <div className="pk-stream-in">
                   <AssistantProse text={liveText} streaming />
+                </div>
+              )}
+              {/* 惰性引擎冷启动窗：user 气泡已上屏、agent_start 未到（spawn/唤醒中）。
+                  agent_start 一到即让位给上面的思考/正文流——扫光→思考→正文无缝接力 */}
+              {warming && !streaming && !liveText && !liveThinking && (
+                <div className="pk-stream-in">
+                  <span className="pk-shimmer-text pl-1 text-[13px] font-medium">正在理解需求…</span>
                 </div>
               )}
               {streaming && !liveText && !liveThinking && (

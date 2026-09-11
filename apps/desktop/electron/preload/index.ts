@@ -147,6 +147,9 @@ const api = {
   // T1.3/T1.4 引擎与数据域
   engineStart: (projectDir: string): Promise<{ conversationId: string }> =>
     ipcRenderer.invoke("engine:start", { projectDir }),
+  // 惰性启动：只解析/认领项目在本会话内已注册的对话，不拉起引擎子进程（发送时才 engineStart）
+  peekConversation: (projectDir: string): Promise<{ conversationId?: string }> =>
+    ipcRenderer.invoke("engine:peekConversation", { projectDir }),
   // T8.3 对话域：切可见对话（主进程据此做可见性节流）+ 注册表面板
   setActiveConversation: (conversationId: string): Promise<unknown> =>
     ipcRenderer.invoke("engine:setActiveConversation", { conversationId }),

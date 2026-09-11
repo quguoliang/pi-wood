@@ -1288,6 +1288,19 @@ export function initEngineIpc(): void {
     return { conversationId: convId ?? "" };
   });
 
+  // 惰性启动的「只认领不 spawn」：切项目/浏览只解析该项目在本会话内已注册的对话并认领
+  // 活跃指针（活跃指针 + activeProject），绝不拉起子进程——引擎的启动时机是第一次发送
+  // （engine:prompt 前渲染层显式 engine:start，冷则 spawn/唤醒，热则毫秒认领）。
+  // 项目在本会话内没有已注册对话 → 回空，渲染层进草稿态（首次发送走 createConversation）。
+  ipcMain.handle("engine:peekConversation", (_e, raw: unknown) => {
+    const { projectDir } = StartArgSchema.parse(raw);
+    const h = conversationForProject(projectDir);
+    if (!h || h.record.status === "dead") return { conversationId: undefined };
+    setActiveConversation(h.id);
+    activeProject = projectDir;
+    return { conversationId: h.id };
+  });
+
   ipcMain.removeHandler(ENGINE_CHANNELS.prompt);
   ipcMain.handle(ENGINE_CHANNELS.prompt, async (_e, raw: unknown) => {
     const cmd = PromptCommandSchema.parse(raw);

@@ -257,3 +257,23 @@ test("历史回填：HistoryMessageItem 的附件/引用落到 user 条目（切
   assert.deepEqual(user.attachments, attachments);
   assert.equal(user.snippets, undefined, "没有引用时不挂空数组");
 });
+
+test("warming：user_message 点亮冷启动扫光，agent_start/agent_settled 接力清掉", () => {
+  let s = apply(emptySlice(), { type: "user_message", text: "问题" });
+  assert.equal((s as { warming?: boolean }).warming, true, "发送后、agent_start 前 = warming");
+  s = apply(s, { type: "agent_start" });
+  assert.equal((s as { warming?: boolean }).warming, false, "首帧事件到达即交给流式 UI");
+  assert.equal(s.streaming, true);
+  s = apply(s, { type: "agent_settled" });
+  assert.equal((s as { warming?: boolean }).warming, false);
+});
+
+test("warming：turn_end 与 mergeHistory 兜底清零（错误/终止不留永久扫光）", () => {
+  let s = apply(emptySlice(), { type: "user_message", text: "问题" });
+  s = apply(s, { type: "turn_end", message: { stopReason: "aborted" } });
+  assert.equal((s as { warming?: boolean }).warming, false);
+  const { slice } = mergeHistory(apply(emptySlice(), { type: "user_message", text: "x" }), [
+    { role: "user", text: "x" },
+  ], ctx({ prefix: "h" }));
+  assert.equal((slice as { warming?: boolean }).warming, false);
+});

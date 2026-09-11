@@ -87,6 +87,12 @@ export interface ConversationSlice {
   liveText: string;
   liveThinking: string;
   streaming: boolean;
+  /**
+   * 惰性引擎冷启动窗：user_message 已上屏但 agent_start 未到（引擎 spawn/唤醒中）。
+   * 驱动「正在理解需求」扫光占位；agent_start/agent_settled/turn_end 任一到达即清，
+   * 由 streaming 接管（思考/正文流）。
+   */
+  warming: boolean;
   queue: { steering: string[]; followUp: string[] };
   engineReady: boolean;
   currentSessionId: string | undefined;
@@ -122,6 +128,7 @@ export function emptySlice(): ConversationSlice {
     liveText: "",
     liveThinking: "",
     streaming: false,
+    warming: false,
     queue: { steering: [], followUp: [] },
     engineReady: false,
     currentSessionId: undefined,
@@ -315,6 +322,7 @@ export function mergeHistory(
       liveText: "",
       liveThinking: "",
       streaming: false,
+      warming: false,
       historyLoaded: true,
       toolCallCount: items.filter((i) => i.kind === "tool").length,
       runningToolCount: items.filter((i) => i.kind === "tool" && i.status === "running").length,
@@ -394,10 +402,11 @@ export function applyEngineEvent(
       if (Array.isArray(atts) && atts.length > 0) item.attachments = atts as MessageAttachment[];
       if (Array.isArray(snips) && snips.length > 0) item.snippets = snips as MessageSnippet[];
       const next = pushItem(f.slice, item);
-      return { slice: withUnread(next, true, ctx.visible), changed: true, milestone: true };
+      return { slice: withUnread({ ...next, warming: true }, true, ctx.visible), changed: true, milestone: true };
     }
     case "agent_start":
-      slice = { ...slice, streaming: true };
+      // 第一帧事件到达 = 引擎已就绪、模型开始产出：冷启动扫光让位给流式 UI
+      slice = { ...slice, streaming: true, warming: false };
       return { slice: withUnread(slice, true, ctx.visible), changed: true, milestone: true };
     case "agent_end":
     case "agent_settled": {
@@ -405,6 +414,7 @@ export function applyEngineEvent(
       const next: ConversationSlice = {
         ...f.slice,
         streaming: false,
+        warming: false,
         queue: { steering: [], followUp: [] },
         runningToolCount: 0,
       };
@@ -500,8 +510,8 @@ export function applyEngineEvent(
       const stopReason = (e.message as { stopReason?: string } | undefined)?.stopReason;
       const next =
         stopReason === "aborted"
-          ? pushItem(f.slice, { id: ctx.nextId(), kind: "system", tone: "warn", align: "start", text: "对话已终止" })
-          : f.slice;
+          ? pushItem({ ...f.slice, warming: false }, { id: ctx.nextId(), kind: "system", tone: "warn", align: "start", text: "对话已终止" })
+          : { ...f.slice, warming: false };
       return { slice: withUnread(next, true, ctx.visible), changed: true, milestone: true };
     }
     case "compaction_start": {

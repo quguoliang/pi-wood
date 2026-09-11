@@ -74,6 +74,8 @@ interface SessionStoreState {
   /** 进入草稿态（不建对话、不 fork）：active=null + draftProject=dir */
   startDraft(projectDir: string): void;
   addUserMessage(text: string, conversationId?: string | null, meta?: { attachments?: MessageAttachment[]; snippets?: MessageSnippet[] }): void;
+  /** 发送失败（引擎拉起失败等）时兜底清冷启动扫光——此路径没有引擎事件可清它 */
+  clearWarming(conversationId?: string | null): void;
   loadHistory(items: HistoryMessageItem[], conversationId?: string | null): void;
   /** T9.2：切分支后按「当前视图叶」重读路径历史并整体换底（旁支条目消失，视图回到分支尾部） */
   rebaseToBranch(conversationId?: string | null): Promise<void>;
@@ -238,6 +240,14 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       { now: Date.now(), nextId: nextItemId, visible: true },
     );
     set({ slices: { ...state.slices, [key]: result.slice } });
+  },
+
+  clearWarming(conversationId) {
+    const state = get();
+    const key = targetKeyOf(state, conversationId);
+    const current = state.slices[key];
+    if (!current?.warming) return;
+    set({ slices: { ...state.slices, [key]: { ...current, warming: false } } });
   },
 
   loadHistory(items, conversationId) {
