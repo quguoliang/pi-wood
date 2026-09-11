@@ -507,9 +507,18 @@ export function applyEngineEvent(
     }
     case "turn_end": {
       const f = flushLive(slice, ctx);
-      const stopReason = (e.message as { stopReason?: string } | undefined)?.stopReason;
+      const msg = e.message as { stopReason?: string; errorMessage?: string } | undefined;
+      // 模型调用失败（供应商 403/超时/凭据缺失…）：引擎以 stopReason="error" + errorMessage 收尾、
+      // assistant 消息为空——此前这里什么都不渲染，用户看到的就是「发了没回复」（静默吞错）。
+      // 显式落一条 error 系统条目；详情截 240 字符防长 JSON 糊屏。
+      if (msg?.stopReason === "error") {
+        const detail = (msg.errorMessage ?? "").trim() || "模型调用失败";
+        const text = `回复失败：${detail.length > 240 ? `${detail.slice(0, 240)}…` : detail}`;
+        const next = pushItem({ ...f.slice, warming: false }, { id: ctx.nextId(), kind: "system", tone: "error", align: "start", text });
+        return { slice: withUnread(next, true, ctx.visible), changed: true, milestone: true };
+      }
       const next =
-        stopReason === "aborted"
+        msg?.stopReason === "aborted"
           ? pushItem({ ...f.slice, warming: false }, { id: ctx.nextId(), kind: "system", tone: "warn", align: "start", text: "对话已终止" })
           : { ...f.slice, warming: false };
       return { slice: withUnread(next, true, ctx.visible), changed: true, milestone: true };

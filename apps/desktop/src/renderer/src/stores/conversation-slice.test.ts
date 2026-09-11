@@ -277,3 +277,26 @@ test("warming：turn_end 与 mergeHistory 兜底清零（错误/终止不留永�
   ], ctx({ prefix: "h" }));
   assert.equal((slice as { warming?: boolean }).warming, false);
 });
+
+test("turn_end stopReason=error：落 error 系统条目并截断详情（供应商失败不再静默）", () => {
+  let s = apply(emptySlice(), { type: "user_message", text: "问题" });
+  s = apply(s, { type: "agent_start" });
+  s = apply(s, {
+    type: "turn_end",
+    message: { stopReason: "error", errorMessage: '403 {"error":{"code":"access_denied","message":"您的 IP 不在令牌允许访问的列表中"}}' },
+  });
+  const last = s.items[s.items.length - 1];
+  assert.equal(last?.kind, "system");
+  if (last?.kind !== "system") return;
+  assert.equal(last.tone, "error");
+  assert.ok(last.text.startsWith("回复失败："));
+  assert.ok(last.text.includes("access_denied"));
+  assert.equal((s as { warming?: boolean }).warming, false);
+});
+
+test("turn_end stopReason=error：无 errorMessage 时给兜底文案", () => {
+  const s = apply(apply(emptySlice(), { type: "agent_start" }), { type: "turn_end", message: { stopReason: "error" } });
+  const last = s.items[s.items.length - 1];
+  if (last?.kind !== "system") return;
+  assert.equal(last.text, "回复失败：模型调用失败");
+});

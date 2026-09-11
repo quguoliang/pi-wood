@@ -231,15 +231,20 @@ export function useComposerController() {
       // 才拉起引擎。热态毫秒认领零开销；冷态 spawn/唤醒 1~3s，由切片 warming 驱动的
       // 「正在理解需求」扫光覆盖（气泡已乐观上屏）。无条件调用而不赌 engineReady——
       // 轮询的 syncEngineReadyFor 会把休眠对话标成 ready，赌它会漏拉。
-      const ensureEngineForSend = async (): Promise<void> => {
+      // 返回（可能的）新对话 id：冷对话复活会 respawn出新 id，调用方必须重锚视图，
+      // 否则回复事件流进新切片、屏幕还停在旧切片 = 「发了不回复」。
+      const ensureEngineForSend = async (): Promise<string | undefined> => {
         if (drafting || conversationId == null) {
           // 新建会话前先决定工作区：主树有未提交改动时这里会弹框让用户选「当前分支 / 独立 worktree」。
           const choice = await resolveWorktreeChoice(draftProject ?? undefined);
           await useConversationsStore.getState().createConversation(draftProject ?? undefined, choice);
-          return;
+          return useSessionStore.getState().activeConversationId ?? undefined;
         }
         if (!activeProject) throw new Error("引擎未启动：请先选择项目");
-        await window.pi.engineStart(activeProject);
+        const started = (await window.pi.engineStart(activeProject).catch((err: Error) => {
+          throw err;
+        })) as { conversationId?: string } | undefined;
+        return started?.conversationId || useSessionStore.getState().activeConversationId || undefined;
       };
 
       // T7.6：/btw 前缀 → 走侧边问答的独立第二会话，绝不进主会话（主会话流式进行中也可用）
@@ -293,17 +298,27 @@ export function useComposerController() {
       try {
         // 草稿态首次发送：先物化对话（createConversation 建引擎 + 注册 + 设为活跃），再落这条消息。
         // 「+」不提前建任务，正是靠这一步把「正式创建」推迟到发送这一刻。
-        await ensureEngineForSend();
-        let targetId = useSessionStore.getState().activeConversationId ?? conversationId;
+        // ⚠ 冷对话复活（suspended → respawn）会换新 id：必须用返回值重锚，否则回复事件
+        // 流进新切片而视图停在旧切片 = 「发了不回复」。
+        const ensuredId = await ensureEngineForSend();
+        let targetId = ensuredId ?? useSessionStore.getState().activeConversationId ?? conversationId;
         if (targetId && targetId !== conversationId) {
-          useSessionStore.setState({ activeConversationId: targetId, draftProject: null });
+          // 走 setActiveConversation 而非裸 setState：补建切片 + 触发 ensureHistoryLoaded
+          // （新切片要按 resumeSessionFile 装载旧历史）+ 退草稿态 + 主进程可见性告知。
+          useSessionStore.getState().setActiveConversation(targetId);
         }
         // 待认领的历史会话（冷态点开、switchSession 被推迟）：先在引擎里换到该会话再发，
-        // 否则 prompt 会打进这个对话此前的旧会话文件。
+        // 否则 prompt 会打进这个对话此前的旧会话文件。pending 按点击时的旧 id 记——
+        // 复活换 id 后两个键都查，解除时一并清。
         const pendingStore = useConversationsStore.getState();
-        const pendingFile = targetId != null ? pendingStore.pendingSessionFile[targetId] : undefined;
+        const pendingFile =
+          targetId != null
+            ? (pendingStore.pendingSessionFile[targetId] ??
+              (conversationId != null ? pendingStore.pendingSessionFile[conversationId] : undefined))
+            : undefined;
         if (pendingFile && targetId != null) {
           await window.pi.engineSwitchSession(pendingFile, targetId);
+          if (conversationId != null) pendingStore.setPendingSessionFile(conversationId, null);
           pendingStore.setPendingSessionFile(targetId, null);
         }
       if (mode === "followUp") await window.pi.engineFollowUp(text);
