@@ -39,13 +39,13 @@ export function UiSection(): React.JSX.Element {
       <SettingRow title="工具卡默认展开" description="新出现的工具调用卡片默认展开还是收起（含读取文件的输出）">
         <Switch checked={ui.toolCardsDefaultOpen} onCheckedChange={toggle("toolCardsDefaultOpen")} />
       </SettingRow>
-      <SettingRow title="思考过程默认展开" description="模型的 thinking 块默认展开还是收起（流式时始终实时展开）">
+      <SettingRow title="思考过程默认展开" description="模型的 thinking 块默认展开还是收起；流式进行中同样遵循该设置，收起时头部仍显示「思考中…」与实时尾部预览">
         <Switch checked={ui.thinkingDefaultOpen} onCheckedChange={toggle("thinkingDefaultOpen")} />
       </SettingRow>
       <SettingRow title="连续工具分组" description="把连续多次工具调用折叠成一组（可用 Ctrl+Shift+E 展开/收起全部）；关闭则逐条显示">
         <Switch checked={ui.toolGroupsEnabled} onCheckedChange={toggle("toolGroupsEnabled")} />
       </SettingRow>
-      <SettingRow title="工具组默认展开" description="新出现的工具组默认展开还是收起（运行中的组始终先展开）">
+      <SettingRow title="工具组默认展开" description="新出现的工具组默认展开还是收起；运行中的组同样遵循该设置，收起时头部仍显示数量与运行进度">
         <Switch checked={ui.toolGroupsDefaultOpen} onCheckedChange={toggle("toolGroupsDefaultOpen")} />
       </SettingRow>
       <SettingRow

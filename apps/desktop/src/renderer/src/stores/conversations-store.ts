@@ -44,8 +44,8 @@ interface ConversationsState {
    * - 否则进入草稿态（active=null + draftProject），首次发送时才 createConversation 物化。
    */
   startDraft(projectDir?: string): void;
-  /** 物化一条新对话并设为活跃（草稿首次发送时调用） */
-  createConversation(projectDir?: string): Promise<void>;
+  /** 物化一条新对话并设为活跃（草稿首次发送时调用）；worktreeChoice 决定引擎跑在主工作树还是独立 worktree */
+  createConversation(projectDir?: string, worktreeChoice?: "worktree" | "current"): Promise<void>;
   requestClose(row: ConversationRow): Promise<void>;
   dismissClose(): void;
   resolvePendingClose(mode: "suspend" | "abort"): Promise<void>;
@@ -114,11 +114,11 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
     if (typeof window !== "undefined") window.dispatchEvent(new Event("piwood:composer-focus"));
   },
 
-  async createConversation(projectDir) {
+  async createConversation(projectDir, worktreeChoice) {
     const dir = projectDir ?? useSessionStore.getState().activeProject ?? useSessionStore.getState().draftProject ?? undefined;
     if (!dir) return;
     try {
-      const r = (await window.pi.createConversation?.(dir)) as { conversationId?: string } | undefined;
+      const r = (await window.pi.createConversation?.(dir, worktreeChoice)) as { conversationId?: string } | undefined;
       if (r?.conversationId) get().switchTo(r.conversationId, dir);
       await get().refresh();
     } catch (err) {

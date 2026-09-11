@@ -233,3 +233,27 @@ test("applyEvents 批量灌入按顺序生效（测试与回放增量共用）",
   assert.equal(kinds(s), "user,assistant");
   assert.equal(s.streaming, false);
 });
+
+test("user_message 透传附件/引用元数据：气泡在发送后仍能展示芯片", () => {
+  const attachments = [{ path: "/tmp/a.png", name: "a.png", size: 10, kind: "image" as const, thumb: "data:image/png;base64,x" }];
+  const snippets = [{ path: "src/app.ts", name: "app.ts", start: 1, end: 3, snippet: "code" }];
+  const s = apply(emptySlice(), { type: "user_message", text: "看这个", attachments, snippets });
+  const item = s.items[0];
+  assert.equal(item?.kind, "user");
+  if (item?.kind !== "user") return;
+  assert.deepEqual(item.attachments, attachments);
+  assert.deepEqual(item.snippets, snippets);
+});
+
+test("历史回填：HistoryMessageItem 的附件/引用落到 user 条目（切对话/重启后气泡不丢芯片）", () => {
+  const attachments = [{ path: "/tmp/b.png", name: "b.png", size: 20, kind: "image" as const }];
+  const { slice } = mergeHistory(emptySlice(), [
+    { role: "user", text: "带图的问题", entryId: "e1", attachments },
+    { role: "assistant", text: "答" },
+  ], ctx({ prefix: "h" }));
+  const user = slice.items.find((i) => i.kind === "user");
+  assert.ok(user && user.kind === "user");
+  if (user?.kind !== "user") return;
+  assert.deepEqual(user.attachments, attachments);
+  assert.equal(user.snippets, undefined, "没有引用时不挂空数组");
+});

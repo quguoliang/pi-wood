@@ -9,6 +9,7 @@ import { countLines } from "../lib/utils";
 import { readDraft, writeDraft, clearDraft } from "../lib/chat-draft-persistence";
 import { useSettingsStore, type ConversationApprovalMode } from "../stores/settings-store";
 import { useConversationsStore } from "../stores/conversations-store";
+import { resolveWorktreeChoice } from "../stores/worktree-ask-store";
 import { usePendingContextStore, type PendingSnippet } from "../stores/pending-context-store";
 
 export interface AttachmentItem {
@@ -16,6 +17,29 @@ export interface AttachmentItem {
   name: string;
   size: number;
   kind: "file" | "image";
+  /** 小尺寸 dataURL（图片才有）：芯片/hover 预览直接用；发送时随消息元数据持久化 */
+  thumb?: string;
+}
+
+/** 附件去重合并（按 path），上限 12 */
+function mergeAttachments(current: AttachmentItem[], incoming: AttachmentItem[]): AttachmentItem[] {
+  const merged = [...current];
+  for (const item of incoming) if (!merged.some((existing) => existing.path === item.path)) merged.push(item);
+  return merged.slice(0, 12);
+}
+
+/** 异步给图片附件回填缩略图（不阻塞芯片出现；失败就保持图标形态） */
+function backfillThumbs(setAttachments: React.Dispatch<React.SetStateAction<AttachmentItem[]>>, items: AttachmentItem[]): void {
+  for (const item of items) {
+    if (item.kind !== "image" || item.thumb) continue;
+    void window.pi
+      .fsThumb(item.path)
+      .then((thumb) => {
+        if (!thumb) return;
+        setAttachments((current) => current.map((a) => (a.path === item.path ? { ...a, thumb } : a)));
+      })
+      .catch(() => undefined);
+  }
 }
 
 /** 「添加到对话」片段 → 消息尾部引用块（path:起-止 头 + 代码块），agent 侧零协议改动 */
@@ -231,6 +255,10 @@ export function useComposerController() {
       }
       setInput("");
       setAttachments([]);
+      // 引用片段同属「本条消息的内容」：发送即清（与输入/附件同一时机）。
+      // 之前挂在 await window.pi.prompt 之后——prompt 要等整轮生成结束才 resolve，
+      // 于是回复期间芯片条还顶在输入框上，像「没发出去」。
+      usePendingContextStore.getState().clear();
       setError("");
       setSending(true);
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
@@ -238,16 +266,28 @@ export function useComposerController() {
         // 草稿态首次发送：先物化对话（createConversation 建引擎 + 注册 + 设为活跃），再落这条消息。
         // 「+」不提前建任务，正是靠这一步把「正式创建」推迟到发送这一刻。
         if (drafting) {
-          await useConversationsStore.getState().createConversation(draftProject ?? undefined);
+          // 新建会话前先决定工作区：主树有未提交改动时这里会弹框让用户选「当前分支 / 独立 worktree」。
+          const choice = await resolveWorktreeChoice(draftProject ?? undefined);
+          await useConversationsStore.getState().createConversation(draftProject ?? undefined, choice);
         }
-        if (mode === "followUp") await window.pi.engineFollowUp(text);
-        else {
-          useSessionStore.getState().addUserMessage(text);
-          await window.pi.prompt(text, attachments.map((item) => item.path));
+      if (mode === "followUp") await window.pi.engineFollowUp(text);
+      else {
+        const meta = {
+          ...(attachments.length ? { attachments } : {}),
+          ...(snippets.length ? { snippets: snippets.map(({ path, name, start, end, snippet }) => ({ path, name, start, end, snippet })) } : {}),
+        };
+        // 气泡文本 = 用户实际输入（引用片段以芯片呈现，不再糊进文本）；引擎侧仍收展开版
+        useSessionStore.getState().addUserMessage(raw, undefined, meta);
+        const ref = (await window.pi.prompt(text, attachments.map((item) => item.path))) as
+          | { sessionFile?: string; entryId?: string }
+          | undefined;
+        // 消息元数据持久化：切对话/重启后历史气泡仍能带出附件与引用芯片。失败不致命（本次会话内气泡已有）
+        if (ref?.sessionFile && ref.entryId && (meta.attachments || meta.snippets)) {
+          void window.pi.sessionsSetMeta(ref.sessionFile, { messages: { [ref.entryId]: meta } }).catch(() => undefined);
         }
+      }
         // T7.11：已发出 → 清除该会话草稿（liveRef 也已随 setInput("") 归零，防抖不再复活）
         clearDraft(currentSessionId ?? "");
-        usePendingContextStore.getState().clear();
       } catch (err) {
         setError(String((err as Error)?.message ?? err));
       } finally {
@@ -270,11 +310,8 @@ export function useComposerController() {
 
   const pickFiles = useCallback(async (): Promise<void> => {
     const selected = await window.pi.projectPickAttachments();
-    setAttachments((current) => {
-      const merged = [...current];
-      for (const item of selected) if (!merged.some((existing) => existing.path === item.path)) merged.push(item);
-      return merged.slice(0, 12);
-    });
+    setAttachments((current) => mergeAttachments(current, selected));
+    backfillThumbs(setAttachments, selected);
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
@@ -286,12 +323,22 @@ export function useComposerController() {
   const addPastedText = useCallback(async (text: string): Promise<void> => {
     try {
       const staged = await window.pi.stagePastedText(text);
-      setAttachments((current) => {
-        const merged = [...current];
-        if (!merged.some((entry) => entry.path === staged.path)) merged.push(staged);
-        return merged.slice(0, 12);
-      });
+      setAttachments((current) => mergeAttachments(current, [staged]));
       toast(`已作为文件附件添加（${text.length} 字符 / ${countLines(text)} 行）`);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    } catch (err) {
+      setError(String((err as Error)?.message ?? err));
+    }
+  }, []);
+
+  // 剪贴板图片粘贴 → 主进程落盘（持久目录）+ 缩略图，进顶部附件芯片条
+  const addPastedImage = useCallback(async (file: File): Promise<void> => {
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      const staged = await window.pi.stagePastedImage(btoa(bin));
+      setAttachments((current) => mergeAttachments(current, [staged]));
       requestAnimationFrame(() => textareaRef.current?.focus());
     } catch (err) {
       setError(String((err as Error)?.message ?? err));
@@ -385,6 +432,7 @@ export function useComposerController() {
     onKeyDown,
     pickFiles,
     addPastedText,
+    addPastedImage,
     changeApproval,
     changeModel,
     changeThinking,

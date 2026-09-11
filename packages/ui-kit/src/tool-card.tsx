@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Brain, ChevronDown, CircleSlash, FileCode2, FilePen, FilePlus2, FolderOpen, Globe,
   Search, Sparkles, Terminal, XCircle,
@@ -117,7 +117,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
   const isEdit = (name === "edit" || name === "write") && diff;
   if (isEdit) {
     return (
-      <div className="mb-1 ml-[7px] mt-1.5 border-l-2 border-border pb-1 pl-3.5 pt-1.5">
+      <div className="mb-1 ml-[7px] mt-1.5 max-h-[288px] overflow-y-auto border-l-2 border-border pb-1 pl-3.5 pt-1.5">
         <DiffView patch={diff!} />
       </div>
     );

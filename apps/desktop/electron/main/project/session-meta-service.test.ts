@@ -66,3 +66,27 @@ test("SessionMetaStore：clear 删键；损坏/缺失文件按空表处理不抛
   assert.deepEqual(broken.list(), {});
   assert.equal(broken.get("x"), undefined);
 });
+
+test("applySessionMetaPatch：messages 按 entryId 合并——新增不覆盖既有，单条删除留其余", () => {
+  const base = applySessionMetaPatch(undefined, {
+    messages: { e1: { attachments: [{ path: "/a.png", name: "a.png", size: 1, kind: "image" }] } },
+  });
+  assert.ok(base?.messages?.e1);
+  const merged = applySessionMetaPatch(base, {
+    messages: { e2: { snippets: [{ path: "x.ts", name: "x.ts", start: 1, end: 2, snippet: "s" }] } },
+  });
+  assert.ok(merged?.messages?.e1, "二次 patch 不得丢掉 e1");
+  assert.ok(merged?.messages?.e2);
+  const pruned = applySessionMetaPatch(merged, { messages: { e1: undefined as never } });
+  assert.equal(pruned?.messages?.e1, undefined);
+  assert.ok(pruned?.messages?.e2);
+});
+
+test("SessionMetaStore：messages 元数据落盘后可读回（重启后历史气泡仍有附件）", () => {
+  const store = new SessionMetaStore(dir);
+  const file = join(dir, "s.jsonl");
+  const meta = { attachments: [{ path: "/p/i.png", name: "i.png", size: 3, kind: "image", thumb: "data:image/jpeg;base64,t" }] };
+  store.set(file, { messages: { e9: meta } });
+  const back = new SessionMetaStore(dir).get(file);
+  assert.deepEqual(back?.messages?.e9, meta);
+});

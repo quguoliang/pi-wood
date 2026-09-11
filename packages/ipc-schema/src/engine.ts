@@ -263,6 +263,23 @@ export const GitInfoSchema = z.object({
 });
 export type GitInfo = z.infer<typeof GitInfoSchema>;
 
+/** 主项目工作树 git 状态：新建会话前决定「当前分支 vs 独立 worktree」的数据源。 */
+export const MainGitStatusSchema = z.object({
+  /** 该目录是否为 git 仓库 */
+  isGit: z.boolean(),
+  /** 主工作树是否有未提交改动（含未跟踪文件） */
+  dirty: z.boolean(),
+  /** 变更文件数（tracked 修改 + 未跟踪）——空态分支芯片弹层用 */
+  changed: z.number(),
+  /** 当前分支名；detached HEAD 时缺席 */
+  branch: z.string().optional(),
+  /** 能否为该仓库创建 worktree（非 git / detached / 路径过长 → false） */
+  feasible: z.boolean(),
+  /** 不可行时给用户的显式说明 */
+  reason: z.string().optional(),
+});
+export type MainGitStatus = z.infer<typeof MainGitStatusSchema>;
+
 export const RuntimeInfoSchema = z.object({
   cwd: z.string(),
   platform: z.string(),
@@ -484,6 +501,8 @@ export const ENGINE_CHANNELS = {
   worktreeMergeBack: "engine:worktreeMergeBack",
   /** 回收某对话的工作树（脏树拒绝；force=显式丢弃） */
   worktreeRemove: "engine:worktreeRemove",
+  /** 查主项目工作树的 git 状态（是否 git / 是否脏 / 当前分支 / 能否建 worktree）——新建会话前决定 worktree 策略用 */
+  mainGitStatus: "engine:mainGitStatus",
   // ---- T8.10 度量域（红线「事件两跳 / 切换首屏 / 掉帧」的渲染层出口）----
   /** 渲染层 → 主进程：批量上报自测样本（rendererHop / firstPaint / frameGap） */
   reportLatency: "engine:reportLatency",

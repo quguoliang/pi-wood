@@ -7,6 +7,7 @@ import {
   PROJECT_CHANNELS,
   SESSION_CHANNELS,
   SESSION_META_CHANNELS,
+  FS_THUMB_CHANNEL,
   IdArgSchema,
   PathArgSchema,
   FileArgSchema,
@@ -16,6 +17,7 @@ import {
 } from "@pi-wood/ipc-schema";
 import { ProjectManager, DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
 import { SessionMetaStore } from "../project/session-meta-service.ts";
+import { readImageThumb } from "../workbench/image-thumb.ts";
 import { listSessionsAcrossTrees, openSessionTree, loadSessionMessages } from "../engine/session-service.ts";
 import { listConversations } from "../engine/conversation-registry.ts";
 
@@ -114,6 +116,12 @@ export function initDataIpc(agentDir: string, getProjectDir: () => string | unde
     // T9.2：leafId = 上下文缩略树 v2 的「看这条分支的历史」；缺席 = 文件序全量（旧行为）
     const { file, leafId } = SessionMessagesArgSchema.parse(raw);
     return loadSessionMessages(file, leafId);
+  });
+
+  // 图片缩略图：气泡/hover 预览的 dataURL 来源（非图片或失败返回 undefined，渲染层降级为图标）
+  ipcMain.handle(FS_THUMB_CHANNEL, (_e, raw: unknown) => {
+    const { path } = PathArgSchema.parse(raw);
+    return readImageThumb(path);
   });
 
   // ---- T8.11 会话元数据（归档/置顶/别名）+ 会话删除（归档优先模型）----

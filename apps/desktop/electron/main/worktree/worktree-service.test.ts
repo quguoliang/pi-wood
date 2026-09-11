@@ -7,6 +7,8 @@ import { after, describe, it } from "node:test";
 import {
   detectWorktreeFeasibility,
   ensureWorktree,
+  hasWorktreeOnDisk,
+  mainGitStatus,
   mergeBackWorktree,
   parseWorktreeList,
   reconcileOrphans,
@@ -227,6 +229,53 @@ describe("worktree-service（真 git 仓库 fixture）", () => {
     assert.equal(dirtyUntracked.dirty, true);
     assert.ok(dirtyUntracked.untracked.includes("staged.txt"));
     await removeWorktree(main, conv, { force: true });
+  });
+});
+
+describe("mainGitStatus / hasWorktreeOnDisk（新会话工作区决策的数据源）", () => {
+  const repo = join(ROOT, "mgstatus");
+  function init(): void {
+    mkdirSync(repo, { recursive: true });
+    execFileSync("git", ["init", "-b", "main"], { cwd: repo, stdio: "ignore" });
+    git(["config", "user.email", "t@piwood.dev"], repo);
+    git(["config", "user.name", "t"], repo);
+    writeFileSync(join(repo, "a.txt"), "1\n");
+    git(["add", "-A"], repo);
+    git(["commit", "-m", "base"], repo);
+  }
+
+  it("干净主树：isGit + branch=main + feasible，dirty=false", async () => {
+    init();
+    const s = await mainGitStatus(repo);
+    assert.equal(s.isGit, true);
+    assert.equal(s.branch, "main");
+    assert.equal(s.dirty, false);
+    assert.equal(s.changed, 0);
+    assert.equal(s.feasible, true);
+  });
+
+  it("未提交改动：untracked 与 tracked 修改都算 dirty", async () => {
+    writeFileSync(join(repo, "b.txt"), "2\n"); // untracked
+    const s1 = await mainGitStatus(repo);
+    assert.equal(s1.dirty, true);
+    assert.ok(s1.changed >= 1);
+    writeFileSync(join(repo, "a.txt"), "changed\n"); // tracked modify
+    assert.equal((await mainGitStatus(repo)).dirty, true);
+  });
+
+  it("非 git 目录：isGit=false、feasible=false", async () => {
+    const plain = join(ROOT, "mgstatus-plain");
+    mkdirSync(plain, { recursive: true });
+    const s = await mainGitStatus(plain);
+    assert.equal(s.isGit, false);
+    assert.equal(s.feasible, false);
+  });
+
+  it("hasWorktreeOnDisk：建树前 false、ensureWorktree 后 true", async () => {
+    const conv = "conv-9-ffffffff";
+    assert.equal(hasWorktreeOnDisk(repo, conv), false);
+    await ensureWorktree(repo, conv);
+    assert.equal(hasWorktreeOnDisk(repo, conv), true);
   });
 });
 

@@ -3,8 +3,10 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, Check, ChevronDown, CircleCheck, CircleX, Copy, GitFork, OctagonX, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Icon } from "../ui/Icon";
 import { Markdown, ThinkingCard, ToolCard, createMarkdownComponents } from "@pi-wood/ui-kit";
-import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem } from "../../stores/session-store";
+import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem, type MessageAttachment, type MessageSnippet } from "../../stores/session-store";
 import { useAssistStore } from "../../stores/assist-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useConversationsStore } from "../../stores/conversations-store";
@@ -14,17 +16,81 @@ import { collapseTurnProcess, groupToolRows, isToolGroup, isTurnProcess, type Di
 import { publishOutlineAnchor } from "../../lib/outline-bus";
 import { ToolGroup } from "./ToolGroup";
 import { ConversationAssist } from "./ConversationAssist";
+import { AttachmentPreviewBody, ChipPreview, SnippetPreviewBody } from "./ChipPreview";
+import { openWorkbenchFile } from "../../stores/workbench-store";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------ 单条渲染 ------------------------------ */
 
-const UserBubble = memo(function UserBubble({ text }: { text: string }) {
+/** 气泡内的附件芯片：图片给缩略图（点击大图预览）；hover 统一走 ChipPreview 卡片 */
+function BubbleAttachmentChip({ item, onPreview }: { item: MessageAttachment; onPreview: (item: MessageAttachment) => void }): React.JSX.Element {
+  const isImage = item.kind === "image";
+  return (
+    <ChipPreview
+      className="flex h-7 max-w-52 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
+      ariaLabel={`附件 ${item.name}`}
+      onClick={() => (isImage && item.thumb ? onPreview(item) : openWorkbenchFile(item.path))}
+      preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
+    >
+      {isImage && item.thumb ? (
+        <img src={item.thumb} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
+      ) : (
+        <Icon name={isImage ? "image" : "file"} className="size-3.5 shrink-0" />
+      )}
+      <span className="truncate">{item.name}</span>
+    </ChipPreview>
+  );
+}
+
+/** 气泡内的引用片段芯片：hover 看代码位置与内容，点击回跳文件面板对应行 */
+function BubbleSnippetChip({ snippet }: { snippet: MessageSnippet }): React.JSX.Element {
+  return (
+    <ChipPreview
+      className="flex h-7 max-w-52 cursor-pointer items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-xs text-foreground"
+      ariaLabel={`引用 ${snippet.name} ${snippet.start}-${snippet.end} 行`}
+      onClick={() => openWorkbenchFile(snippet.path, snippet.start)}
+      preview={<SnippetPreviewBody path={snippet.path} start={snippet.start} end={snippet.end} snippet={snippet.snippet} />}
+    >
+      <Icon name="file" className="size-3.5 shrink-0 text-primary" />
+      <span className="truncate">
+        {snippet.name}
+        <span className="ml-1 font-mono text-muted-foreground">
+          {snippet.start}-{snippet.end}
+        </span>
+      </span>
+    </ChipPreview>
+  );
+}
+
+const UserBubble = memo(function UserBubble({
+  text,
+  attachments,
+  snippets,
+}: {
+  text: string;
+  attachments?: MessageAttachment[];
+  snippets?: MessageSnippet[];
+}) {
   // ZCode 用户消息形态：rounded-xl + 右上角收尖（rounded-tr-xs）+ 描边卡 + 限宽 max-w-xl
+  const [preview, setPreview] = useState<MessageAttachment | null>(null);
   return (
     <div className="flex justify-end">
-      <div className="max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-tr-xs border border-border bg-surface px-4 py-3 text-[14.5px] leading-relaxed text-secondary-foreground">
-        {text}
+      <div className="max-w-[85%] rounded-xl rounded-tr-xs border border-border bg-surface px-4 py-3 text-[14.5px] leading-relaxed text-secondary-foreground">
+        {(attachments?.length || snippets?.length) && (
+          <div className={cn("flex flex-wrap gap-1.5", text.trim() && "mb-2")} aria-label="本条消息的附件与引用">
+            {attachments?.map((a) => <BubbleAttachmentChip key={a.path} item={a} onPreview={setPreview} />)}
+            {snippets?.map((s) => <BubbleSnippetChip key={`${s.path}:${s.start}-${s.end}`} snippet={s} />)}
+          </div>
+        )}
+        {text.trim() ? <div className="whitespace-pre-wrap break-words">{text}</div> : null}
       </div>
+      {/* 图片大图预览（点击缩略图芯片打开） */}
+      <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-w-3xl p-3" aria-label={preview?.name ?? "图片预览"}>
+          {preview?.thumb ? <img src={preview.thumb} alt={preview.name} className="max-h-[75vh] w-auto self-center rounded-md object-contain" /> : null}
+          <p className="truncate text-center text-xs text-muted-foreground">{preview?.name}</p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });
@@ -191,7 +257,7 @@ function ConversationRow({ item, isLatest }: { item: DisplayRow; isLatest: boole
   if (isToolGroup(item)) return <ToolGroup group={item} />;
   if (isTurnProcess(item)) return <TurnProcessRow turn={item} />;
   switch (item.kind) {
-    case "user": return <UserBubble text={item.text} />;
+    case "user": return <UserBubble text={item.text} attachments={item.attachments} snippets={item.snippets} />;
     case "assistant": return <AssistantRow item={item} isLatest={isLatest} />;
     case "thinking": return <ThinkingRow item={item} />;
     case "tool": return <ToolRow item={item} />;
@@ -258,12 +324,14 @@ export function MessageList(): React.JSX.Element | null {
   const liveText = useActiveConversation((c) => c.liveText);
   const liveThinking = useActiveConversation((c) => c.liveThinking);
   const streaming = useActiveConversation((c) => c.streaming);
+  const historyLoaded = useActiveConversation((c) => c.historyLoaded);
   const activeConversationId = useSessionStore((s) => s.activeConversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const renderedConvRef = useRef(activeConversationId);
   const [atBottom, setAtBottom] = useState(true);
   const toolGroupsEnabled = useSettingsStore((s) => s.settings.ui.toolGroupsEnabled);
+  const thinkingDefaultOpen = useSettingsStore((s) => s.settings.ui.thinkingDefaultOpen);
   // T7.9 会话辅助块贴在流末尾，它到达的时机要在下面补一次贴底（见对应 effect）
   const assistSession = useAssistStore((s) => s.session);
   const assistForItemsLen = useAssistStore((s) => s.forItemsLen);

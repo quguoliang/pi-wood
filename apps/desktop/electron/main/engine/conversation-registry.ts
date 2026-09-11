@@ -26,7 +26,7 @@ import {
   type ConversationRecord,
   type ConversationStatus,
 } from "./conversation-core";
-import { ensureWorktree, reconcileOrphans, removeWorktree } from "../worktree/worktree-service";
+import { ensureWorktree, hasWorktreeOnDisk, reconcileOrphans, removeWorktree } from "../worktree/worktree-service";
 import { loadSettings } from "../settings-service";
 
 /**
@@ -215,10 +215,16 @@ function touch(h: ConversationHandle): void {
   h.record.lastActiveAt = Date.now();
 }
 
-/** worktree 设置（缺省启用；keepAfterClose 缺省 false = close 即回收） */
-function worktreeSettings(): { enabled: boolean; keepAfterClose: boolean } {
-  const s = (loadSettings() as { worktree?: { enabled?: unknown; keepAfterClose?: unknown } }).worktree ?? {};
-  return { enabled: s.enabled !== false, keepAfterClose: s.keepAfterClose === true };
+/** worktree 策略：mode 三态（缺省 ask = 新建会话按情况询问）；keepAfterClose 缺省 false = close 即回收 */
+function worktreeSettings(): { mode: "ask" | "worktree" | "current"; keepAfterClose: boolean } {
+  const s = (loadSettings() as { worktree?: { mode?: unknown; enabled?: unknown; keepAfterClose?: unknown } }).worktree ?? {};
+  const mode =
+    s.mode === "worktree" || s.mode === "current" || s.mode === "ask"
+      ? s.mode
+      : s.enabled === false
+        ? "current"
+        : "ask";
+  return { mode, keepAfterClose: s.keepAfterClose === true };
 }
 
 /**
@@ -228,7 +234,7 @@ function worktreeSettings(): { enabled: boolean; keepAfterClose: boolean } {
  */
 export async function ensureConversation(
   projectDir: string,
-  opts: { newConversation?: boolean } = {},
+  opts: { newConversation?: boolean; worktreeChoice?: "worktree" | "current" } = {},
 ): Promise<RemoteAdapterLike> {
   const existing = conversationForProject(projectDir);
   const existingAlive = Boolean(existing?.host.alive) && existing?.record.status !== "dead";
@@ -246,6 +252,7 @@ export async function ensureConversation(
   }
   const resumeSessionFile = existing && !existingAlive && !opts.newConversation ? existing.record.sessionFile : undefined;
   const carriedRestarts = existing && !existingAlive && !opts.newConversation ? existing.record.restarts : 0;
+  const carriedChoice = existing && !existingAlive && !opts.newConversation ? existing.record.worktreeChoice : undefined;
 
   // 腾位置：纯函数一次只给一个 victim，超得多的时候要循环（否则会「休眠一条仍超限」）
   const maxLive = normalizeMaxLiveEngines(needCaps().maxLiveEngines());
@@ -272,6 +279,7 @@ export async function ensureConversation(
     pendingApprovals: 0,
     restarts: carriedRestarts,
     sessionFile: resumeSessionFile,
+    worktreeChoice: opts.worktreeChoice ?? carriedChoice,
   };
   // 先定 active：spawnHandle 内部会回调 onConversationReady（设默认模型 / 推 model_changed），
   // 晚一步赋值会让首建的 active 对话被当成后台对话、不推 model_changed。
@@ -308,12 +316,22 @@ async function spawnHandle(
   record.epoch = (record.epoch ?? 0) + 1;
   const baseline = await countEngineishProcesses();
   // ---- T8.6 worktree：引擎 cwd = 该对话独占树（惰性建，T8.0 实测 151~180ms 不卡 UI）----
+  // 是否建树由「每对话选择」决定（新建时渲染层已定），不再仅凭全局开关自动建：
+  //   choice=worktree → 建；choice=current → 不建；
+  //   choice 缺席（休眠唤醒/崩溃重启/旧数据）→ 回退全局 mode：worktree 总建 / current 不建 / ask 只复用磁盘已存在的树、绝不新建。
   // 降级（非 git / detached / 路径过长）→ 显式提示后共享主树，不静默。
   let cwd = projectDir;
   let worktreeBaseRef: string | undefined;
   // 「最近」虚拟项目目录（~/.pi-wood/chats）非 git 是设计使然：跳过 worktree 机制，不降级不提示
   const isVirtualChats = /[\\/]\.pi-wood[\\/]chats[\\/]?$/i.test(projectDir.replace(/[\\/]+$/, ""));
-  if (worktreeSettings().enabled && !isVirtualChats) {
+  const mode = worktreeSettings().mode;
+  let wantWorktree: boolean;
+  if (record.worktreeChoice === "worktree") wantWorktree = true;
+  else if (record.worktreeChoice === "current") wantWorktree = false;
+  else if (mode === "worktree") wantWorktree = true;
+  else if (mode === "current") wantWorktree = false;
+  else wantWorktree = hasWorktreeOnDisk(projectDir, id);
+  if (wantWorktree && !isVirtualChats) {
     if (!orphanCheckedProjects.has(projectDir)) {
       orphanCheckedProjects.add(projectDir);
       const orphans = await reconcileOrphans(projectDir, [...handles.values()].map((h) => h.worktreePath ?? h.projectDir));
@@ -519,7 +537,7 @@ export async function closeConversation(id: string): Promise<boolean> {
   if (byProject.get(h.projectDir) === id) byProject.delete(h.projectDir);
   if (activeConversationId === id) activeConversationId = undefined;
   const wt = worktreeSettings();
-  if (wt.enabled && !wt.keepAfterClose && h.worktreePath && h.worktreePath !== h.projectDir) {
+  if (!wt.keepAfterClose && h.worktreePath && h.worktreePath !== h.projectDir) {
     const rm = await removeWorktree(h.projectDir, id);
     if (!rm.ok) {
       console.warn(`[engine] 对话 ${id} 的工作树未回收：${rm.reason}`);

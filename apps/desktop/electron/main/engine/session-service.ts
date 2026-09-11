@@ -8,6 +8,16 @@ import {
   type SessionTreeNode,
   type TreeEntry,
 } from "@pi-wood/engine";
+import { SessionMetaStore } from "../project/session-meta-service.ts";
+import { DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
+import { cleanUserHistoryText } from "./user-history-text.ts";
+
+/** 消息元数据（附件/引用）注册表：懒加载单例，loadSessionMessages 按 entryId 回填 */
+let messageMetaStore: SessionMetaStore | undefined;
+function metaStore(): SessionMetaStore {
+  messageMetaStore ??= new SessionMetaStore(DEFAULT_APP_DATA_DIR);
+  return messageMetaStore;
+}
 
 /**
  * 会话服务（T1.4 左栏 <HistoryPane>/<SessionTree> 数据层）。
@@ -171,6 +181,10 @@ export interface SessionMessageItem {
   toolName?: string;
   toolInput?: Record<string, unknown>;
   isError?: boolean;
+  /** Pi 会话条目 id：用户消息的附件/引用元数据（session-meta.messages）以它为键回填 */
+  entryId?: string;
+  attachments?: Array<{ path: string; name: string; size: number; kind: "file" | "image"; thumb?: string }>;
+  snippets?: Array<{ path: string; name: string; start: number; end: number; snippet: string }>;
 }
 
 /**
@@ -192,9 +206,16 @@ export async function loadSessionMessages(file: string, leafId?: string): Promis
   }
   const out: SessionMessageItem[] = [];
   const pendingCalls = new Map<string, { name: string; input?: Record<string, unknown> }>();
+  const msgMeta = metaStore().get(file)?.messages ?? {};
 
-  const flushText = (role: "user" | "assistant", text: string): void => {
-    if (text.trim()) out.push({ role, text });
+  const flushText = (role: "user" | "assistant", text: string, entryId?: string): void => {
+    if (!text.trim() && !(role === "user" && entryId && msgMeta[entryId])) return;
+    const meta = entryId ? msgMeta[entryId] : undefined;
+    const item: SessionMessageItem = { role, text };
+    if (entryId) item.entryId = entryId;
+    if (meta?.attachments) item.attachments = meta.attachments as SessionMessageItem["attachments"];
+    if (meta?.snippets) item.snippets = meta.snippets as SessionMessageItem["snippets"];
+    out.push(item);
   };
 
   for (const entry of entries) {
@@ -206,24 +227,8 @@ export async function loadSessionMessages(file: string, leafId?: string): Promis
     if (role === "user") {
       // Pi 的 UserMessage.content 可为 string 或 (TextContent|ImageContent)[]；
       // 旧代码只认 string，数组内容（含附件）被丢弃 → 历史里用户消息消失。
-      const content = msg.content;
-      let text = "";
-      if (typeof content === "string") text = content;
-      else if (Array.isArray(content)) {
-        text = content
-          .map((part) =>
-            part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
-              ? (part as { text: string }).text
-              : part && typeof part === "object" && (part as { type?: unknown }).type === "image"
-                ? "[图片]"
-                : "",
-          )
-          .filter(Boolean)
-          .join("\n");
-      }
-      // 去掉主进程注入的附件块（<file ...>...</file>），与实时输入的干净气泡一致
-      text = text.replace(/\n*<file\b[\s\S]*?<\/file>\n*/g, "").replace(/\n*<file\b[^>]*>\s*<\/file>\n*/g, "").trim();
-      flushText("user", text);
+      const meta = msgMeta[entry.id];
+      flushText("user", cleanUserHistoryText(msg.content, meta), entry.id);
       continue;
     }
 

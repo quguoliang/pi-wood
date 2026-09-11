@@ -1,14 +1,15 @@
 import { PromptSuggestion } from "@pi-wood/ui-kit";
 import { ComposerControls } from "./ComposerControls";
 import { ProjectPicker } from "./ProjectPicker";
-import { GitBranchChip } from "./GitBranchChip";
+import { ProjectBranchChip } from "./GitBranchChip";
 import { Icon } from "../ui/Icon";
 import { greeting } from "../../lib/time";
 import { isLargePaste } from "../../lib/utils";
-import { useComposerController, type ComposerController } from "../../hooks/use-composer-controller";
+import { useComposerController, type AttachmentItem, type ComposerController } from "../../hooks/use-composer-controller";
 import { useGoalStore } from "../../stores/goal-store";
-import { usePendingContextStore } from "../../stores/pending-context-store";
+import { usePendingContextStore, type PendingSnippet } from "../../stores/pending-context-store";
 import { openWorkbenchFile } from "../../stores/workbench-store";
+import { AttachmentPreviewBody, ChipPreview, SnippetPreviewBody } from "./ChipPreview";
 
 const quickPrompts = [
   "检查这个项目当前的状态和主要问题",
@@ -16,6 +17,66 @@ const quickPrompts = [
   "审查当前未提交的代码变更",
   "解释这个项目的结构和核心流程",
 ];
+
+/** 附件芯片（文件/图片）：hover 预览（图片缩略图 / 文件信息），× 移除 */
+function AttachmentChip({ item, onRemove }: { item: AttachmentItem; onRemove: () => void }): React.JSX.Element {
+  return (
+    <ChipPreview
+      className="flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
+      ariaLabel={`附件 ${item.name}`}
+      preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
+    >
+      {item.kind === "image" && item.thumb ? (
+        <img src={item.thumb} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
+      ) : (
+        <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5 shrink-0" />
+      )}
+      <span className="truncate">{item.name}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        aria-label={`移除 ${item.name}`}
+        className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground"
+      >
+        <Icon name="x" className="size-3" />
+      </button>
+    </ChipPreview>
+  );
+}
+
+/** 「添加到对话」片段芯片：hover 预览代码位置与内容，点击回跳文件面板对应行，× 移除 */
+function SnippetChip({ snippet, onRemove }: { snippet: PendingSnippet; onRemove: () => void }): React.JSX.Element {
+  return (
+    <ChipPreview
+      className="flex h-7 max-w-52 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-xs text-foreground"
+      ariaLabel={`引用 ${snippet.name} ${snippet.start}-${snippet.end} 行`}
+      onClick={() => openWorkbenchFile(snippet.path, snippet.start)}
+      preview={<SnippetPreviewBody path={snippet.path} start={snippet.start} end={snippet.end} snippet={snippet.snippet} />}
+    >
+      <Icon name="file" className="size-3.5 shrink-0 text-primary" />
+      <span className="truncate">
+        {snippet.name}
+        <span className="ml-1 font-mono text-muted-foreground">
+          {snippet.start}-{snippet.end}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        aria-label={`移除 ${snippet.name} 片段`}
+        className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground"
+      >
+        <Icon name="x" className="size-3" />
+      </button>
+    </ChipPreview>
+  );
+}
 
 /** 输入框本体：透明，承载附件条/片段芯片与文本框，落在亮灰输入卡内。 */
 function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
@@ -26,37 +87,10 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
       {(c.attachments.length > 0 || snippets.length > 0) && (
         <div className="flex gap-1.5 overflow-x-auto px-3 pt-2.5" aria-label="已添加的上下文">
           {c.attachments.map((item) => (
-            <span key={item.path} title={item.path} className="flex h-7 max-w-48 shrink-0 items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground">
-              <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5" />
-              <span className="truncate">{item.name}</span>
-              <button type="button" onClick={() => c.removeAttachment(item.path)} aria-label={`移除 ${item.name}`} className="grid size-4 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground">
-                <Icon name="x" className="size-3" />
-              </button>
-            </span>
+            <AttachmentChip key={item.path} item={item} onRemove={() => c.removeAttachment(item.path)} />
           ))}
-          {/* 「添加到对话」片段芯片：点击回跳文件面板对应行，× 移除 */}
           {snippets.map((s) => (
-            <span
-              key={s.id}
-              title={`${s.path}:${s.start}-${s.end}（点击在文件面板中打开）`}
-              className="flex h-7 max-w-52 shrink-0 items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-xs text-foreground"
-            >
-              <button
-                type="button"
-                className="flex min-w-0 items-center gap-1.5"
-                onClick={() => openWorkbenchFile(s.path, s.start)}
-                aria-label={`打开 ${s.name}`}
-              >
-                <Icon name="file" className="size-3.5 shrink-0 text-primary" />
-                <span className="truncate">
-                  {s.name}
-                  <span className="ml-1 font-mono text-muted-foreground">{s.start}-{s.end}</span>
-                </span>
-              </button>
-              <button type="button" onClick={() => removeSnippet(s.id)} aria-label={`移除 ${s.name} 片段`} className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground">
-                <Icon name="x" className="size-3" />
-              </button>
-            </span>
+            <SnippetChip key={s.id} snippet={s} onRemove={() => removeSnippet(s.id)} />
           ))}
         </div>
       )}
@@ -71,6 +105,13 @@ function ComposerInput({ c }: { c: ComposerController }): React.JSX.Element {
           onChange={(event) => c.setInput(event.target.value)}
           onKeyDown={c.onKeyDown}
           onPaste={(event) => {
+            // 剪贴板图片优先：截图/复制的图片直接成为附件芯片（不经过文本路径）
+            const files = Array.from(event.clipboardData.files).filter((f) => f.type.startsWith("image/"));
+            if (files.length > 0) {
+              event.preventDefault();
+              for (const f of files) void c.addPastedImage(f);
+              return;
+            }
             const text = event.clipboardData.getData("text");
             if (text && isLargePaste(text)) {
               event.preventDefault();
@@ -157,7 +198,7 @@ function OnboardingComposer({ c }: { c: ComposerController }): React.JSX.Element
             header={
               <>
                 <ProjectPicker activeProject={c.activeProject} />
-                <GitBranchChip git={c.runtime?.git} />
+                <ProjectBranchChip projectDir={c.activeProject} />
               </>
             }
           />

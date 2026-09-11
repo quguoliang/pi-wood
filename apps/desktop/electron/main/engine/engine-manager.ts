@@ -38,6 +38,8 @@ import { SdkAdapter } from "@pi-wood/engine/sdk";
 import type { DesktopUiBridge, EngineAdapter, EngineStartInfo } from "@pi-wood/engine";
 import { normalizeEngineEvent, pathToLeafIds } from "@pi-wood/engine";
 import { SnapshotService } from "../workbench/snapshot-service";
+import { readImageThumb } from "../workbench/image-thumb.ts";
+import { DEFAULT_APP_DATA_DIR } from "../project/project-manager.ts";
 import { browserCustomTools } from "../agent-tools/browser-tools";
 import { memoryCustomTools } from "../agent-tools/memory-tools";
 import { ALL_HOST_TOOL_SPECS } from "../agent-tools/host-tool-specs";
@@ -105,6 +107,7 @@ const TextArgSchema = z.object({ text: z.string().min(1) });
 const SetModelArgSchema = z.object({ provider: z.string(), modelId: z.string() });
 const SetThinkingArgSchema = z.object({ level: z.string().min(1) });
 const StagePastedTextArgSchema = z.object({ text: z.string().min(1) });
+const StagePastedImageArgSchema = z.object({ dataBase64: z.string().min(1) });
 
 /** 粘贴文本落盘序号，防同一毫秒多次粘贴文件名冲突（T7.1）。 */
 let pasteSeq = 0;
@@ -141,6 +144,27 @@ function prepareAttachments(paths: string[]): { text: string; images: Array<{ ty
     textBlocks.push(`<file name="${displayPath}">\n${content}${truncated ? "\n[内容超过 1 MiB，已截断]" : ""}\n</file>`);
   }
   return { text: textBlocks.join("\n"), images };
+}
+
+/** 刚落盘的用户消息定位（sessionFile + entryId）：prompt 回执给渲染层写消息元数据用 */
+async function latestUserMessageRef(conversationId: string): Promise<{ sessionFile?: string; entryId?: string }> {
+  try {
+    const sessionFile = getConversation(conversationId)?.record.sessionFile;
+    if (!sessionFile || !existsSync(sessionFile)) return { sessionFile };
+    const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+    const entries = SessionManager.open(sessionFile).getEntries() as unknown as Array<{
+      id: string;
+      type: string;
+      message?: { role?: string };
+    }>;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.type === "message" && e.message?.role === "user") return { sessionFile, entryId: e.id };
+    }
+    return { sessionFile };
+  } catch {
+    return {};
+  }
 }
 
 /** 当前 active 对话所属项目（git 信息、附件相对路径、快照都按它取） */
@@ -945,7 +969,7 @@ function preferredModelAvailable(models: Array<{ provider: string; id: string }>
  */
 export async function ensureEngine(
   projectDir: string,
-  opts: { newConversation?: boolean } = {},
+  opts: { newConversation?: boolean; worktreeChoice?: "worktree" | "current" } = {},
 ): Promise<EngineAdapter> {
   let result: EngineAdapter | undefined;
   engineTransition = engineTransition.catch(() => undefined).then(async () => {
@@ -1306,6 +1330,9 @@ export function initEngineIpc(): void {
       markPromptInFlight(convId, false);
       promptGate.release();
     }
+    // 回传刚落盘的用户消息定位（sessionFile + entryId）：渲染层据它把附件/引用元数据
+    // 写进 session-meta.messages，切对话/重启后气泡仍能带出附件芯片。拿不到不致命（跳过持久化）。
+    return latestUserMessageRef(convId);
   });
 
   ipcMain.handle("engine:steer", async (_e, raw: unknown) => {
@@ -1590,12 +1617,14 @@ export function initEngineIpc(): void {
 
   /** 显式新建/唤醒某项目的对话（同项目多对话等 T8.6 worktree 才真正放开，现在等价于「切过去」） */
   ipcMain.handle(ENGINE_CHANNELS.createConversation, async (_e, raw: unknown) => {
-    const { projectDir } = StartArgSchema.parse(raw);
+    const { projectDir, worktreeChoice } = z
+      .object({ projectDir: z.string().min(1), worktreeChoice: z.enum(["worktree", "current"]).optional() })
+      .parse(raw);
     // T8.5 成本护栏：月配额超限且设置 action=block → 阻止新建对话（warn/throttle 不拦）
     if (quotaEffect().blockNewConversation) {
       throw new Error("本月用量已超配额，已按设置阻止新建对话（可在用量页调整超限动作）");
     }
-    const adapter = await ensureEngine(projectDir, { newConversation: true }); // T8.6：同项目再开一条（各自 worktree）
+    const adapter = await ensureEngine(projectDir, { newConversation: true, worktreeChoice }); // T8.6：同项目再开一条（按选择决定是否建独立树）
     const convId = getActiveConversationId() ?? "";
     targetByConversation.set(convId, _e.sender);
     return { conversationId: convId, cwd: activeConversation()?.worktreePath ?? projectDir, booted: Boolean(adapter) };
@@ -1636,6 +1665,12 @@ export function initEngineIpc(): void {
       : await removeWorktree(projectDir, conversationId ?? "", { force });
     if (r.ok) send("ui:notify", { message: "工作树已回收", type: "success" });
     return r;
+  });
+  // 新建会话前查主工作树 git 状态（决定「当前分支 vs 独立 worktree」是否要弹框询问）
+  ipcMain.handle(ENGINE_CHANNELS.mainGitStatus, async (_e, raw: unknown) => {
+    const { projectDir } = StartArgSchema.parse(raw);
+    const { mainGitStatus } = await import("../worktree/worktree-service");
+    return mainGitStatus(projectDir);
   });
 
   // ---- T8.10 度量出口：渲染层批量上报自测样本 + 面板/探针拉取合并报告 ----
@@ -1704,5 +1739,35 @@ export function initEngineIpc(): void {
     const path = join(dir, fileName);
     writeFileSync(path, text, "utf8");
     return { path, name: fileName, size: Buffer.byteLength(text, "utf8"), kind: "file" as const };
+  });
+
+  // 剪贴板图片粘贴 → 落盘到应用数据目录（**持久**：消息元数据会长期引用该路径，
+  // 不能用 tmpdir——系统重启即丢，气泡缩略图与重新发送就全裂了）。
+  // 轻量上限：只保留最近 200 张，超出按 mtime 从旧到新删。
+  ipcMain.handle("engine:stagePastedImage", async (_e, raw: unknown) => {
+    const { dataBase64 } = StagePastedImageArgSchema.parse(raw);
+    const buf = Buffer.from(dataBase64, "base64");
+    if (buf.length === 0 || buf.length > 32 * 1024 * 1024) throw new Error("图片数据为空或超过 32MB");
+    const dir = join(DEFAULT_APP_DATA_DIR, "pastes");
+    mkdirSync(dir, { recursive: true });
+    try {
+      const files = readdirSync(dir)
+        .filter((f) => f.startsWith("pasted-image-"))
+        .map((f) => ({ f, mtime: statSync(join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+      for (const old of files.slice(199)) {
+        try {
+          rmSync(join(dir, old.f), { force: true });
+        } catch {
+          /* 单个清理失败忽略 */
+        }
+      }
+    } catch {
+      /* 目录读取失败忽略，不影响主流程 */
+    }
+    const fileName = `pasted-image-${Date.now()}-${pasteSeq++}.png`;
+    const path = join(dir, fileName);
+    writeFileSync(path, buf);
+    return { path, name: fileName, size: buf.length, kind: "image" as const, thumb: readImageThumb(path) };
   });
 }

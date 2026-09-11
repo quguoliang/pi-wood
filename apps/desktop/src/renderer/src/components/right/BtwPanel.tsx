@@ -58,7 +58,7 @@ export function BtwPanel(): React.JSX.Element {
 
         {transcript && (
           <div className="space-y-3">
-            {transcript.thinking && <ThinkingCard text={transcript.thinking} streaming={transcript.streaming} defaultOpen={false} />}
+            {transcript.thinking && <ThinkingCard text={transcript.thinking} streaming={transcript.streaming} defaultOpen={transcript.streaming} />}
             {transcript.error && (
               <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
                 {transcript.error}

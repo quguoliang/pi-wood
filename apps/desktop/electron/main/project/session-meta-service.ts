@@ -19,6 +19,8 @@ export interface SessionMeta {
   alias?: string;
   /** T9.2 v2.1：分叉谱系——本会话由哪个会话文件分叉而来（「从对话中派生」回跳用） */
   forkedFrom?: string;
+  /** 每条用户消息的附件/引用元数据（Pi 会话条目 entryId → 元数据），气泡展示与历史回填用 */
+  messages?: Record<string, { attachments?: unknown[]; snippets?: unknown[] }>;
 }
 
 export type SessionMetaMap = Record<string, SessionMeta>;
@@ -49,7 +51,17 @@ export function applySessionMetaPatch(current: SessionMeta | undefined, patch: S
     if (forkedFrom) next.forkedFrom = forkedFrom;
     else delete next.forkedFrom;
   }
-  if (!next.archived && !next.pinned && !next.alias && !next.forkedFrom) return undefined;
+  // 消息元数据：按 entryId 合并（undefined 值 = 删该条）；消息元数据只增不改，发送一次写一次
+  if (patch.messages !== undefined) {
+    const merged = { ...(next.messages ?? {}) };
+    for (const [entryId, meta] of Object.entries(patch.messages)) {
+      if (meta === undefined || meta === null) delete merged[entryId];
+      else merged[entryId] = meta;
+    }
+    if (Object.keys(merged).length > 0) next.messages = merged;
+    else delete next.messages;
+  }
+  if (!next.archived && !next.pinned && !next.alias && !next.forkedFrom && !next.messages) return undefined;
   return next;
 }
 

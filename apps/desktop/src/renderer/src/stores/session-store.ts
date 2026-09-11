@@ -8,6 +8,8 @@ import {
   type ConversationSlice,
   type DiffStat,
   type HistoryMessageItem,
+  type MessageAttachment,
+  type MessageSnippet,
   type ToolStatus,
 } from "./conversation-slice.ts";
 import { useContextTreeStore } from "./context-tree-store.ts";
@@ -29,7 +31,16 @@ import { markSwitchStart } from "../lib/latency-outlet.ts";
 /** 还不知道 conversationId 时（legacy 裸事件 / 引擎未起）用的切片键 */
 export const FALLBACK_SLICE_KEY = "";
 
-export type { ConversationItem, ConversationSlice, DiffStat, HistoryMessageItem, ToolStatus };
+/**
+ * 稳定空切片：订阅读路径（sliceOf / useActiveConversation / useConversationSlice）的兜底值。
+ * emptySlice() 每次调用都会新建 `items: []` 等数组，而 useSyncExternalStore 的 getSnapshot 按引用
+ * 比较快照——若 activeConversationId 指向一条「尚未创建的切片」（引擎启动期 noteEventOwnership 直接
+ * 采纳 active:true 戳置了 id、没建切片），数组/对象选择器每帧都拿到新引用 → 无限重渲染（React 报
+ * 「getSnapshot should be cached」+ Maximum update depth exceeded → 白屏）。用单一常量保证同一状态恒等。
+ */
+const EMPTY_SLICE: ConversationSlice = emptySlice();
+
+export type { ConversationItem, ConversationSlice, DiffStat, HistoryMessageItem, MessageAttachment, MessageSnippet, ToolStatus };
 
 export interface EventMeta {
   conversationId: string | null;
@@ -62,7 +73,7 @@ interface SessionStoreState {
   setActiveConversation(id: string | null): void;
   /** 进入草稿态（不建对话、不 fork）：active=null + draftProject=dir */
   startDraft(projectDir: string): void;
-  addUserMessage(text: string, conversationId?: string | null): void;
+  addUserMessage(text: string, conversationId?: string | null, meta?: { attachments?: MessageAttachment[]; snippets?: MessageSnippet[] }): void;
   loadHistory(items: HistoryMessageItem[], conversationId?: string | null): void;
   /** T9.2：切分支后按「当前视图叶」重读路径历史并整体换底（旁支条目消失，视图回到分支尾部） */
   rebaseToBranch(conversationId?: string | null): Promise<void>;
@@ -146,7 +157,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
   sliceOf(id) {
     const key = targetKeyOf(get(), id);
-    return get().slices[key] ?? emptySlice();
+    return get().slices[key] ?? EMPTY_SLICE;
   },
 
   handleEvent(e, meta) {
@@ -212,11 +223,20 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     set({ activeConversationId: null, draftProject: projectDir, activeProject: projectDir });
   },
 
-  addUserMessage(text, conversationId) {
+  addUserMessage(text, conversationId, meta) {
     const state = get();
     const key = targetKeyOf(state, conversationId);
     const current = state.slices[key] ?? emptySlice();
-    const result = applyEngineEvent(current, { type: "user_message", text }, { now: Date.now(), nextId: nextItemId, visible: true });
+    const result = applyEngineEvent(
+      current,
+      {
+        type: "user_message",
+        text,
+        ...(meta?.attachments?.length ? { attachments: meta.attachments } : {}),
+        ...(meta?.snippets?.length ? { snippets: meta.snippets } : {}),
+      },
+      { now: Date.now(), nextId: nextItemId, visible: true },
+    );
     set({ slices: { ...state.slices, [key]: result.slice } });
   },
 
@@ -307,12 +327,12 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
  * 前台组件必然重渲染——那正是 T8.3 验收 4 要禁掉的事。
  */
 export function useActiveConversation<T>(selector: (slice: ConversationSlice) => T): T {
-  return useSessionStore((state) => selector(state.slices[state.activeConversationId ?? FALLBACK_SLICE_KEY] ?? emptySlice()));
+  return useSessionStore((state) => selector(state.slices[state.activeConversationId ?? FALLBACK_SLICE_KEY] ?? EMPTY_SLICE));
 }
 
 /** 取指定对话的切片（多对话标签条/后台摘要用；id 为 null 时退到 active） */
 export function useConversationSlice<T>(id: string | null | undefined, selector: (slice: ConversationSlice) => T): T {
-  return useSessionStore((state) => selector(state.slices[id ?? state.activeConversationId ?? FALLBACK_SLICE_KEY] ?? emptySlice()));
+  return useSessionStore((state) => selector(state.slices[id ?? state.activeConversationId ?? FALLBACK_SLICE_KEY] ?? EMPTY_SLICE));
 }
 
 /** 非 hook 场景（事件回调里）读当前可见切片 */

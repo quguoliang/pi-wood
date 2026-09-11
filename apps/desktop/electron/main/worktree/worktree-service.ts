@@ -165,6 +165,44 @@ export async function worktreeCleanState(wtPath: string): Promise<WorktreeCleanS
   };
 }
 
+/** 该对话的托管工作树是否已在磁盘上存在（ask 模式续接时「只复用已存在、绝不新建」的判据）。 */
+export function hasWorktreeOnDisk(projectDir: string, conversationId: string): boolean {
+  return existsSync(join(worktreePathFor(projectDir, conversationId), ".git"));
+}
+
+export interface MainGitStatus {
+  isGit: boolean;
+  dirty: boolean;
+  /** 变更文件数（tracked 修改 + 未跟踪），空态分支芯片弹层「未提交的更改：N 个文件」用 */
+  changed: number;
+  branch?: string;
+  feasible: boolean;
+  reason?: string;
+}
+
+/**
+ * 主项目工作树 git 状态（新建会话前决定「当前分支 vs 独立 worktree」+ 空态分支芯片的数据源）。
+ * 走显式 projectDir（不是引擎 activeGitDir），因此反映的是用户主目录，而非某棵 worktree。
+ */
+export async function mainGitStatus(projectDir: string): Promise<MainGitStatus> {
+  const inside = await git(["rev-parse", "--is-inside-work-tree"], projectDir);
+  const isGit = inside.ok && inside.out.trim() === "true";
+  if (!isGit) return { isGit: false, dirty: false, changed: 0, feasible: false, reason: "该目录不是 git 仓库" };
+  const branchOut = await git(["branch", "--show-current"], projectDir);
+  const branch = branchOut.out.trim() || undefined;
+  const status = await git(["status", "--porcelain"], projectDir);
+  const changed = status.out.split("\n").filter((l) => l.trim().length > 0).length;
+  const feasibility = await detectWorktreeFeasibility(projectDir);
+  return {
+    isGit: true,
+    dirty: changed > 0,
+    changed,
+    branch,
+    feasible: feasibility.code === "ok",
+    reason: feasibility.reason,
+  };
+}
+
 export interface RemoveResult {
   ok: boolean;
   reason?: string;

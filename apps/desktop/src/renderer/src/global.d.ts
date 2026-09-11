@@ -85,7 +85,7 @@ declare global {
         visible?: boolean;
       }): void;
       getLatency?(): Promise<unknown>;
-      createConversation?(projectDir: string): Promise<unknown>;
+      createConversation?(projectDir: string, worktreeChoice?: "worktree" | "current"): Promise<unknown>;
       suspendConversation?(conversationId: string): Promise<boolean>;
       closeConversation?(conversationId: string): Promise<boolean>;
       engineSteer(text: string): Promise<void>;
@@ -107,11 +107,13 @@ declare global {
       projectPick(): Promise<string | undefined>;
       projectPickAttachments(): Promise<Array<{ path: string; name: string; size: number; kind: "file" | "image" }>>;
       stagePastedText(text: string): Promise<{ path: string; name: string; size: number; kind: "file" | "image" }>;
+      stagePastedImage(dataBase64: string): Promise<{ path: string; name: string; size: number; kind: "image"; thumb?: string }>;
+      fsThumb(path: string): Promise<string | undefined>;
       projectTrust(path: string): Promise<string>;
       projectRename(id: string, name: string): Promise<unknown>;
       sessionsList(path: string): Promise<unknown>;
       sessionsMeta(): Promise<unknown>;
-      sessionsSetMeta(file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string; forkedFrom?: string }): Promise<unknown>;
+      sessionsSetMeta(file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string; forkedFrom?: string; messages?: Record<string, unknown> }): Promise<unknown>;
       sessionsDelete(file: string): Promise<{ ok: boolean }>;
       sessionsTree(file: string): Promise<unknown>;
       sessionsMessages(file: string, leafId?: string): Promise<unknown>;

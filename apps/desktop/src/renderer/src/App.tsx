@@ -4,6 +4,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { MessageList } from "./components/center/MessageList";
 import { Composer } from "./components/center/Composer";
 import { PromptTray } from "./components/center/PromptTray";
+import { WorktreeAskDialog } from "./components/center/WorktreeAskDialog";
 import { SettingsPage } from "./components/settings/SettingsPage";
 import { PackageMarket } from "./components/center/PackageMarket";
 import { CommandPalette } from "./components/center/CommandPalette";
@@ -288,6 +289,7 @@ export default function App() {
       {paletteOpen && (
         <CommandPalette onClose={() => setPaletteOpen(false)} onOpenSettings={() => setSettingsOpen(true)} />
       )}
+      <WorktreeAskDialog />
       <Toaster />
     </>
   );

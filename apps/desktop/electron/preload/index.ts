@@ -162,8 +162,8 @@ const api = {
     void ipcRenderer.invoke("engine:reportLatency", payload).catch(() => undefined);
   },
   getLatency: (): Promise<unknown> => ipcRenderer.invoke("engine:getLatency"),
-  createConversation: (projectDir: string): Promise<unknown> =>
-    ipcRenderer.invoke("engine:createConversation", { projectDir }),
+  createConversation: (projectDir: string, worktreeChoice?: "worktree" | "current"): Promise<unknown> =>
+    ipcRenderer.invoke("engine:createConversation", { projectDir, worktreeChoice }),
   suspendConversation: (conversationId: string): Promise<boolean> =>
     ipcRenderer.invoke("engine:suspendConversation", { conversationId }),
   closeConversation: (conversationId: string): Promise<boolean> =>
@@ -192,11 +192,16 @@ const api = {
     ipcRenderer.invoke("project:pickAttachments"),
   stagePastedText: (text: string): Promise<{ path: string; name: string; size: number; kind: "file" | "image" }> =>
     ipcRenderer.invoke("engine:stagePastedText", { text }),
+  // 剪贴板图片：渲染进程读 File → base64 传给主进程落盘（持久目录），返回附件元数据 + 缩略图
+  stagePastedImage: (dataBase64: string): Promise<{ path: string; name: string; size: number; kind: "image"; thumb?: string }> =>
+    ipcRenderer.invoke("engine:stagePastedImage", { dataBase64 }),
+  // 图片缩略图 dataURL（气泡/hover 预览）；非图片或失败 → undefined
+  fsThumb: (path: string): Promise<string | undefined> => ipcRenderer.invoke("fs:thumb", { path }),
   projectTrust: (path: string): Promise<string> => ipcRenderer.invoke("project:trustStatus", { path }),
   projectRename: (id: string, name: string): Promise<unknown> => ipcRenderer.invoke("project:rename", { id, name }),
   sessionsList: (path: string): Promise<unknown> => ipcRenderer.invoke("sessions:list", { path }),
   sessionsMeta: (): Promise<unknown> => ipcRenderer.invoke("sessions:meta"),
-  sessionsSetMeta: (file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string; forkedFrom?: string }): Promise<unknown> =>
+  sessionsSetMeta: (file: string, patch: { archived?: boolean; pinned?: boolean; alias?: string; forkedFrom?: string; messages?: Record<string, unknown> }): Promise<unknown> =>
     ipcRenderer.invoke("sessions:setMeta", { file, patch }),
   sessionsDelete: (file: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("sessions:delete", { file }),
   sessionsTree: (file: string): Promise<unknown> => ipcRenderer.invoke("sessions:tree", { file }),

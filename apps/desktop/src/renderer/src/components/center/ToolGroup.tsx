@@ -95,7 +95,7 @@ export const ToolGroup = memo(function ToolGroup({ group }: { group: ToolGroupIt
         />
       </button>
       {open && (
-        <div className="mt-0.5 mb-1 ml-[7px] space-y-0.5 border-l-2 border-border pl-3">
+        <div className="mt-0.5 mb-1 ml-[7px] max-h-[360px] space-y-0.5 overflow-y-auto border-l-2 border-border pl-3">
           {group.tools.map((tool) => (
             <ToolCard
               key={tool.id}

@@ -21,8 +21,25 @@ export interface DiffStat {
   deleted: number;
 }
 
+/** 用户消息携带的附件/引用（发送时记录，气泡展示 + 历史回填共用；与 ipc-schema MessageAttachment/MessageSnippet 同形） */
+export interface MessageAttachment {
+  path: string;
+  name: string;
+  size: number;
+  kind: "file" | "image";
+  thumb?: string;
+}
+
+export interface MessageSnippet {
+  path: string;
+  name: string;
+  start: number;
+  end: number;
+  snippet: string;
+}
+
 export type ConversationItem =
-  | { id: string; kind: "user"; text: string }
+  | { id: string; kind: "user"; text: string; attachments?: MessageAttachment[]; snippets?: MessageSnippet[] }
   | { id: string; kind: "assistant"; text: string }
   | { id: string; kind: "thinking"; text: string; durationMs?: number }
   | {
@@ -57,6 +74,10 @@ export interface HistoryMessageItem {
   toolName?: string;
   toolInput?: Record<string, unknown>;
   isError?: boolean;
+  /** Pi 会话条目 id（用户消息元数据键；渲染层透传展示用，不参与对账） */
+  entryId?: string;
+  attachments?: MessageAttachment[];
+  snippets?: MessageSnippet[];
 }
 
 /** 一条对话的全部视图状态。字段即 T8.3 步骤 1 里列的那一份。 */
@@ -255,7 +276,12 @@ export function historyToItems(history: HistoryMessageItem[], ctx: SliceCtx): Co
         output: m.text || undefined,
       };
     }
-    if (m.role === "user") return { id: ctx.nextId(), kind: "user", text: m.text };
+    if (m.role === "user") {
+      const item: ConversationItem = { id: ctx.nextId(), kind: "user", text: m.text };
+      if (m.attachments?.length) item.attachments = m.attachments;
+      if (m.snippets?.length) item.snippets = m.snippets;
+      return item;
+    }
     if (m.role === "assistant") return { id: ctx.nextId(), kind: "assistant", text: m.text };
     return { id: ctx.nextId(), kind: "system", tone: "info", text: m.text };
   });
@@ -361,7 +387,13 @@ export function applyEngineEvent(
   switch (type) {
     case "user_message": {
       const f = flushLive(slice, ctx);
-      const next = pushItem(f.slice, { id: ctx.nextId(), kind: "user", text: String(e.text ?? "") });
+      const item: ConversationItem = { id: ctx.nextId(), kind: "user", text: String(e.text ?? "") };
+      // 附件/引用元数据（发送方随事件透传；passthrough schema，不进引擎协议）
+      const atts = (e as { attachments?: unknown }).attachments;
+      const snips = (e as { snippets?: unknown }).snippets;
+      if (Array.isArray(atts) && atts.length > 0) item.attachments = atts as MessageAttachment[];
+      if (Array.isArray(snips) && snips.length > 0) item.snippets = snips as MessageSnippet[];
+      const next = pushItem(f.slice, item);
       return { slice: withUnread(next, true, ctx.visible), changed: true, milestone: true };
     }
     case "agent_start":

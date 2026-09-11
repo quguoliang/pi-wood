@@ -24,6 +24,11 @@ export interface ConversationRecord {
   projectDir: string;
   /** T8.6 起为「该对话独占的 git worktree」；此前与 projectDir 相同 */
   worktreePath?: string;
+  /**
+   * 新建会话时用户/策略选定的工作区：`"worktree"` = 独立工作树；`"current"` = 主工作树/当前分支。
+   * 缺席 = 无显式选择（休眠唤醒/崩溃重启/旧数据），spawnHandle 回退到全局 worktree.mode。
+   */
+  worktreeChoice?: "worktree" | "current";
   status: ConversationStatus;
   /** 单调时钟语义由调用方保证（主进程传 performance.now() 或 Date.now() 皆可，只要同源） */
   lastActiveAt: number;

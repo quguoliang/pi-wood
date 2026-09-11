@@ -3,11 +3,12 @@ import { toast } from "sonner";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { useSettingsStore } from "../../stores/settings-store";
 
 /**
  * 设置「工作树」页（T8.11-R2）：T8.0 起 toast 一直指向「设置 → 工作树」但该页从未存在，此处补齐。
- * 两部分：① worktree 开关（enabled / keepAfterClose，主进程 conversation-registry 读同一段配置）；
+ * 两部分：① worktree 策略（mode：询问 / 总是独立工作树 / 总是当前分支 + keepAfterClose，主进程 conversation-registry 读同一段配置）；
  * ② 当前项目的未回收工作树（孤儿对账，engine:worktreeList）——脏树拒绝删除，可显式强制。
  */
 
@@ -37,7 +38,7 @@ export function WorktreeSettingsPanel(): React.JSX.Element {
     void refresh();
   }, [refresh]);
 
-  const setWorktree = (next: Partial<{ enabled: boolean; keepAfterClose: boolean }>): void => {
+  const setWorktree = (next: Partial<{ mode: "ask" | "worktree" | "current"; keepAfterClose: boolean }>): void => {
     void patch({ worktree: { ...settings.worktree, ...next } });
   };
 
@@ -64,12 +65,36 @@ export function WorktreeSettingsPanel(): React.JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[13px]">启用独立工作树</div>
-            <p className="text-[11px] text-muted-foreground">每条对话在 &lt;项目&gt;/.pi-wood/worktrees/ 下获得一棵独立 git worktree，文件改动物理隔离（关闭时回收）。</p>
-          </div>
-          <Switch checked={settings.worktree.enabled} onCheckedChange={(v) => setWorktree({ enabled: v })} aria-label="启用独立工作树" />
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[13px]">新任务的工作区</div>
+          <p className="text-[11px] text-muted-foreground">决定每条新对话的引擎在哪里运行（仅对 git 仓库项目生效）。</p>
+          {(
+            [
+              { value: "ask", label: "自动判断并询问（推荐）", hint: "主工作树干净 → 直接用当前分支；有未提交改动 → 新建时弹框让你在「当前分支 / 独立工作树」间选择。" },
+              { value: "worktree", label: "总是独立工作树", hint: "每条对话都在 <项目>/.pi-wood/worktrees/ 下开一棵物理隔离的 git worktree。" },
+              { value: "current", label: "总是当前分支", hint: "引擎直接跑在主工作树 / 当前分支，改动落在你的目录里，不建 worktree。" },
+            ] as const
+          ).map((opt) => (
+            <label
+              key={opt.value}
+              className={cn(
+                "flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2 transition-colors",
+                settings.worktree.mode === opt.value ? "border-primary/60 bg-accent/40" : "border-border/60 hover:bg-accent/20",
+              )}
+            >
+              <input
+                type="radio"
+                name="worktree-mode"
+                className="mt-0.5 size-3.5 shrink-0 accent-primary"
+                checked={settings.worktree.mode === opt.value}
+                onChange={() => setWorktree({ mode: opt.value })}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] text-foreground">{opt.label}</span>
+                <span className="block text-[11px] leading-relaxed text-muted-foreground">{opt.hint}</span>
+              </span>
+            </label>
+          ))}
         </div>
         <div className="flex items-center justify-between gap-3">
           <div>

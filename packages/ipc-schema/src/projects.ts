@@ -75,8 +75,37 @@ export const SESSION_CHANNELS = {
 } as const;
 
 /**
+ * 用户消息的附件/引用元数据（发送时随消息持久化，气泡与历史回填共用）。
+ * thumb 是可选的小尺寸 dataURL（图片才有），气泡/hover 预览直接渲染，免二次读盘。
+ */
+export const MessageAttachmentSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  size: z.number(),
+  kind: z.enum(["file", "image"]),
+  thumb: z.string().optional(),
+});
+export type MessageAttachment = z.infer<typeof MessageAttachmentSchema>;
+
+export const MessageSnippetSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  start: z.number(),
+  end: z.number(),
+  snippet: z.string(),
+});
+export type MessageSnippet = z.infer<typeof MessageSnippetSchema>;
+
+export const MessageMetaSchema = z.object({
+  attachments: z.array(MessageAttachmentSchema).optional(),
+  snippets: z.array(MessageSnippetSchema).optional(),
+});
+export type MessageMeta = z.infer<typeof MessageMetaSchema>;
+
+/**
  * T8.11 会话元数据域：pi-wood 侧 UI 状态（归档/置顶/别名），以会话文件绝对路径为键，
  * 落 `~/.pi-wood/session-meta.json`，不写 Pi 会话文件（CLI resume / 互通零影响）。
+ * messages 以 Pi 会话条目的 entryId 为键，记录每条用户消息的附件/引用（气泡展示 + 历史回填）。
  */
 export const SessionMetaSchema = z.object({
   archived: z.boolean().optional(),
@@ -84,6 +113,7 @@ export const SessionMetaSchema = z.object({
   alias: z.string().optional(),
   /** T9.2 v2.1：本会话由哪个会话文件分叉而来（「从对话中派生」回跳用；键仍是本会话文件） */
   forkedFrom: z.string().optional(),
+  messages: z.record(z.string(), MessageMetaSchema).optional(),
 });
 export type SessionMeta = z.infer<typeof SessionMetaSchema>;
 export const SessionMetaMapSchema = z.record(z.string(), SessionMetaSchema);
@@ -103,8 +133,15 @@ export const ProjectRenameArgSchema = z.object({ id: z.string().min(1), name: z.
 export const SessionMessageItemSchema = z.object({
   role: z.enum(["user", "assistant", "tool"]),
   text: z.string(),
+  /** Pi 会话条目 id（分支过滤下稳定）；用户消息的附件/引用元数据以它为键回填 */
+  entryId: z.string().optional(),
+  attachments: z.array(MessageAttachmentSchema).optional(),
+  snippets: z.array(MessageSnippetSchema).optional(),
 });
 export type SessionMessageItem = z.infer<typeof SessionMessageItemSchema>;
+
+/** 图片缩略图域：返回小尺寸 dataURL（气泡/hover 预览用，避免渲染进程直接读盘） */
+export const FS_THUMB_CHANNEL = "fs:thumb";
 
 // invoke 入参
 export const PathArgSchema = z.object({ path: z.string().min(1) });

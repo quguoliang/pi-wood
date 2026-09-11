@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { GitInfo } from "@pi-wood/ipc-schema";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -57,4 +57,34 @@ export function GitBranchChip({ git }: { git: GitInfo | undefined }): React.JSX.
       </PopoverContent>
     </Popover>
   );
+}
+
+/**
+ * 空态（无引擎）下的分支芯片：直接读主工作树当前分支（engine:mainGitStatus，不依赖引擎），
+ * 是 git 仓库且有分支就展示，非 git 项目则不渲染。runtime.git 只在引擎起来后才有，
+ * 所以新任务首屏必须走这条独立取数路径，否则空态永远看不到分支。
+ */
+export function ProjectBranchChip({ projectDir }: { projectDir?: string }): React.JSX.Element | null {
+  const [git, setGit] = useState<GitInfo | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    if (!projectDir) {
+      setGit(undefined);
+      return;
+    }
+    void window.pi
+      .mainGitStatus?.(projectDir)
+      .then((s) => {
+        if (!alive) return;
+        const st = s as { isGit?: boolean; branch?: string; changed?: number } | undefined;
+        setGit(st?.isGit && st.branch ? { branch: st.branch, changed: st.changed ?? 0, added: 0, deleted: 0, files: [] } : undefined);
+      })
+      .catch(() => {
+        if (alive) setGit(undefined);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [projectDir]);
+  return <GitBranchChip git={git} />;
 }
