@@ -230,6 +230,8 @@ const api = {
   worktreeList: (): Promise<unknown> => ipcRenderer.invoke("engine:worktreeList"),
   worktreeRemove: (opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown> =>
     ipcRenderer.invoke("engine:worktreeRemove", opts),
+  mainGitStatus: (projectDir: string): Promise<unknown> =>
+    ipcRenderer.invoke("engine:mainGitStatus", { projectDir }),
   debugStress: (count: number): Promise<number> => ipcRenderer.invoke("debug:stress", { count }),
   debugCapture: (file: string): Promise<boolean> => ipcRenderer.invoke("debug:capture", { file }),
   // T2.1 文件域
@@ -387,6 +389,7 @@ const api = {
   },
   // T7.7 代码审查
   reviewRun: (): Promise<unknown> => ipcRenderer.invoke("review:run"),
+  reviewWorkingDiff: (): Promise<unknown> => ipcRenderer.invoke("review:workingDiff"),
   // T7.10 Agent Memory
   memoryList: (): Promise<unknown> => ipcRenderer.invoke("memory:list"),
   memorySave: (input: unknown): Promise<unknown> => ipcRenderer.invoke("memory:save", input),

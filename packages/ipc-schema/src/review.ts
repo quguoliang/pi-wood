@@ -25,6 +25,29 @@ export const ReviewResultSchema = z.object({
 });
 export type ReviewResult = z.infer<typeof ReviewResultSchema>;
 
+/** 工作区单文件变更：status 为 git porcelain XY（未跟踪 "??"）；before/after 为 HEAD/工作区全文（二进制或超大时留空并置标记）。 */
+export const WorkingDiffFileSchema = z.object({
+  path: z.string(),
+  status: z.string(),
+  added: z.number(),
+  deleted: z.number(),
+  binary: z.boolean(),
+  truncated: z.boolean(),
+  before: z.string(),
+  after: z.string(),
+});
+export type WorkingDiffFile = z.infer<typeof WorkingDiffFileSchema>;
+
+/** 活动工作区相对 HEAD 的原始 diff（「查看变更」用，独立于 AI 审查）。 */
+export const WorkingDiffSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  branch: z.string().optional(),
+  files: z.array(WorkingDiffFileSchema),
+});
+export type WorkingDiff = z.infer<typeof WorkingDiffSchema>;
+
 export const REVIEW_CHANNELS = {
   run: "review:run", // renderer → main
+  workingDiff: "review:workingDiff", // renderer → main：拉工作区相对 HEAD 的逐文件 diff
 } as const;

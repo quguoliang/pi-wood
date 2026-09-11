@@ -1,5 +1,5 @@
 /** preload 暴露的 window.pi 全局类型（唯一声明处） */
-import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult, MemoryItem, MemoryListResult, UsageView } from "@pi-wood/ipc-schema";
+import type { RuntimeInfo, SubagentRunInfo, PluginStatus, PluginPanelEntry, PluginStatusItem, SubagentProfileInfo, GoalState, ReviewResult, WorkingDiff, MemoryItem, MemoryListResult, UsageView } from "@pi-wood/ipc-schema";
 export {};
 
 /** Electron <webview> 标签的 JSX 声明（浏览器面板用；事件经 addEventListener 挂，不进 React props） */
@@ -133,6 +133,7 @@ declare global {
       ): Promise<{ conversationId: string; sessionFile: string; cwd: string; sourceFile: string }>;
       worktreeList(): Promise<unknown>;
       worktreeRemove(opts: { conversationId?: string; path?: string; force?: boolean }): Promise<unknown>;
+      mainGitStatus(projectDir: string): Promise<unknown>;
       debugStress(count: number): Promise<number>;
       debugCapture(file: string): Promise<boolean>;
       fsTree(dir?: string): Promise<unknown>;
@@ -203,6 +204,7 @@ declare global {
       onGoalStatus(cb: (state: GoalState | null) => void): () => void;
       // T7.7 代码审查
       reviewRun(): Promise<ReviewResult>;
+      reviewWorkingDiff(): Promise<WorkingDiff>;
       // T7.10 Agent Memory
       memoryList(): Promise<MemoryListResult>;
       memorySave(input: { title: string; body: string; scope?: "global" | "project"; type?: "fact" | "preference" | "reference" }): Promise<MemoryItem | null>;

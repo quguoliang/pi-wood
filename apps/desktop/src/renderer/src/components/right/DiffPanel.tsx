@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { unifiedMergeView } from "@codemirror/merge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "../ui/Icon";
+import { cn } from "@/lib/utils";
 import { openWorkbenchFile, useWorkbenchStore } from "../../stores/workbench-store";
-import type { Finding, ReviewSeverity } from "@pi-wood/ipc-schema";
+import { useSessionStore } from "../../stores/session-store";
+import type { Finding, ReviewSeverity, WorkingDiff, WorkingDiffFile } from "@pi-wood/ipc-schema";
 
 const SEV_STYLE: Record<ReviewSeverity, string> = {
   error: "bg-destructive/15 text-destructive",
@@ -20,6 +22,73 @@ function SeverityBadge({ sev }: { sev: ReviewSeverity }): React.JSX.Element {
   );
 }
 
+/** git porcelain XY → 简短中文标签。 */
+function statusLabel(xy: string): string {
+  if (xy === "??") return "未跟踪";
+  const x = xy[0] ?? " ";
+  const y = xy[1] ?? " ";
+  const c = x !== " " && x !== "?" ? x : y;
+  if (c === "A") return "新增";
+  if (c === "D") return "删除";
+  if (c === "R") return "重命名";
+  if (c === "M") return "修改";
+  return xy.trim() || "变更";
+}
+
+/**
+ * 单文件工作区 diff：受控展开（不用 <details>）。
+ * CodeMirror 合并视图只在展开时挂载——否则在隐藏容器里量到 0 高、既不显示也滚不动。
+ * collapseUnchanged 折叠大段未改动，让改动块直接可见；mergeControls 关掉（只读视图，无逐块回退）。
+ */
+function WorkingFileDiff({ file }: { file: WorkingDiffFile }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-md border border-border/60 bg-background/40">
+      <div
+        className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent/40"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name="chevronRight" className={cn("size-3.5 shrink-0 text-muted-foreground transition", open && "rotate-90")} />
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{statusLabel(file.status)}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-foreground" title={file.path}>{file.path}</span>
+        {(file.added > 0 || file.deleted > 0) && (
+          <span className="shrink-0 font-mono text-[11px]">
+            <span className="text-success">+{file.added}</span> <span className="text-destructive">-{file.deleted}</span>
+          </span>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-6 shrink-0 px-1.5 text-[11px]"
+          onClick={(event) => {
+            event.stopPropagation();
+            openWorkbenchFile(file.path);
+          }}
+        >
+          打开
+        </Button>
+      </div>
+      {open &&
+        (file.binary ? (
+          <p className="border-t border-border/60 px-2 py-1.5 text-[11px] text-muted-foreground">二进制文件，无法在此显示 diff，点「打开」查看。</p>
+        ) : file.truncated ? (
+          <p className="border-t border-border/60 px-2 py-1.5 text-[11px] text-muted-foreground">文件过大，未内联显示，点「打开」查看。</p>
+        ) : (
+          <div className="cm-host h-[320px] overflow-hidden border-t border-border/60">
+            <CodeMirror
+              value={file.after}
+              theme="dark"
+              editable={false}
+              height="100%"
+              extensions={[unifiedMergeView({ original: file.before, mergeControls: false, collapseUnchanged: { margin: 3, minSize: 10 } })]}
+            />
+          </div>
+        ))}
+    </div>
+  );
+}
+
 export function DiffPanel(): React.JSX.Element {
   const diffs = useWorkbenchStore((state) => state.diffs);
   const removeDiff = useWorkbenchStore((state) => state.removeDiff);
@@ -27,6 +96,26 @@ export function DiffPanel(): React.JSX.Element {
   const [running, setRunning] = useState(false);
   const [note, setNote] = useState("");
   const [reviewed, setReviewed] = useState(false);
+
+  // 工作区相对 HEAD 的原始 diff（「查看变更」落点）：不依赖引擎，切项目/切对话即重取
+  // （主进程 getActiveWorkspaceDir 会解析到当前对话的 worktree 或主树，故对话切换也要刷）
+  const activeProject = useSessionStore((s) => s.activeProject);
+  const activeConversationId = useSessionStore((s) => s.activeConversationId);
+  const [wd, setWd] = useState<WorkingDiff | null>(null);
+  const [wdLoading, setWdLoading] = useState(false);
+  const loadWorkingDiff = useCallback(async (): Promise<void> => {
+    setWdLoading(true);
+    try {
+      setWd((await window.pi.reviewWorkingDiff?.()) as WorkingDiff | undefined ?? null);
+    } catch {
+      setWd(null);
+    } finally {
+      setWdLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void loadWorkingDiff();
+  }, [loadWorkingDiff, activeProject, activeConversationId]);
 
   const revert = async (id: string): Promise<void> => {
     try {
@@ -66,6 +155,30 @@ export function DiffPanel(): React.JSX.Element {
 
   return (
     <div className="h-full min-h-0 space-y-2 overflow-auto p-2">
+      {/* 工作区变更（相对 HEAD）：「查看变更」的落点，直接展示仓库当前未提交 diff */}
+      <div className="overflow-hidden rounded-lg border border-border bg-card/40">
+        <div className="flex h-9 items-center gap-2 border-b border-border px-2">
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+            工作区变更
+            {wd?.branch && <span className="ml-1.5 font-normal text-muted-foreground">· {wd.branch}</span>}
+            {wd?.ok && wd.files.length > 0 && <span className="ml-1.5 font-normal text-muted-foreground">· {wd.files.length} 个文件</span>}
+          </span>
+          <Button type="button" size="sm" variant="ghost" onClick={() => void loadWorkingDiff()} disabled={wdLoading}>
+            <Icon name={wdLoading ? "spinner" : "refresh"} className={cn("size-3.5", wdLoading && "animate-spin")} />
+            刷新
+          </Button>
+        </div>
+        {wd && !wd.ok && <p className="px-2 py-2 text-xs text-destructive">{wd.error ?? "读取工作区变更失败"}</p>}
+        {wd?.ok && wd.files.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">工作区相对 HEAD 无改动。</p>}
+        {wd?.ok && wd.files.length > 0 && (
+          <div className="max-h-[45vh] space-y-1 overflow-auto p-2">
+            {wd.files.map((f) => (
+              <WorkingFileDiff key={f.path} file={f} />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* T7.7 AI 审查（对活动项目 git diff HEAD 跑小模型）——独立于下方快照 diff */}
       <div className="overflow-hidden rounded-lg border border-border bg-card/40">
         <div className="flex h-9 items-center gap-2 border-b border-border px-2">
