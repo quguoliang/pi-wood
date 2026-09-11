@@ -65,7 +65,7 @@ function groupModelsByProvider(models: Array<{ provider: string; id: string }>):
   return order.map((provider) => ({ provider, models: byProvider.get(provider) ?? [] }));
 }
 
-const controlBtn = "h-8 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground";
+const controlBtn = "h-8 min-w-0 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground";
 
 /**
  * 引擎未就绪期间（典型＝切对话的 1~2s，engineReady 被置 false 防 prompt 打进旧会话），
@@ -100,8 +100,8 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
   const close = () => setOpen(null);
 
   return (
-    <div className="flex min-h-9 items-center justify-between gap-2 px-1.5 pb-1 pt-2">
-      <div className="flex items-center gap-1">
+    <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1.5 pb-1 pt-2">
+      <div className="flex min-w-0 items-center gap-1">
         <Popover open={open === "add"} onOpenChange={show("add")}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label="添加内容">
@@ -147,7 +147,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
         </Button>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="ml-auto flex min-w-0 items-center gap-1">
         <Popover open={open === "context"} onOpenChange={show("context")}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady}>
