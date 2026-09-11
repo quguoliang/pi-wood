@@ -10,6 +10,7 @@ import {
   mergeBackWorktree,
   parseWorktreeList,
   reconcileOrphans,
+  removeManagedWorktreeByPath,
   removeWorktree,
   worktreeCleanState,
 } from "./worktree-service.ts";
@@ -152,6 +153,42 @@ describe("worktree-service（真 git 仓库 fixture）", () => {
     const again = await reconcileOrphans(main, []);
     assert.ok(!again.some((o) => o.path.includes("user-wt")));
     await removeWorktree(main, conv, { force: true });
+  });
+
+  it("幽灵记录（树目录已被手工删除）必须「列得出也删得掉」（2026-09-11 修）", async () => {
+    const conv = "conv-9-ccdd2233";
+    await ensureWorktree(main, conv);
+    // 模拟「目录被手工删除、git 注册项残留」——旧实现里这类记录进得了孤儿列表，却被
+    // removeManagedWorktreeByPath 的 realpath 前置判定拒绝，导致列表永不收敛、提示反复弹。
+    rmSync(worktreePathFor(main, conv), { recursive: true, force: true });
+    const orphans = await reconcileOrphans(main, []);
+    const target = orphans.find((o) => o.branch === branchFor(conv));
+    assert.ok(target, `幽灵记录应仍被列出：${JSON.stringify(orphans)}`);
+    const r = await removeManagedWorktreeByPath(main, target.path, { force: true });
+    assert.equal(r.ok, true, r.reason);
+    assert.equal(git(["branch", "--list", branchFor(conv)], main).trim(), "", "分支应被一并删掉");
+    const after = await reconcileOrphans(main, []);
+    assert.ok(!after.some((o) => o.branch === branchFor(conv)), "回收后不应再列出");
+  });
+
+  it("跨项目不误列：同仓库内子目录下建的树不算外层项目的孤儿（2026-09-11 修）", async () => {
+    // 真实场景：scratch/test-project 不是独立仓库 → git worktree add 把树建到该子目录、
+    // 却注册进外层仓库。旧实现按分支前缀判定，外层项目会列出它且删不掉。
+    const sub = join(main, "scratch", "test-project");
+    mkdirSync(sub, { recursive: true });
+    const conv = "conv-10-eeff4455";
+    await ensureWorktree(sub, conv); // 子目录非仓库根，但 is-inside-work-tree 为真 → 建树成功
+    const outerOrphans = await reconcileOrphans(main, []);
+    assert.ok(
+      !outerOrphans.some((o) => o.branch === branchFor(conv)),
+      `外层项目不应列出子目录项目的树：${JSON.stringify(outerOrphans.map((o) => o.path))}`,
+    );
+    // 但归它自己的项目管辖，可正常回收
+    const innerOrphans = await reconcileOrphans(sub, []);
+    const target = innerOrphans.find((o) => o.branch === branchFor(conv));
+    assert.ok(target, `子目录项目应列出自己的树：${JSON.stringify(innerOrphans)}`);
+    const r = await removeManagedWorktreeByPath(sub, target.path, { force: true });
+    assert.equal(r.ok, true, r.reason);
   });
 
   it("parseWorktreeList：porcelain 解析（branch/detached/bare）", () => {

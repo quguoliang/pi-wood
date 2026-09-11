@@ -53,15 +53,23 @@ export function isPathLengthOk(path: string, limit = 240): boolean {
 }
 
 /**
- * 该路径/分支是否属于本应用的 worktree 管辖（孤儿对账与回收都以此为判据，不碰用户自建的树）：
- * - 路径在 `<projectDir>/.pi-wood/worktrees/` 之下；
- * - 或分支以 `piwood/` 开头。
+ * 该工作树是否由 **本项目** 管辖（孤儿对账与回收共用同一判据，且两者必须同集合，不碰用户自建的树）：
+ * 路径归一后必须落在 `<projectDir>/.pi-wood/worktrees/` **之内**（严格子路径，`worktrees-old` 这类同前缀兄弟目录不算）。
+ *
+ * ⚠️ 2026-09-11 修：原实现有一条 `if (branch?.startsWith("piwood/")) return true` 的短路，
+ * **只看分支前缀不看路径**。而 `git worktree list` 是按**仓库**枚举的——同一仓库内、位于**子目录**下建的树同样带
+ * `piwood/` 前缀，于是被误算进外层项目的孤儿列表：pi-wood 项目会列出 `apps/desktop/scratch/test-project/`
+ * 下的 7 棵树，而回收守卫 `removeManagedWorktreeByPath` 只按路径校验，必然拒绝 → **列得出、删不掉**。
+ * 分支前缀因此是「必要不充分」条件，不再作为判据。
+ *
+ * 目录已被手工删除的「幽灵记录」（git 仍留注册项）不受影响：其路径字符串仍在管辖前缀内，照常判为管辖，
+ * 由 `removeManagedWorktreeByPath` 的幂等分支 prune 掉。
  */
-export function isManagedWorktree(absPath: string, branch: string | undefined, projectDir: string): boolean {
-  if (branch?.startsWith(WORKTREE_BRANCH_PREFIX)) return true;
-  const norm = (p: string): string => p.replace(/[\\/]+$/, "").toLowerCase();
-  const base = `${norm(projectDir)}${projectDir.includes("\\") ? "\\" : "/"}${WORKTREE_DIRNAME}`.replace(/[\\/]+$/, "");
-  return norm(absPath).startsWith(base);
+export function isManagedWorktree(absPath: string, projectDir: string): boolean {
+  // 统一分隔符后再比较：Windows 反斜杠路径与 `git worktree list` 的斜杠输出一致对待（\→/ 一对一，索引不漂移）
+  const norm = (p: string): string => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const base = `${norm(projectDir)}/${WORKTREE_DIRNAME}`;
+  return norm(absPath).startsWith(`${base}/`);
 }
 
 /**

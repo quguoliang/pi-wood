@@ -59,15 +59,29 @@ describe("isPathLengthOk", () => {
   });
 });
 
-describe("isManagedWorktree（孤儿对账判据：只管自己建的树）", () => {
-  it("分支前缀命中", () => {
-    assert.equal(isManagedWorktree("/elsewhere/wt", "piwood/abc", "/repo"), true);
-  });
+describe("isManagedWorktree（孤儿对账判据：只管本项目建的树）", () => {
   it("路径在管辖目录下命中（大小写不敏感）", () => {
-    assert.equal(isManagedWorktree("/Repo/Proj/.Pi-Wood/Worktrees/abc", undefined, "/repo/proj"), true);
+    assert.equal(isManagedWorktree("/Repo/Proj/.Pi-Wood/Worktrees/abc", "/repo/proj"), true);
+  });
+  it("Windows 反斜杠路径命中", () => {
+    assert.equal(isManagedWorktree("C:\\repo\\proj\\.pi-wood\\worktrees\\abc", "C:\\repo\\proj"), true);
+  });
+  it("⚠ 跨项目误报（2026-09-11 修）：同仓库内子目录下建的树，即便分支带 piwood/ 前缀也不算本项目", () => {
+    // 真实场景：apps/desktop/scratch/test-project 不是独立仓库，git worktree add 把树建到该子目录、
+    // 却注册进外层 pi-wood 仓库。旧实现按分支前缀判定 → 外层项目会列出它、且回收守卫按路径拒绝。
+    assert.equal(
+      isManagedWorktree("/repo/apps/scratch/test-project/.pi-wood/worktrees/abc", "/repo"),
+      false,
+    );
+  });
+  it("同前缀的兄弟目录不算（worktrees-old 不是 worktrees）", () => {
+    assert.equal(isManagedWorktree("/repo/.pi-wood/worktrees-old/abc", "/repo"), false);
+  });
+  it("管辖目录本身不是树", () => {
+    assert.equal(isManagedWorktree("/repo/.pi-wood/worktrees", "/repo"), false);
   });
   it("用户自建的树不管", () => {
-    assert.equal(isManagedWorktree("/repo/other-wt", "feature/x", "/repo"), false);
+    assert.equal(isManagedWorktree("/repo/other-wt", "/repo"), false);
   });
 });
 

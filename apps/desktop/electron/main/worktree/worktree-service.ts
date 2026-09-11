@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   WORKTREE_BRANCH_PREFIX,
@@ -188,11 +188,14 @@ export async function removeManagedWorktreeByPath(
   path: string,
   opts: { force?: boolean } = {},
 ): Promise<RemoveResult> {
-  let realPath = path;
+  let realPath: string;
   try {
     realPath = await realpath(path);
   } catch {
-    return { ok: false, reason: "工作树路径不存在（可能已被回收）" };
+    // 2026-09-11 修：树可能已被手工删除（git 仍留 worktree 注册项 = 幽灵记录）。
+    // 原实现此处直接返回「路径不存在」，于是这类记录**列得出、删不掉**（孤儿列表永不收敛）；
+    // 退回词法归一路径即可通过下面的托管前缀校验，并让 removeWorktreeAt 的幂等分支（prune + 删分支）可达。
+    realPath = resolve(path);
   }
   let managedBase = join(projectDir, WORKTREE_DIRNAME);
   try {
@@ -200,10 +203,14 @@ export async function removeManagedWorktreeByPath(
   } catch {
     return { ok: false, reason: "该项目没有托管工作树目录" };
   }
-  if (!realPath.startsWith(managedBase.endsWith("/") ? managedBase : managedBase + "/")) {
+  // 分隔符归一后比较（Windows 下 join 产出反斜杠、git 输出正斜杠，不归一会误拒）
+  const slashed = (p: string): string => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const baseSlashed = slashed(managedBase);
+  if (!slashed(realPath).startsWith(`${baseSlashed}/`)) {
     return { ok: false, reason: "目标不在托管工作树目录内，拒绝删除" };
   }
-  const shortId = realPath.slice(managedBase.length + 1).split("/")[0];
+  // shortId 从「归一后的路径」截取，避免 managedBase 与 realPath 分隔符不一致时索引漂移
+  const shortId = slashed(realPath).slice(baseSlashed.length + 1).split("/")[0];
   return removeWorktreeAt(projectDir, realPath, `${WORKTREE_BRANCH_PREFIX}${shortId}`, opts);
 }
 
@@ -366,7 +373,7 @@ export async function reconcileOrphans(projectDir: string, activePaths: readonly
   for (const e of parseWorktreeList(list.out)) {
     const path = await realpathSafe(e.path);
     if (active.has(path)) continue;
-    if (!isManagedWorktree(path, e.branch, project)) continue;
+    if (!isManagedWorktree(path, project)) continue;
     out.push({ path, branch: e.branch });
   }
   return out;
