@@ -22,22 +22,35 @@ test("firstLine：去 markdown 装饰、压空白、超长截断", () => {
   assert.ok(long.endsWith("…"));
 });
 
-test("buildNavTicks：只有 user 成刻度，序号连续", () => {
+test("buildNavTicks：user 与 assistant 都成刻度（保持对话序），thinking/tool/system 不成", () => {
   const ticks = buildNavTicks([
     user("u1", "第一个问题"),
     thinking("t1", "想想"),
     assistant("a1", "回答一"),
     user("u2", "第二个问题"),
-    assistant("a2", "回答二"),
+    assistant("a2", "x".repeat(100)),
     sys("s1", "系统提示"),
   ]);
   assert.deepEqual(
-    ticks.map((t) => [t.rowId, t.turnIndex, t.title]),
+    ticks.map((t) => [t.rowId, t.kind, t.turnIndex]),
     [
-      ["u1", 0, "第一个问题"],
-      ["u2", 1, "第二个问题"],
+      ["u1", "user", 0],
+      ["a1", "assistant", 1],
+      ["u2", "user", 2],
+      ["a2", "assistant", 3],
     ],
   );
+  // agent 回复很长：摘要只取正文一部分，超长省略号截断
+  assert.equal(ticks[3].title.length, TITLE_MAX_CHARS);
+  assert.ok(ticks[3].title.endsWith("…"));
+});
+
+test("buildNavTicks：空回复标题为空串，由调用方给占位文案", () => {
+  const ticks = buildNavTicks([user("u1", "问"), assistant("a1", "   ")]);
+  assert.deepEqual(ticks.map((t) => [t.kind, t.title]), [
+    ["user", "问"],
+    ["assistant", ""],
+  ]);
 });
 
 test("tickWidthAt：常态（未 hover）所有刻度一律等长，不做默认高亮", () => {
