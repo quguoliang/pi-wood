@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { GoalState } from "@pi-wood/ipc-schema";
 
@@ -35,15 +35,51 @@ export function writeGoalState(dir: string, state: GoalState): void {
   writeFileSync(statePath(dir, state.sessionId), JSON.stringify(state), "utf-8");
 }
 
-export function readGoalState(dir: string, id: string): GoalState | null {
-  const p = statePath(dir, id);
-  if (!existsSync(p)) return null;
+/** 状态文件的最小完整性校验（坏文件／旧格式一律当不存在，不抛）。 */
+function parseGoalState(raw: string): GoalState | null {
   try {
-    const parsed = JSON.parse(readFileSync(p, "utf-8")) as GoalState;
+    const parsed = JSON.parse(raw) as GoalState;
+    if (!parsed || typeof parsed !== "object") return null;
     return typeof parsed.sessionId === "string" && typeof parsed.status === "string" ? parsed : null;
   } catch {
     return null;
   }
+}
+
+export function readGoalState(dir: string, id: string): GoalState | null {
+  const p = statePath(dir, id);
+  if (!existsSync(p)) return null;
+  try {
+    return parseGoalState(readFileSync(p, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 全量读取 goalsDir 下的所有目标状态（启动预热用）。
+ * 必须能读到「本次进程从未 load 过」的目标——否则 T8.5 的 goal 互斥在应用重启后
+ * 对落盘遗留的 active 目标失明，落盘层可并存两个 active（成本乘积失控）。
+ * 目录不存在／坏文件／读取竞态一律跳过且不抛：预热是旁路，不得阻断启动。
+ */
+export function readAllGoalStates(dir: string): GoalState[] {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const out: GoalState[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".state.json")) continue;
+    try {
+      const st = parseGoalState(readFileSync(join(dir, name), "utf-8"));
+      if (st) out.push(st);
+    } catch {
+      /* 读取竞态：跳过 */
+    }
+  }
+  return out;
 }
 
 export function clearGoal(dir: string, id: string): void {

@@ -12,6 +12,7 @@ import { planGoalBegin } from "../engine/concurrency-gates.ts";
 import {
   clearGoal,
   goalsDir,
+  readAllGoalStates,
   readGoalState,
   readObjective,
   writeGoalState,
@@ -46,6 +47,23 @@ export function configureGoalRuntime(opts: {
 }): void {
   dir = goalsDir(opts.appDataDir);
   sendToRenderer = opts.sendToRenderer;
+  // 「重配 = 从磁盘重建运行时视图」：先清空内存视图（= 模拟进程重启），再按 goalsDir 全量预热。
+  cache.clear();
+  warmCacheFromDisk();
+}
+
+/**
+ * 启动预热：把 goalsDir 里落盘的全部目标状态读进 cache。
+ * **这是 T8.5 goal 互斥跨重启生效的前提**——`load()` 只在某会话被 getGoalState/onGoalSettled
+ * 触达时才按需装载，不预热则重启后 cache 只装本进程碰过的会话，落盘遗留的 active 目标
+ * 对 `listActiveGoalSessions()` 不可见 ⇒ 别处开 goal 既不被拦截、前者也不会被自动暂停
+ * ⇒ 落盘层并存两个 active（正是互斥要防的 token 成本乘积失控）。
+ * 内存条目更权威（可能已含未落盘的更新），故不覆盖已存在的会话。
+ */
+function warmCacheFromDisk(): void {
+  for (const st of readAllGoalStates(dir)) {
+    if (!cache.has(st.sessionId)) cache.set(st.sessionId, st);
+  }
 }
 
 function load(sessionId: string): GoalState | null {

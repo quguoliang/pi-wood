@@ -19,7 +19,8 @@ import type { GoalState } from "@pi-wood/ipc-schema";
  * T7.5 目标模式 headless 探针（仿 plugin-probe）。
  * 不建窗口、不加载引擎/真实模型：注入 fake GoalAdapter + 脚本 Auditor，驱动 goal-runtime 跑确定性全链路。
  * 断言：① 自动续跑发 prompt ② token 预算耗尽 → budgetLimited 停 ③ 轮次上限 → blocked 停
- *      ④ 审计 complete → 终态 ⑤ pause→settle 幂等 no-op→resume 回 active ⑥ 目标正文/状态落文件。
+ *      ④ 审计 complete → 终态 ⑤ pause→settle 幂等 no-op→resume 回 active ⑥ 目标正文/状态落文件
+ *      ⑦ 用户 abort 本轮 → 暂停 ⑧ T8.5 互斥跨重启仍生效（落盘遗留 active 目标不得遁形）
  * 触发：electron out/main/index.js --goal-probe   （EXIT 0=全过 / 1=失败）
  */
 export function isGoalProbeMode(): boolean {
@@ -111,6 +112,24 @@ export async function runGoalProbe(): Promise<void> {
     await onGoalSettled(adapter, "（被中断）", { aborted: true, auditor: makeAuditor("continue") });
     const sAbort = getGoalState(sid) as GoalState;
     check("abort→暂停", sAbort.status === "paused", `status=${sAbort.status}`);
+
+    // ⑧ T8.5 互斥跨重启：落盘遗留的 active 目标必须仍能拦住新目标。
+    // 「模拟重启」= 重配 runtime（清内存视图 + 按 goalsDir 重新预热）；若预热缺失，
+    // 遗留 active 对 listActiveGoalSessions() 不可见 → 两对话可在盘上并存 active（成本乘积失控）。
+    clearGoalFor(sid);
+    beginGoal("legacy-session", "重启前遗留的目标", { tokenBudget: 1_000_000, maxTurns: 20, initialTotalTokens: 0 });
+    configureGoalRuntime({ appDataDir: dir, sendToRenderer: () => {} });
+    let mutexBlocked = false;
+    try {
+      beginGoal("another-session", "新会话的目标", { tokenBudget: 1_000_000, maxTurns: 20, initialTotalTokens: 0 });
+    } catch {
+      mutexBlocked = true;
+    }
+    check(
+      "跨重启互斥仍生效",
+      mutexBlocked,
+      mutexBlocked ? "遗留 active 目标已拦截新目标" : "遗留 active 目标未被计入互斥（盘上可并存两个 active）",
+    );
   } catch (e) {
     line("!", `探针异常：${e instanceof Error ? e.stack ?? e.message : String(e)}`);
     results.push({ name: "异常", pass: false, detail: String(e) });

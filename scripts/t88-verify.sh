@@ -33,6 +33,9 @@ RUN() { # RUN <logname> <cmd...>
 # ⚠ 模式必须锁定本项目路径——宽松的 "Electron.app/..." 会误杀用户其它 Electron 应用（如 Trae CN）
 pkill -9 -f "pi-wood.*/node_modules/.pnpm/electron@.*/dist/Electron.app/Contents/MacOS/Electron" 2>/dev/null || true
 pkill -9 -f "pi-wood.*/electron-vite" 2>/dev/null || true
+# 打包产物形态（第 6 步打包冒烟会拉起它，且它不匹配上面两条）——残留会占住单例锁，
+# 让第 4b/5 步的带窗探针以 exit 2 响亮失败。宁可在这里清掉，也不要让门禁红得莫名其妙。
+pkill -9 -f "pi-wood.*/release/mac-[^/]*/pi-wood.app/Contents/MacOS/pi-wood" 2>/dev/null || true
 sleep 1
 
 # 0.5) 单测清单覆盖对账：desktop 的 test 脚本是显式文件清单，漏登记 = 静默漏测

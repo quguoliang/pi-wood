@@ -212,9 +212,40 @@ function createWindow(): void {
 const PROBE_ENGINE = isEngineProcessProbeMode();
 // T8.1 多对话探针同理：无窗、跳锁、跑完 app.exit(0|1)
 const PROBE_CONVERSATION = isConversationProbeMode();
-const gotLock = PROBE_ENGINE || PROBE_CONVERSATION || app.requestSingleInstanceLock();
+/**
+ * 全部「无窗 + 自检即退」探针（不建窗、不进正常启动流程）。
+ * 单例锁的语义是「同一时刻只允许一个**应用实例**」，而这类探针不碰窗口／渲染层单例，
+ * 与用户开着的 dev 实例并存无副作用 ⇒ 一律跳锁。否则它们在已有实例时会落到下面的 app.quit()，
+ * 静默 exit 0 且零输出——一条断言都没跑，却看起来像「全部通过」。
+ * 带窗探针（--probe-extensions／--ui-chat／--ui-latency-probe／--context-tree-ui-probe／--capture）
+ * 需要独占窗口，仍走单例锁，但改为「响亮拒绝」而非静默退出。
+ */
+const WINDOWLESS_PROBES: ReadonlyArray<readonly [string, boolean]> = [
+  ["--plugin-probe", isPluginProbeMode()],
+  ["--goal-probe", isGoalProbeMode()],
+  ["--memory-probe", isMemoryProbeMode()],
+  ["--engine-process-probe", PROBE_ENGINE],
+  ["--conversation-probe", PROBE_CONVERSATION],
+  ["--concurrency-probe", process.argv.includes("--concurrency-probe")],
+  ["--latency-probe", process.argv.includes("--latency-probe")],
+  ["--workspace-scope-probe", process.argv.includes("--workspace-scope-probe")],
+  ["--approval-probe", isApprovalProbeMode()],
+  ["--context-tree-probe", isContextTreeProbeMode()],
+];
+const windowlessProbe = WINDOWLESS_PROBES.find(([, on]) => on)?.[0];
+/** 本次是否为探针调用（含带窗探针 / --capture）——用于把「静默 no-op」升级为「响亮失败」。 */
+const probeFlagNow = process.argv.slice(1).find((a) => a.startsWith("--") && (a.includes("probe") || a === "--capture"));
+const gotLock = windowlessProbe !== undefined || app.requestSingleInstanceLock();
 if (!gotLock) {
-  app.quit();
+  if (probeFlagNow) {
+    // 退出码 2 = 「一条断言都没跑」，与探针自身的 0=全过 / 1=失败区分开，杜绝把空跑读成通过。
+    console.error(
+      `[probe] 已有 pi-wood 实例持有单例锁，${probeFlagNow} 需要独占窗口，本次未运行任何断言（exit 2）。请关闭应用后重试，或改用无窗探针（如 --goal-probe）。`,
+    );
+    app.exit(2);
+  } else {
+    app.quit();
+  }
 } else {
   debugLog(`boot: gotLock=true probe=${isExtensionProbeMode()}`);
   app.on("second-instance", () => {
