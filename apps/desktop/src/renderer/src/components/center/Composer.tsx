@@ -1,15 +1,18 @@
 import { PromptSuggestion } from "@pi-wood/ui-kit";
+import { useState } from "react";
 import { ComposerControls } from "./ComposerControls";
 import { ProjectPicker } from "./ProjectPicker";
 import { ProjectBranchChip } from "./GitBranchChip";
 import { Icon } from "../ui/Icon";
 import { greeting } from "../../lib/time";
 import { isLargePaste } from "../../lib/utils";
+import { useSessionStore } from "../../stores/session-store";
 import { useComposerController, type AttachmentItem, type ComposerController } from "../../hooks/use-composer-controller";
 import { useGoalStore } from "../../stores/goal-store";
 import { usePendingContextStore, type PendingSnippet } from "../../stores/pending-context-store";
 import { openWorkbenchFile } from "../../stores/workbench-store";
 import { AttachmentPreviewBody, ChipPreview, SnippetPreviewBody } from "./ChipPreview";
+import { ImagePreviewDialog, isUnderProject } from "./ImagePreviewDialog";
 
 const quickPrompts = [
   "检查这个项目当前的状态和主要问题",
@@ -18,12 +21,17 @@ const quickPrompts = [
   "解释这个项目的结构和核心流程",
 ];
 
-/** 附件芯片（文件/图片）：hover 预览（图片缩略图 / 文件信息），× 移除 */
+/** 附件芯片（文件/图片）：hover 预览（图片缩略图 / 文件信息）；图片可点——项目内图片进文件面板，
+ *  其余（粘贴暂存等）弹独立图片预览器；× 移除 */
 function AttachmentChip({ item, onRemove }: { item: AttachmentItem; onRemove: () => void }): React.JSX.Element {
+  const activeProject = useSessionStore((s) => s.activeProject);
+  const [previewing, setPreviewing] = useState(false);
+  const isImage = item.kind === "image";
   return (
     <ChipPreview
       className="flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
       ariaLabel={`附件 ${item.name}`}
+      onClick={isImage ? () => (isUnderProject(item.path, [activeProject]) ? openWorkbenchFile(item.path) : setPreviewing(true)) : undefined}
       preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
     >
       {item.kind === "image" && item.thumb ? (
@@ -32,6 +40,9 @@ function AttachmentChip({ item, onRemove }: { item: AttachmentItem; onRemove: ()
         <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5 shrink-0" />
       )}
       <span className="truncate">{item.name}</span>
+      {isImage && (
+        <ImagePreviewDialog target={previewing ? { name: item.name, path: item.path, thumb: item.thumb } : null} onClose={() => setPreviewing(false)} />
+      )}
       <button
         type="button"
         onClick={(e) => {

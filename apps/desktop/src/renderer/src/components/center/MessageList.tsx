@@ -3,7 +3,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, Check, ChevronDown, CircleCheck, CircleX, Copy, GitFork, OctagonX, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Icon } from "../ui/Icon";
 import { Markdown, ThinkingCard, ToolCard, createMarkdownComponents } from "@pi-wood/ui-kit";
 import { activeSlice, useActiveConversation, useSessionStore, type ConversationItem, type MessageAttachment, type MessageSnippet } from "../../stores/session-store";
@@ -17,19 +16,34 @@ import { publishOutlineAnchor } from "../../lib/outline-bus";
 import { ToolGroup } from "./ToolGroup";
 import { ConversationAssist } from "./ConversationAssist";
 import { AttachmentPreviewBody, ChipPreview, SnippetPreviewBody } from "./ChipPreview";
+import { ImagePreviewDialog, isUnderProject } from "./ImagePreviewDialog";
 import { openWorkbenchFile } from "../../stores/workbench-store";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------ 单条渲染 ------------------------------ */
 
-/** 气泡内的附件芯片：图片给缩略图（点击大图预览）；hover 统一走 ChipPreview 卡片 */
-function BubbleAttachmentChip({ item, onPreview }: { item: MessageAttachment; onPreview: (item: MessageAttachment) => void }): React.JSX.Element {
+/**
+ * 气泡内的附件芯片点击路由：
+ * - 图片且在当前项目（或其 worktree）下 → 右栏文件面板（FilesPanel 有图片渲染通路）；
+ * - 其余图片（粘贴暂存、项目外）→ **独立图片预览器**（ImagePreviewDialog），不与文件查看混用；
+ * - 文本/其他文件 → 右栏编辑器（原行为）。
+ * hover 仍走 ChipPreview 卡片做快速瞥一眼。
+ */
+function BubbleAttachmentChip({ item }: { item: MessageAttachment }): React.JSX.Element {
   const isImage = item.kind === "image";
+  const activeProject = useSessionStore((s) => s.activeProject);
+  const activeConversationId = useSessionStore((s) => s.activeConversationId);
+  const worktreeRoot = useConversationsStore((s) => s.rows.find((r) => r.id === activeConversationId)?.worktreePath);
+  const [previewing, setPreviewing] = useState(false);
+  const underProject = isImage && isUnderProject(item.path, [worktreeRoot, activeProject]);
   return (
     <ChipPreview
       className="flex h-7 max-w-52 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
       ariaLabel={`附件 ${item.name}`}
-      onClick={() => (isImage && item.thumb ? onPreview(item) : openWorkbenchFile(item.path))}
+      onClick={() => {
+        if (isImage && !underProject) setPreviewing(true);
+        else openWorkbenchFile(item.path);
+      }}
       preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
     >
       {isImage && item.thumb ? (
@@ -38,6 +52,12 @@ function BubbleAttachmentChip({ item, onPreview }: { item: MessageAttachment; on
         <Icon name={isImage ? "image" : "file"} className="size-3.5 shrink-0" />
       )}
       <span className="truncate">{item.name}</span>
+      {isImage && (
+        <ImagePreviewDialog
+          target={previewing ? { name: item.name, path: item.path, thumb: item.thumb } : null}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
     </ChipPreview>
   );
 }
@@ -72,25 +92,17 @@ const UserBubble = memo(function UserBubble({
   snippets?: MessageSnippet[];
 }) {
   // ZCode 用户消息形态：rounded-xl + 右上角收尖（rounded-tr-xs）+ 描边卡 + 限宽 max-w-xl
-  const [preview, setPreview] = useState<MessageAttachment | null>(null);
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] rounded-xl rounded-tr-xs border border-border bg-surface px-4 py-3 text-[14.5px] leading-relaxed text-secondary-foreground">
         {(attachments?.length || snippets?.length) && (
           <div className={cn("flex flex-wrap gap-1.5", text.trim() && "mb-2")} aria-label="本条消息的附件与引用">
-            {attachments?.map((a) => <BubbleAttachmentChip key={a.path} item={a} onPreview={setPreview} />)}
+            {attachments?.map((a) => <BubbleAttachmentChip key={a.path} item={a} />)}
             {snippets?.map((s) => <BubbleSnippetChip key={`${s.path}:${s.start}-${s.end}`} snippet={s} />)}
           </div>
         )}
         {text.trim() ? <div className="whitespace-pre-wrap break-words">{text}</div> : null}
       </div>
-      {/* 图片大图预览（点击缩略图芯片打开） */}
-      <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="max-w-3xl p-3" aria-label={preview?.name ?? "图片预览"}>
-          {preview?.thumb ? <img src={preview.thumb} alt={preview.name} className="max-h-[75vh] w-auto self-center rounded-md object-contain" /> : null}
-          <p className="truncate text-center text-xs text-muted-foreground">{preview?.name}</p>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 });
