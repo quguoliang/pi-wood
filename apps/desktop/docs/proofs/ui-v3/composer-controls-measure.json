@@ -1,0 +1,125 @@
+[
+  {
+    "target": 860,
+    "rowW": 846,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "每次询问",
+      "目标",
+      "1%",
+      "deepseek-v4-flash",
+      "关闭"
+    ],
+    "widths": "添加内容:32 | Agent 权限:112 | 目标:66 | 1%:59 | deepseek-v4-:149 | 关闭:88 | 发送消息:32"
+  },
+  {
+    "target": 760,
+    "rowW": 746,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "每次询问",
+      "目标",
+      "1%",
+      "deepseek-v4-flash",
+      "关闭"
+    ],
+    "widths": "添加内容:32 | Agent 权限:112 | 目标:66 | 1%:59 | deepseek-v4-:149 | 关闭:88 | 发送消息:32"
+  },
+  {
+    "target": 700,
+    "rowW": 686,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "每次询问",
+      "1%",
+      "deepseek-v4-flash",
+      "关闭"
+    ],
+    "widths": "添加内容:32 | Agent 权限:112 | 目标:36 | 1%:59 | deepseek-v4-:149 | 关闭:88 | 发送消息:32"
+  },
+  {
+    "target": 620,
+    "rowW": 606,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "1%",
+      "deepseek-v4-flash",
+      "关闭"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标:36 | 1%:59 | deepseek-v4-:149 | 关闭:88 | 发送消息:32"
+  },
+  {
+    "target": 540,
+    "rowW": 526,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "1%",
+      "deepseek-v4-flash"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标:36 | 1%:59 | deepseek-v4-:149 | 关闭:36 | 发送消息:32"
+  },
+  {
+    "target": 460,
+    "rowW": 446,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "1%",
+      "deepseek-v4-flash"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标:36 | 1%:59 | deepseek-v4-:149 | 关闭:36 | 发送消息:32"
+  },
+  {
+    "target": 380,
+    "rowW": 366,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "deepseek-v4-flash"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标:36 | 1%:36 | deepseek-v4-:116 | 关闭:36 | 发送消息:32"
+  },
+  {
+    "target": 300,
+    "rowW": 286,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "deepseek-v4-flash"
+    ],
+    "widths": "添加内容:32 | Agent 权限:24 | 目标:24 | 1%:24 | deepseek-v4-:94 | 关闭:24 | 发送消息:32"
+  },
+  {
+    "target": 240,
+    "rowW": 226,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "deepseek-v4-flash"
+    ],
+    "widths": "添加内容:32 | Agent 权限:24 | 目标:24 | 1%:24 | deepseek-v4-:34 | 关闭:24 | 发送消息:32"
+  }
+]

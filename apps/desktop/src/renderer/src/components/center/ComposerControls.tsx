@@ -65,7 +65,59 @@ function groupModelsByProvider(models: Array<{ provider: string; id: string }>):
   return order.map((provider) => ({ provider, models: byProvider.get(provider) ?? [] }));
 }
 
-const controlBtn = "h-8 min-w-0 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground";
+/**
+ * 窄宽度下的「只留图标」档位。
+ *
+ * **必须用容器查询而不是视口断点**：本行宽度由中栏决定，中栏是可拖拽缩放的面板
+ * （`minSize 25%`），与窗口宽度没有固定比例 ⇒ `sm:`／`md:` 一类视口断点会在同一个窗口里
+ * 时对时错。`@min-[...]` 按本行自身宽度生效，拖拽分割条时实时重排。
+ *
+ * **阈值基准是内容盒**（实测：rowW 746 时查询按 734 判定，差值是本行 `px-1.5` 的 12px）——
+ * 即「留给子元素的可用宽度」，正是该关心的量。
+ *
+ * 档位由窄到宽依次放行：上下文 % → 思考级别 → 权限文案 → 目标文案。
+ * 排序依据是「单位宽度的信息量」：百分比是数字、思考级别是 1~2 字，都比「每次询问」这类
+ * 四字词组便宜；「目标」是纯开关，图标（brain）自解释，故最后放行。阈值均留有余量，
+ * 使模型名在各档位保持完整（实测直到内容盒 300px 才收窄）。
+ *
+ * **模型名刻意不设档位**——它是这行里信息量最高的文字，靠 `shrink + truncate` 兜底，
+ * 是唯一允许被压缩的元素；这样即使容器极窄也只会「模型名变短」，不会换行。
+ */
+const showAt = {
+  context: "@min-[420px]:inline",
+  thinking: "@min-[520px]:inline",
+  permission: "@min-[600px]:inline",
+  goal: "@min-[680px]:inline",
+} as const;
+
+/** 与 `showAt` 同档的图标（chevron）：收起时只留主图标，不显示下拉箭头 */
+const showIconAt = {
+  thinking: "@min-[520px]:block",
+  permission: "@min-[600px]:block",
+} as const;
+
+/**
+ * 极窄档（内容盒 < 320px ＝ 中栏 `minSize` 240px 附近；实测此处原本溢出 38px、发送按钮会被裁）。
+ * 只压密度、**不隐藏任何控件**——收紧行内边距与间距把宽度让给模型名；刻意不在此档隐藏
+ * `+`／上下文等控件：那是「功能静默消失」，比拥挤更糟，也违反本项目「不静默降级」的口径。
+ *
+ * 两个坑（实测踩到，改这里前先读）：
+ * ① **必须叠 `has-[>svg]:` 才压得住**：`Button size="sm"` 自带 `has-[>svg]:px-2.5`，
+ *    而 `:has()` 计入特异性 ⇒ 它是 (0,2,0)，普通容器查询类只有 (0,1,0)，**光靠源码顺序压不过**。
+ *    故同一档要连写 `px-1`（压 `px-3`）与 `has-[>svg]:px-1`（压 `has-[>svg]:px-2.5`）两条。
+ * ② **容器查询不能作用于容器自身**：本行自身带 `@container/composer`，故加在本行上的
+ *    `@max-[...]:px-1` 是死规则（找不到祖先容器）——行自身的密度只能由子元素那层解决，
+ *    这也是这里只收紧分组间距、不动行内边距的原因。
+ */
+const compact = "@max-[320px]:px-1 @max-[320px]:has-[>svg]:px-1";
+/** 分组间距同样只在极窄档收紧（作用于本行的后代，查询生效） */
+const compactGroup = "@max-[320px]:gap-0.5";
+
+/** 底栏芯片的统一密度（`compact` 在极窄档收紧左内边距） */
+const controlBtn = cn(
+  "h-8 min-w-0 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground",
+  compact,
+);
 
 /**
  * 引擎未就绪期间（典型＝切对话的 1~2s，engineReady 被置 false 防 prompt 打进旧会话），
@@ -99,9 +151,10 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
   const show = (menu: typeof open) => (v: boolean) => setOpen(v ? menu : null);
   const close = () => setOpen(null);
 
+  // 刻意不换行：宽度不足时缩文字（见 showAt），而不是把右半组挤到第二行
   return (
-    <div className="flex min-h-9 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1.5 pb-1 pt-2">
-      <div className="flex min-w-0 items-center gap-1">
+    <div className="@container/composer flex min-h-9 items-center justify-between gap-x-2 px-1.5 pb-1 pt-2">
+      <div className={cn("flex min-w-0 shrink-0 items-center gap-1", compactGroup)}>
         <Popover open={open === "add"} onOpenChange={show("add")}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground" aria-label="添加内容">
@@ -122,7 +175,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
         <Popover open={open === "permission"} onOpenChange={show("permission")}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" disabled={!props.engineReady} className={cn(controlBtn, "text-warning hover:text-warning", !props.engineReady && keepEnabledLook)} aria-label="Agent 权限">
-              <Icon name="shield" /><span className="max-w-[9rem] truncate">{permission.label}</span><Icon name="chevronDown" />
+              <Icon name="shield" /><span className={cn("hidden max-w-[9rem] truncate", showAt.permission)}>{permission.label}</span><Icon name="chevronDown" className={cn("hidden", showIconAt.permission)} />
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="start" className="w-80 gap-0.5 p-1.5">
@@ -143,15 +196,15 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
           className={cn(controlBtn, props.goalArm && "bg-primary/15 text-primary hover:text-primary", !props.engineReady && keepEnabledLook)}
         >
           <Icon name="brain" />
-          <span>{props.goalArm ? "目标模式开" : "目标"}</span>
+          <span className={cn("hidden", showAt.goal)}>{props.goalArm ? "目标模式开" : "目标"}</span>
         </Button>
       </div>
 
-      <div className="ml-auto flex min-w-0 items-center gap-1">
+      <div className={cn("ml-auto flex min-w-0 items-center gap-1", compactGroup)}>
         <Popover open={open === "context"} onOpenChange={show("context")}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady}>
-              <Icon name="context" /><span>{usage?.percent == null ? "上下文" : `${Math.round(usage.percent)}%`}</span>
+              <Icon name="context" /><span className={cn("hidden", showAt.context)}>{usage?.percent == null ? "上下文" : `${Math.round(usage.percent)}%`}</span>
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="end" className="w-72 gap-0.5 p-1.5">
@@ -169,7 +222,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "model"} onOpenChange={show("model")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem]", !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming}>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem] shrink", !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming}>
               <span className="truncate">{currentModel}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>
@@ -196,7 +249,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
         <Popover open={open === "thinking"} onOpenChange={show("thinking")}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1}>
-              <Icon name="brain" /><span>{currentThinking}</span><Icon name="chevronDown" />
+              <Icon name="brain" /><span className={cn("hidden", showAt.thinking)}>{currentThinking}</span><Icon name="chevronDown" className={cn("hidden", showIconAt.thinking)} />
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="end" className="w-44 gap-0.5 p-1.5">

@@ -1,0 +1,125 @@
+[
+  {
+    "target": 860,
+    "rowW": 846,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "高风险时询问",
+      "目标模式开",
+      "32%",
+      "claude-sonnet-4-5-20250929",
+      "很高"
+    ],
+    "widths": "添加内容:32 | Agent 权限:136 | 目标模式开:102 | 32%:68 | claude-sonne:192 | 很高:88 | 发送消息:32"
+  },
+  {
+    "target": 760,
+    "rowW": 746,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "高风险时询问",
+      "目标模式开",
+      "32%",
+      "claude-sonnet-4-5-20250929",
+      "很高"
+    ],
+    "widths": "添加内容:32 | Agent 权限:136 | 目标模式开:102 | 32%:68 | claude-sonne:192 | 很高:88 | 发送消息:32"
+  },
+  {
+    "target": 700,
+    "rowW": 686,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "高风险时询问",
+      "32%",
+      "claude-sonnet-4-5-20250929",
+      "很高"
+    ],
+    "widths": "添加内容:32 | Agent 权限:136 | 目标模式开:36 | 32%:68 | claude-sonne:192 | 很高:88 | 发送消息:32"
+  },
+  {
+    "target": 620,
+    "rowW": 606,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "32%",
+      "claude-sonnet-4-5-20250929",
+      "很高"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标模式开:36 | 32%:68 | claude-sonne:192 | 很高:88 | 发送消息:32"
+  },
+  {
+    "target": 540,
+    "rowW": 526,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "32%",
+      "claude-sonnet-4-5-20250929"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标模式开:36 | 32%:68 | claude-sonne:192 | 很高:36 | 发送消息:32"
+  },
+  {
+    "target": 460,
+    "rowW": 446,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "32%",
+      "claude-sonnet-4-5-20250929"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标模式开:36 | 32%:68 | claude-sonne:164 | 很高:36 | 发送消息:32"
+  },
+  {
+    "target": 380,
+    "rowW": 366,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "claude-sonnet-4-5-20250929"
+    ],
+    "widths": "添加内容:32 | Agent 权限:36 | 目标模式开:36 | 32%:36 | claude-sonne:116 | 很高:36 | 发送消息:32"
+  },
+  {
+    "target": 300,
+    "rowW": 286,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "claude-sonnet-4-5-20250929"
+    ],
+    "widths": "添加内容:32 | Agent 权限:24 | 目标模式开:24 | 32%:24 | claude-sonne:94 | 很高:24 | 发送消息:32"
+  },
+  {
+    "target": 240,
+    "rowW": 226,
+    "rowH": 44,
+    "overflow": 0,
+    "oneLine": true,
+    "clippedPx": 0,
+    "labels": [
+      "claude-sonnet-4-5-20250929"
+    ],
+    "widths": "添加内容:32 | Agent 权限:24 | 目标模式开:24 | 32%:24 | claude-sonne:34 | 很高:24 | 发送消息:32"
+  }
+]
