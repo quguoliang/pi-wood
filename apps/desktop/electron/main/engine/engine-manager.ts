@@ -167,8 +167,27 @@ async function latestUserMessageRef(conversationId: string): Promise<{ sessionFi
   }
 }
 
-/** 当前 active 对话所属项目（git 信息、附件相对路径、快照都按它取） */
+/** 当前 active 对话所属项目（git 信息、附件相对路径、快照都按它取）。
+ *  惰性启动后 fs:* 等域在引擎拉起前也可能取数（文件面板随启动恢复），
+ *  故持久化「上次工作区」到磁盘做初始回退（目录已消失则不恢复）。 */
+const LAST_WORKSPACE_FILE = join(DEFAULT_APP_DATA_DIR, "last-workspace.txt");
 let activeProject = "";
+try {
+  const restored = readFileSync(LAST_WORKSPACE_FILE, "utf8").trim();
+  if (restored && existsSync(restored)) activeProject = restored;
+} catch {
+  /* 首次运行 / 读不到 → 空，fs 域按「未选择项目」报错 */
+}
+function setActiveProjectDir(dir: string): void {
+  if (activeProject === dir) return;
+  activeProject = dir;
+  try {
+    mkdirSync(dirname(LAST_WORKSPACE_FILE), { recursive: true });
+    writeFileSync(LAST_WORKSPACE_FILE, dir, "utf8");
+  } catch {
+    /* 持久化失败不影响主流程 */
+  }
+}
 /** 按项目的 diff 快照服务：后台对话的 edit/write 事件不能再写进「当时前台项目」的快照里 */
 const snapshotsByProject = new Map<string, SnapshotService>();
 /** 宿主工具实现表（child 侧只有代理工具，执行回到这里） */
@@ -977,7 +996,7 @@ export async function ensureEngine(
     // T3.2：钥匙串密钥 → 环境变量。必须在 fork 之前（child 直接继承 env，密钥不落 child 磁盘）。
     reinjectProviderEnv();
     result = await ensureConversation(projectDir, opts);
-    activeProject = projectDir;
+    setActiveProjectDir(projectDir);
     snapshotsFor(activeConversation()?.worktreePath ?? projectDir); // T8.6：快照按对话 cwd（树）归集
     // T8.5：btw 已 per-对话化、随对话 close 释放；换项目不再统一关停（旧单槽语义作废）
   });
@@ -1294,10 +1313,12 @@ export function initEngineIpc(): void {
   // 项目在本会话内没有已注册对话 → 回空，渲染层进草稿态（首次发送走 createConversation）。
   ipcMain.handle("engine:peekConversation", (_e, raw: unknown) => {
     const { projectDir } = StartArgSchema.parse(raw);
+    // 无条件先落工作区：fs:* 域在引擎拉起前也要能解析项目目录（文件面板随启动恢复就取数）。
+    // 「本项目还没有内存内对话」是合法冷态——只认领工作区、不认领对话，也不 spawn。
+    setActiveProjectDir(projectDir);
     const h = conversationForProject(projectDir);
     if (!h || h.record.status === "dead") return { conversationId: undefined };
     setActiveConversation(h.id);
-    activeProject = projectDir;
     return { conversationId: h.id };
   });
 

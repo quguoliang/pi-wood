@@ -37,28 +37,32 @@ function BubbleAttachmentChip({ item }: { item: MessageAttachment }): React.JSX.
   const [previewing, setPreviewing] = useState(false);
   const underProject = isImage && isUnderProject(item.path, [worktreeRoot, activeProject]);
   return (
-    <ChipPreview
-      className="flex h-7 max-w-52 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
-      ariaLabel={`附件 ${item.name}`}
-      onClick={() => {
-        if (isImage && !underProject) setPreviewing(true);
-        else openWorkbenchFile(item.path);
-      }}
-      preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
-    >
-      {isImage && item.thumb ? (
-        <img src={item.thumb} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
-      ) : (
-        <Icon name={isImage ? "image" : "file"} className="size-3.5 shrink-0" />
-      )}
-      <span className="truncate">{item.name}</span>
+    <>
+      <ChipPreview
+        className="flex h-7 max-w-52 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
+        ariaLabel={`附件 ${item.name}`}
+        onClick={() => {
+          if (isImage && !underProject) setPreviewing(true);
+          else openWorkbenchFile(item.path);
+        }}
+        preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
+      >
+        {isImage && item.thumb ? (
+          <img src={item.thumb} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
+        ) : (
+          <Icon name={isImage ? "image" : "file"} className="size-3.5 shrink-0" />
+        )}
+        <span className="truncate">{item.name}</span>
+      </ChipPreview>
+      {/* 预览器必须是 ChipPreview 的**兄弟**而非子节点：React portal 事件沿组件树冒泡，
+          嵌在里面时点 X 的 click 会冒泡回芯片 onClick 把预览器重新打开（= 关不掉） */}
       {isImage && (
         <ImagePreviewDialog
           target={previewing ? { name: item.name, path: item.path, thumb: item.thumb } : null}
           onClose={() => setPreviewing(false)}
         />
       )}
-    </ChipPreview>
+    </>
   );
 }
 

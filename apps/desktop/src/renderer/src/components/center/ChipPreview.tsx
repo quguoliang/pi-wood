@@ -43,6 +43,15 @@ export function ChipPreview({
   };
   const keep = (): void => cancelTimers();
 
+  /** 芯片点击：先主动收掉 hover 卡再透传。点击芯片常会开独立预览器（modal 把 body 设为
+   *  pointer-events:none）——此后锚点的 mouseleave 永远不会触发，hover 卡的关闭定时器
+   *  不启动，卡片会僵在原地「关不掉」（用户报障）。 */
+  const activate = (): void => {
+    cancelTimers();
+    setOpen(false);
+    onClick?.();
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
@@ -51,7 +60,7 @@ export function ChipPreview({
           aria-label={ariaLabel}
           onMouseEnter={scheduleOpen}
           onMouseLeave={scheduleClose}
-          onClick={onClick}
+          onClick={activate}
           role={onClick ? "button" : undefined}
         >
           {children}

@@ -28,33 +28,36 @@ function AttachmentChip({ item, onRemove }: { item: AttachmentItem; onRemove: ()
   const [previewing, setPreviewing] = useState(false);
   const isImage = item.kind === "image";
   return (
-    <ChipPreview
-      className="flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
-      ariaLabel={`附件 ${item.name}`}
-      onClick={isImage ? () => (isUnderProject(item.path, [activeProject]) ? openWorkbenchFile(item.path) : setPreviewing(true)) : undefined}
-      preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
-    >
-      {item.kind === "image" && item.thumb ? (
-        <img src={item.thumb} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
-      ) : (
-        <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5 shrink-0" />
-      )}
-      <span className="truncate">{item.name}</span>
+    <>
+      <ChipPreview
+        className="flex h-7 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 text-xs text-muted-foreground"
+        ariaLabel={`附件 ${item.name}`}
+        onClick={isImage ? () => (isUnderProject(item.path, [activeProject]) ? openWorkbenchFile(item.path) : setPreviewing(true)) : undefined}
+        preview={<AttachmentPreviewBody name={item.name} path={item.path} size={item.size} kind={item.kind} thumb={item.thumb} />}
+      >
+        {item.kind === "image" && item.thumb ? (
+          <img src={item.thumb} alt="" className="size-4 shrink-0 rounded-[3px] object-cover" />
+        ) : (
+          <Icon name={item.kind === "image" ? "image" : "file"} className="size-3.5 shrink-0" />
+        )}
+        <span className="truncate">{item.name}</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          aria-label={`移除 ${item.name}`}
+          className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground"
+        >
+          <Icon name="x" className="size-3" />
+        </button>
+      </ChipPreview>
+      {/* 独立于 ChipPreview（兄弟而非子节点）：portal 事件沿组件树冒泡，嵌入会被芯片 onClick 重开 */}
       {isImage && (
         <ImagePreviewDialog target={previewing ? { name: item.name, path: item.path, thumb: item.thumb } : null} onClose={() => setPreviewing(false)} />
       )}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-        aria-label={`移除 ${item.name}`}
-        className="grid size-4 shrink-0 place-items-center rounded text-muted-foreground transition-[background-color,color,transform] motion-safe:active:scale-[0.9] hover:bg-accent hover:text-foreground"
-      >
-        <Icon name="x" className="size-3" />
-      </button>
-    </ChipPreview>
+    </>
   );
 }
 

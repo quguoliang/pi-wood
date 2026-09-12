@@ -51,7 +51,16 @@ export function ImagePreviewDialog({
 
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl p-3" aria-label={target?.name ?? "图片预览"}>
+      {/* stopPropagation 必须加：Dialog 渲染在 portal 里，但 React 事件沿**组件树**冒泡——
+          不阻断的话，点 X/框内任何元素的 click 会冒泡回芯片的 onClick，把预览器重新打开
+          （表现为「关不掉」）。 */}
+      <DialogContent
+        className="max-w-3xl p-3"
+        aria-label={target?.name ?? "图片预览"}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={(e) => e.stopPropagation()}
+        onMouseLeave={(e) => e.stopPropagation()}
+      >
         <div className="flex max-h-[75vh] items-center justify-center overflow-hidden rounded-md bg-muted/40">
           {src ? (
             <img src={src} alt={target?.name} className="max-h-[75vh] w-auto object-contain" />

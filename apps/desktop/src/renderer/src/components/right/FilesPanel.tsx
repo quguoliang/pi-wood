@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import type { editor as monacoEditor } from "monaco-editor";
 import { Tree, type NodeRendererProps, type TreeApi } from "react-arborist";
+import { isImagePath } from "@pi-wood/ipc-schema";
 import { monaco, monacoLanguage } from "@/lib/monaco-setup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { FileIcon } from "@/lib/file-icons";
+import { requirePi } from "@/lib/preload-api";
 import { Icon } from "../ui/Icon";
 import { useSessionStore } from "../../stores/session-store";
 import { useConversationsStore } from "../../stores/conversations-store";
@@ -24,10 +26,22 @@ interface FsEntry extends FileEntry {
   children?: FsEntry[];
 }
 
+/**
+ * 右栏打开的一个文件。
+ *
+ * `image` 是**三态**，刻意这样编码而不是另加一个 `kind` 字段：
+ * - `undefined` = 文本文件 → 走 Monaco（`content` 是正文）
+ * - `string`    = 图片文件且读到了 → 走图片视图（`content` 恒为 ""）
+ * - `null`      = 图片文件但读不出来 → 走图片视图的失败态
+ *
+ * 「是不是图片」由扩展名（`isImagePath`，与主进程解码共用一份清单）判定，
+ * 不能由「fsRead 有没有抛错」反推——那样会先拿到一个「二进制不支持预览」的报错再补救。
+ */
 interface OpenFile {
   path: string;
   content: string;
   dirty: boolean;
+  image?: string | null;
 }
 
 /** VSCode 资源管理器同款行高/缩进节奏 */
@@ -152,6 +166,38 @@ function Breadcrumb({ path }: { path: string }): React.JSX.Element {
   );
 }
 
+/**
+ * 图片视图（右栏预览的本体）。
+ *
+ * 刻意不用 `<img>` 外包一层 flex 居中：超宽图会被压扁到容器宽、超长图会被截断。
+ * 改成「内层可滚动 + `max-w-full`」——小图居中、大图按原始像素铺开并让容器出滚动条，
+ * 这是看图工具的基本行为（等价于 `object-fit: none` 但保留了缩放到容器宽的能力）。
+ */
+function ImagePreview({ file, onDecodeError }: { file: OpenFile; onDecodeError: () => void }): React.JSX.Element {
+  const name = file.path.split(/[\\/]/).pop() ?? file.path;
+  if (!file.image) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-muted-foreground">
+        <Icon name="image" className="size-10 text-muted-foreground/50" />
+        <p className="text-sm text-foreground">无法预览该图片</p>
+        <p className="max-w-md break-all text-xs text-muted-foreground/80">{file.path}</p>
+        <p className="text-xs text-muted-foreground/60">支持 png / jpg / jpeg / webp / gif；文件可能已删除、超过 16MB 或已损坏</p>
+      </div>
+    );
+  }
+  return (
+    <div className="h-full min-h-0 overflow-auto p-3">
+      <img
+        src={file.image}
+        alt={name}
+        title={file.path}
+        onError={onDecodeError}
+        className="mx-auto block max-w-full rounded-md border border-border object-contain shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]"
+      />
+    </div>
+  );
+}
+
 export function FilesPanel(): React.JSX.Element {
   const activeProject = useSessionStore((s) => s.activeProject);
   const activeConversationId = useSessionStore((s) => s.activeConversationId);
@@ -228,16 +274,26 @@ export function FilesPanel(): React.JSX.Element {
     if (!wsKey) return;
     setRootLoading(true);
     loadedDirs.current.add("");
-    void loadChildren(undefined)
-      .then((entries) => {
-        dirEntriesCache.current.set("", entries);
-        setTreeRoot(toFsEntries(entries));
-      })
-      .catch((err) => {
-        loadedDirs.current.delete("");
-        setStatus(String(err?.message ?? err));
-      })
-      .finally(() => setRootLoading(false));
+    // 惰性启动：启动竞态下 fs:tree 可能赶在主进程 peek（设置工作区）之前发出而报
+    // 「引擎未启动」——这种失败是暂时的，短暂退避重试几次（激活完成后 fs 域即恢复）。
+    const attempt = (left: number): void => {
+      void loadChildren(undefined)
+        .then((entries) => {
+          dirEntriesCache.current.set("", entries);
+          setTreeRoot(toFsEntries(entries));
+        })
+        .catch((err) => {
+          loadedDirs.current.delete("");
+          const message = String(err?.message ?? err);
+          if (left > 0 && message.includes("引擎未启动")) {
+            window.setTimeout(() => attempt(left - 1), 800);
+            return;
+          }
+          setStatus(message);
+        })
+        .finally(() => setRootLoading(false));
+    };
+    attempt(3);
   }, [wsKey, loadChildren]);
 
   // 展开目录前确保 children 已拉取（onToggle 对点击与键盘展开都生效，幂等）
@@ -368,12 +424,27 @@ export function FilesPanel(): React.JSX.Element {
       return;
     }
     inflightLoads.current.add(entry.path);
-    void window.pi
-      .fsRead(entry.path)
-      .then((r) => {
+    // 图片走 fs:image（原图 dataURL），文本走 fs:read。两条通路必须分开：
+    // fs:read 对任何图片都会以「二进制文件不支持预览」抛错，且强行按 utf-8 读会得到乱码。
+    // 判定用扩展名（isImagePath，与主进程解码同一份清单），而不是「读了报错再补救」。
+    // 整个构造过程包 try：preload 缺函数时抛的是**同步** TypeError，不包就会从 effect 逃出去白屏（见 requirePi）。
+    let load: Promise<{ content: string; image: string | null | undefined }>;
+    try {
+      load = isImagePath(entry.path)
+        ? requirePi(window.pi.fsImage, "fsImage")(entry.path).then((dataUrl) => ({ content: "", image: dataUrl ?? null }))
+        : requirePi(window.pi.fsRead, "fsRead")(entry.path).then((r) => ({ content: r.content, image: undefined }));
+    } catch (err) {
+      inflightLoads.current.delete(entry.path);
+      setStatus(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    void load
+      .then((loaded) => {
         loadedPaths.current.add(entry.path);
         // 内容到位后一次性提交：追加 tab + 切激活（React 18 自动批处理，同帧渲染，无占位闪烁）
-        setOpenFiles((fs) => (fs.some((f) => f.path === entry.path) ? fs : [...fs, { path: entry.path, content: r.content, dirty: false }]));
+        setOpenFiles((fs) =>
+          fs.some((f) => f.path === entry.path) ? fs : [...fs, { path: entry.path, dirty: false, ...loaded }],
+        );
         setActiveFile(entry.path);
       })
       .catch((err) => setStatus(String(err?.message ?? err)))
@@ -403,7 +474,8 @@ export function FilesPanel(): React.JSX.Element {
 
   const saveActive = useCallback((): void => {
     const cur = openFiles.find((f) => f.path === activeFile);
-    if (!cur || !cur.dirty) return;
+    // 图片分支不可能置 dirty，这里再挡一次：fsWrite 会把 UTF-8 文本写进 .png，等于把图毁了。
+    if (!cur || cur.image !== undefined || !cur.dirty) return;
     void window.pi.fsWrite(cur.path, cur.content).then(() => {
       setStatus(`已保存 ${cur.path}`);
       setOpenFiles((fs) => fs.map((f) => (f.path === cur.path ? { ...f, dirty: false } : f)));
@@ -500,6 +572,23 @@ export function FilesPanel(): React.JSX.Element {
     return () => clearTimeout(t);
   }, [search]);
 
+  // 当前激活的是图片（走图片视图）——文本编辑器在这条路径上是**被卸载**的
+  const isImageActive = active !== undefined && active.image !== undefined;
+
+  /**
+   * 切到图片时把 Monaco 相关引用与浮标清掉。
+   *
+   * 为什么必须显式清：`viewRef` 是 ref，编辑器组件卸载**不会**把它置空，它会继续指向一个
+   * 已被销毁的实例；而「选中浮标」「右键菜单」两个 effect 只看 `editorReady`/`activeFile`
+   * 变化，拿到销毁实例后 `getSelection()`/`onDid*` 行为未定义（残留浮标，或切回文本时报错）。
+   */
+  useEffect(() => {
+    if (!isImageActive) return;
+    viewRef.current = null;
+    setEditorReady(false);
+    setSelTag(null);
+  }, [isImageActive]);
+
   return (
     <div ref={rootRef} className="flex h-full min-h-0">
       {!wsKey ? (
@@ -514,10 +603,17 @@ export function FilesPanel(): React.JSX.Element {
               {active ? (
                 <>
                   <Breadcrumb path={active.path} />
-                  {active.dirty && <span className="shrink-0 text-sm leading-none text-warning">*</span>}
-                  <Button variant="ghost" size="sm" className="h-6 shrink-0" onClick={() => saveRef.current()} disabled={!active.dirty}>
-                    保存
-                  </Button>
+                  {/* 图片没有正文可改：脏标记与保存按钮都不出现（否则是个永远禁用的按钮） */}
+                  {active.image !== undefined ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">图片预览</span>
+                  ) : (
+                    <>
+                      {active.dirty && <span className="shrink-0 text-sm leading-none text-warning">*</span>}
+                      <Button variant="ghost" size="sm" className="h-6 shrink-0" onClick={() => saveRef.current()} disabled={!active.dirty}>
+                        保存
+                      </Button>
+                    </>
+                  )}
                 </>
               ) : (
                 <span className="font-mono text-xs text-muted-foreground">/</span>
@@ -526,33 +622,37 @@ export function FilesPanel(): React.JSX.Element {
             </div>
             <div className="cm-host relative min-h-0 flex-1 overflow-hidden">
               {active ? (
-                <Editor
-                  value={active.content}
-                  theme="piwood-dark"
-                  language={monacoLanguage(active.path)}
-                  options={{
-                    fontSize: 12,
-                    fontFamily: "Menlo, Consolas, monospace",
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 2,
-                    smoothScrolling: true,
-                    padding: { top: 6 },
-                  }}
-                  onMount={(editor) => {
-                    viewRef.current = editor;
-                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current());
-                    setEditorReady(true);
-                  }}
-                  onChange={(value) =>
-                    setOpenFiles((fs) =>
-                      fs.map((f) =>
-                        f.path === active.path ? { ...f, content: value ?? "", dirty: f.content !== (value ?? "") } : f,
-                      ),
-                    )
-                  }
-                />
+                active.image !== undefined ? (
+                  <ImagePreview file={active} onDecodeError={() => setStatus("图片解码失败，文件可能已损坏")} />
+                ) : (
+                  <Editor
+                    value={active.content}
+                    theme="piwood-dark"
+                    language={monacoLanguage(active.path)}
+                    options={{
+                      fontSize: 12,
+                      fontFamily: "Menlo, Consolas, monospace",
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      tabSize: 2,
+                      smoothScrolling: true,
+                      padding: { top: 6 },
+                    }}
+                    onMount={(editor) => {
+                      viewRef.current = editor;
+                      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current());
+                      setEditorReady(true);
+                    }}
+                    onChange={(value) =>
+                      setOpenFiles((fs) =>
+                        fs.map((f) =>
+                          f.path === active.path ? { ...f, content: value ?? "", dirty: f.content !== (value ?? "") } : f,
+                        ),
+                      )
+                    }
+                  />
+                )
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
                   <Icon name="folder" className="size-10 text-muted-foreground/50" strokeWidth={1} />
@@ -561,7 +661,7 @@ export function FilesPanel(): React.JSX.Element {
                 </div>
               )}
               {/* 选中浮标：非空选区上方浮现「添加到对话」（Trae/Cursor 同款；onMouseDown 抢在编辑器失焦前触发） */}
-              {active && selTag && (
+              {active && active.image === undefined && selTag && (
                 <div className="pointer-events-none absolute inset-0 z-10">
                   <button
                     type="button"
