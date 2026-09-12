@@ -1,0 +1,68 @@
+[eb-harness] 软链真实构建产物 CSS: index-DNTmyugz.css
+[eb-harness] ✓ CSS 含 text-destructive
+[eb-harness] ✓ CSS 含 bg-card
+[eb-harness] ✓ CSS 含 border-border
+[eb-harness] ✓ CSS 含 bg-muted
+[eb-harness] ✓ CSS 含 bg-background
+[eb-harness] ✓ CSS 含 text-muted-foreground
+[eb-harness] ✓ CSS 含 text-foreground
+[eb-harness] ✓ CSS 含 bg-accent
+[eb-harness] ✓ ok-global: 正常渲染不出现错误面板（负向对照）
+[eb-harness] ✓ ok-global: 子组件照常渲染
+[eb-harness] ✓ ok-global: 未显示任何错误文案
+[eb-harness] ✓ ok-compact: 正常渲染不出现错误面板（负向对照）
+[eb-harness] ✓ ok-compact: 子组件照常渲染
+[eb-harness] ✓ ok-compact: 未显示任何错误文案
+[eb-harness] ✓ passive-global: 出现错误面板
+[eb-harness] ✓ passive-global: 崩溃子树已卸下
+[eb-harness] ✓ passive-global: 标题含区域名 — "应用出错了"
+[eb-harness] ✓ passive-global: 显示原始错误消息 — 应用出错了
+[eb-harness] ✓ passive-global: 处置指向「退出应用」
+[eb-harness] ✓ passive-global: 提供重试与复制按钮 — 重试|复制错误信息
+[eb-harness] ✓ passive-global: 详情含错误类型
+[eb-harness] ✓ passive-global: 详情含区域标题
+[eb-harness] ✓ passive-global: 详情含 ISO 时间戳
+[eb-harness] ✓ passive-global: 详情含堆栈
+[eb-harness] ✓ passive-global: 复制按钮可点
+[eb-harness] ✓ passive-global: 点击复制后面板仍健在
+[eb-harness] ✓ passive-global: 复制按钮文案合法 — 重试|复制错误信息
+[eb-harness] ✓ passive-compact: 出现错误面板
+[eb-harness] ✓ passive-compact: 崩溃子树已卸下
+[eb-harness] ✓ passive-compact: 标题含区域名 — "右侧面板出错了"
+[eb-harness] ✓ passive-compact: 显示原始错误消息 — 右侧面板出错了
+[eb-harness] ✓ passive-compact: 处置指向「退出应用」
+[eb-harness] ✓ passive-compact: 提供重试与复制按钮 — 重试|复制错误信息
+[eb-harness] ✓ passive-compact: 详情含错误类型
+[eb-harness] ✓ passive-compact: 详情含区域标题
+[eb-harness] ✓ passive-compact: 详情含 ISO 时间戳
+[eb-harness] ✓ passive-compact: 详情含堆栈
+[eb-harness] ✓ passive-compact: 复制按钮可点
+[eb-harness] ✓ passive-compact: 点击复制后面板仍健在
+[eb-harness] ✓ passive-compact: 复制按钮文案合法 — 重试|复制错误信息
+[eb-harness] ✓ render-global: 出现错误面板
+[eb-harness] ✓ render-global: 崩溃子树已卸下
+[eb-harness] ✓ render-global: 标题含区域名 — "应用出错了"
+[eb-harness] ✓ render-global: 显示原始错误消息 — 应用出错了
+[eb-harness] ✓ render-global: 处置指向「退出应用」
+[eb-harness] ✓ render-global: 提供重试与复制按钮 — 重试|复制错误信息
+[eb-harness] ✓ render-global: 详情含错误类型
+[eb-harness] ✓ render-global: 详情含区域标题
+[eb-harness] ✓ render-global: 详情含 ISO 时间戳
+[eb-harness] ✓ render-global: 详情含堆栈
+[eb-harness] ✓ render-global: 复制按钮可点
+[eb-harness] ✓ render-global: 点击复制后面板仍健在
+[eb-harness] ✓ render-global: 复制按钮文案合法 — 重试|复制错误信息
+[eb-harness] ✓ generic: 出现错误面板
+[eb-harness] ✓ generic: 显示业务错误消息
+[eb-harness] ✓ generic: 处置指向「重试」而非重启（负向对照） — 应用出错了
+[eb-harness] ✓ retry: 首帧进入错误面板
+[eb-harness] ✓ retry: 重试按钮可点
+[eb-harness] ✓ retry: 点击后错误面板消失
+[eb-harness] ✓ retry: 子树被真正重新挂载
+[eb-harness]   · 截图 error-boundary-global-dark.png 53300B
+[eb-harness]   · 截图 error-boundary-global-light.png 54322B
+[eb-harness]   · 截图 error-boundary-compact-dark.png 51431B
+[eb-harness]   · 截图 error-boundary-compact-light.png 52269B
+[eb-harness] ✓ 截图: 默认布局暗/亮确有差异 — 53300 vs 54322
+[eb-harness] ✓ 截图: compact 布局暗/亮确有差异 — 51431 vs 52269
+[eb-harness] 结论 ALL PASS — ✓54 ✗0

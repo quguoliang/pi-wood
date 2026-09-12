@@ -1,4 +1,5 @@
 export { cn } from "./cn";
+export { OPEN_FILE_EVENT, OPEN_SUBAGENT_EVENT } from "./app-events";
 export { Button, buttonVariants, type ButtonProps } from "./button";
 export {
   ChatContainerRoot,

@@ -12,7 +12,9 @@ import { LeftPane } from "./components/left/LeftPane";
 import { EnvironmentPanel } from "./components/center/EnvironmentPanel";
 import { ConversationHeader } from "./components/center/ConversationHeader";
 import { Toaster } from "./components/ui/sonner";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { routeForConversation, type ConversationEventEnvelope } from "@pi-wood/ipc-schema";
+import { OPEN_FILE_EVENT, OPEN_SUBAGENT_EVENT } from "@pi-wood/ui-kit";
 import { activeSlice, useActiveConversation, useSessionStore } from "./stores/session-store";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "./stores/settings-store";
@@ -141,10 +143,18 @@ export default function App() {
       useSubagentStore.getState().setSelectedId(runId);
       openWorkbench("subagent");
     };
+    // T8.3 后续：工具卡里的文件路径变成可点击链接 → 打开右栏文件面板并定位到该行。
+    // ui-kit 是纯展示库、不引工作台 store，故跨层走事件（契约见 ui-kit/src/app-events.ts）。
+    const openFile = (e: Event): void => {
+      const detail = (e as CustomEvent<{ path?: unknown; line?: unknown }>).detail;
+      if (typeof detail?.path !== "string" || !detail.path) return;
+      openWorkbenchFile(detail.path, typeof detail.line === "number" ? detail.line : undefined);
+    };
     window.addEventListener("piwood:open-command-palette", openPalette);
     window.addEventListener("piwood:open-settings", openSettings);
     window.addEventListener("piwood:open-marketplace", openMarket);
-    window.addEventListener("piwood:open-subagent", openSubagent);
+    window.addEventListener(OPEN_SUBAGENT_EVENT, openSubagent);
+    window.addEventListener(OPEN_FILE_EVENT, openFile);
 
     const pushToast = (message: string, type: string): void => {
       if (type === "error") toast.error(message);
@@ -242,7 +252,8 @@ export default function App() {
       window.removeEventListener("piwood:open-command-palette", openPalette);
       window.removeEventListener("piwood:open-settings", openSettings);
       window.removeEventListener("piwood:open-marketplace", openMarket);
-      window.removeEventListener("piwood:open-subagent", openSubagent);
+      window.removeEventListener(OPEN_SUBAGENT_EVENT, openSubagent);
+      window.removeEventListener(OPEN_FILE_EVENT, openFile);
     };
   }, [addDiff, handleEvent, trackRuntimeEvent]);
 
@@ -279,7 +290,11 @@ export default function App() {
         right={
           <div data-col-region="right" tabIndex={-1} className="h-full min-h-0 outline-none">
             <Suspense fallback={<div className="grid h-full place-items-center text-muted-foreground text-sm">正在载入工作台…</div>}>
-              <RightPane />
+              {/* 面板级边界：右栏（文件/差异/图片预览）自崩时只降级这一栏，不拖垮整屏。
+                  全局边界仍在中栏/左栏之上兜底，见 main.tsx。 */}
+              <ErrorBoundary scope="右侧面板" compact>
+                <RightPane />
+              </ErrorBoundary>
             </Suspense>
           </div>
         }

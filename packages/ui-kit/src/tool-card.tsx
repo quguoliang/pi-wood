@@ -4,6 +4,7 @@ import {
   Search, Sparkles, Terminal, XCircle,
 } from "lucide-react";
 import { cn } from "./cn";
+import { OPEN_FILE_EVENT, OPEN_SUBAGENT_EVENT } from "./app-events";
 import { DiffView } from "./diff";
 import { HighlightedCommand } from "./shiki-command";
 
@@ -71,6 +72,56 @@ function headerIcon(name: string, status: ToolCardProps["status"]): React.ReactN
 }
 
 const isShellTool = (name: string): boolean => name === "bash" || name === "powershell";
+
+/**
+ * 目标是一份**真实存在的文件路径**的工具——只有它们才把路径渲染成链接。
+ * 刻意不写成「凡是有 args.path 就成链接」：未知工具的 path 可能是 glob、URL 或虚拟路径，
+ * 点开只会得到一个失败的右栏（`fs:read` 抛路径越界/文件不存在）。
+ */
+const isFileTool = (name: string): boolean => name === "read" || name === "write" || name === "edit";
+
+/** 该工具调用要定位到第几行（只有 read 带 offset，语义就是 1-based 起读行） */
+function fileLinkLine(name: string, args: Record<string, unknown>): number | undefined {
+  if (name !== "read") return undefined;
+  const n = Number(args.offset);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * 可点击的文件路径：派发 `OPEN_FILE_EVENT`，应用侧（App.tsx）翻译成「打开右栏并定位」。
+ * ui-kit 是纯展示库，不引工作台 store——跨层只走事件，契约见 app-events.ts。
+ *
+ * 用 `span[role="button"]` 而非 `<button>`：折叠行自己就是 <button>（点击=展开/收起），
+ * 按钮不能嵌套。因此这里必须自己 `stopPropagation`，否则点链接会顺手把卡片展开。
+ */
+function FileLink({ path, line, className }: { path: string; line?: number; className?: string }): React.JSX.Element {
+  const open = (): void => {
+    window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: { path, line } }));
+  };
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={line ? `在右栏打开 ${path}（定位到第 ${line} 行）` : `在右栏打开 ${path}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        open();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        open();
+      }}
+      className={cn(
+        "cursor-pointer rounded-[3px] underline decoration-muted-foreground/60 decoration-dotted underline-offset-[3px] transition-colors hover:bg-accent/40 hover:text-foreground hover:decoration-solid",
+        className,
+      )}
+    >
+      {path}
+    </span>
+  );
+}
 
 /** 折叠行状态文字（无框、弱化色），与图标并存；对齐 pi.dev「运行中/已完成/失败」文案。 */
 function StatusText({ status }: { status: ToolCardProps["status"] }): React.JSX.Element {
@@ -165,7 +216,7 @@ function ToolBody({ name, args, output, diff, status }: ToolCardProps): React.JS
       )}
       {name === "read" && (args.offset != null || args.limit != null) && (
         <div className="font-mono text-[11px] text-muted-foreground">
-          {str(args.path)}{args.offset ? ` · 行 ${str(args.offset)}` : ""}{args.limit ? ` · ${str(args.limit)} 行` : ""}
+          <FileLink path={str(args.path)} line={fileLinkLine(name, args)} />{args.offset ? ` · 行 ${str(args.offset)}` : ""}{args.limit ? ` · ${str(args.limit)} 行` : ""}
         </div>
       )}
       {output ? (
@@ -207,7 +258,15 @@ export function ToolCard(props: ToolCardProps): React.JSX.Element {
         {shell && cmdInline ? (
           <HighlightedCommand inline code={cmdInline} className="min-w-0 flex-1 truncate text-muted-foreground" />
         ) : target ? (
-          <span className={cn("min-w-0 flex-1 truncate text-foreground/75", mono && "font-mono text-[12.5px] font-medium")}>{target}</span>
+          isFileTool(name) ? (
+            <FileLink
+              path={target}
+              line={fileLinkLine(name, args)}
+              className={cn("min-w-0 flex-1 truncate text-foreground/75", mono && "font-mono text-[12.5px] font-medium")}
+            />
+          ) : (
+            <span className={cn("min-w-0 flex-1 truncate text-foreground/75", mono && "font-mono text-[12.5px] font-medium")}>{target}</span>
+          )
         ) : (
           <span className="min-w-0 flex-1" />
         )}

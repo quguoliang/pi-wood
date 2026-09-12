@@ -1,0 +1,25 @@
+[boundary-lab] ✓ noeb/passive   expect=white    child=false fallback=false rootText=""
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ eb/passive     expect=fallback child=false fallback=true rootText="fallback::pi.fsMissing is not a function"
+[boundary-lab]    ↳ componentDidCatch: TypeError: pi.fsMissing is not a function
+[boundary-lab]    ↳ fallback 文案: fallback::pi.fsMissing is not a function
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ noeb/layout    expect=white    child=false fallback=false rootText=""
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ eb/layout      expect=fallback child=false fallback=true rootText="fallback::pi.fsMissing is not a function"
+[boundary-lab]    ↳ componentDidCatch: TypeError: pi.fsMissing is not a function
+[boundary-lab]    ↳ fallback 文案: fallback::pi.fsMissing is not a function
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ noeb/render    expect=white    child=false fallback=false rootText=""
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ eb/render      expect=fallback child=false fallback=true rootText="fallback::pi.fsMissing is not a function"
+[boundary-lab]    ↳ componentDidCatch: TypeError: pi.fsMissing is not a function
+[boundary-lab]    ↳ fallback 文案: fallback::pi.fsMissing is not a function
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ noeb/cleanup   expect=white    child=false fallback=false rootText=""
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] ✓ eb/cleanup     expect=fallback child=false fallback=true rootText="fallback::pi.fsMissing is not a function"
+[boundary-lab]    ↳ componentDidCatch: TypeError: pi.fsMissing is not a function
+[boundary-lab]    ↳ fallback 文案: fallback::pi.fsMissing is not a function
+[boundary-lab]    ↳ renderer 控制台: Uncaught TypeError: pi.fsMissing is not a function | The above error occurred in the <Boom> component:
+[boundary-lab] 结论 ALL PASS 共 8 例

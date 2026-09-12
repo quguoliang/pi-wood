@@ -143,6 +143,39 @@ export type SessionMessageItem = z.infer<typeof SessionMessageItemSchema>;
 /** 图片缩略图域：返回小尺寸 dataURL（气泡/hover 预览用，避免渲染进程直接读盘） */
 export const FS_THUMB_CHANNEL = "fs:thumb";
 
+/**
+ * 图片原图域：返回**原尺寸** dataURL（右栏图片预览用）。
+ * 与 fs:thumb 的分工——thumb 是 ≤512px 的缩略图（芯片/气泡），这个是给「打开就能看清」的大图预览。
+ */
+export const FS_IMAGE_CHANNEL = "fs:image";
+
+/**
+ * 可预览图片的扩展名 → MIME。
+ *
+ * **唯一事实源**：主进程负责解码（`readImageThumb` / `readImagePreview`），渲染层负责
+ * 「这个路径该走图片视图还是文本编辑器」的判定（`FilesPanel`）。两处若各留一份清单，
+ * 新增一个扩展名时必然漂移（一处支持、另一处当文本读 → 二进制乱码），故置于此共用。
+ */
+export const IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
+
+/** path 的扩展名对应 MIME；非图片/无扩展名返回 undefined。大小写与查询串容错。 */
+export function imageMimeOf(path: string): string | undefined {
+  const lower = path.toLowerCase();
+  const dot = lower.lastIndexOf(".");
+  return dot >= 0 ? IMAGE_MIME[lower.slice(dot)] : undefined;
+}
+
+/** path 是否可按图片预览（渲染层判定入口）。 */
+export function isImagePath(path: string): boolean {
+  return imageMimeOf(path) !== undefined;
+}
+
 // invoke 入参
 export const PathArgSchema = z.object({ path: z.string().min(1) });
 export const IdArgSchema = z.object({ id: z.string().min(1) });

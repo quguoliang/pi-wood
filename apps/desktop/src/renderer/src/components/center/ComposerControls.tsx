@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { accentForThinking, approvalAccent, thinkingLabels } from "@/lib/composer-levels";
 import { cn } from "@/lib/utils";
 import { Icon } from "../ui/Icon";
 
@@ -43,10 +44,6 @@ const approvalOptions: Array<{ mode: ApprovalMode; label: string; detail: string
   { mode: "denyAll", label: "只读模式", detail: "仅允许 read、ls、find 和 grep" },
 ];
 
-const thinkingLabels: Record<string, string> = {
-  off: "关闭", minimal: "极低", low: "低", medium: "中", high: "高", xhigh: "很高", max: "最高",
-};
-
 const formatCount = (value: number): string => (value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k` : String(value));
 
 /** 模型按供应商分组（保持首次出现顺序），供下拉按组渲染 */
@@ -77,7 +74,7 @@ function groupModelsByProvider(models: Array<{ provider: string; id: string }>):
  *
  * 档位由窄到宽依次放行：上下文 % → 思考级别 → 权限文案 → 目标文案。
  * 排序依据是「单位宽度的信息量」：百分比是数字、思考级别是 1~2 字，都比「每次询问」这类
- * 四字词组便宜；「目标」是纯开关，图标（brain）自解释，故最后放行。阈值均留有余量，
+ * 四字词组便宜；「目标」是纯开关，图标（旗标）自解释，故最后放行。阈值均留有余量，
  * 使模型名在各档位保持完整（实测直到内容盒 300px 才收窄）。
  *
  * **模型名刻意不设档位**——它是这行里信息量最高的文字，靠 `shrink + truncate` 兜底，
@@ -113,11 +110,20 @@ const compact = "@max-[320px]:px-1 @max-[320px]:has-[>svg]:px-1";
 /** 分组间距同样只在极窄档收紧（作用于本行的后代，查询生效） */
 const compactGroup = "@max-[320px]:gap-0.5";
 
-/** 底栏芯片的统一密度（`compact` 在极窄档收紧左内边距） */
+/**
+ * 底栏芯片的统一密度（`compact` 在极窄档收紧左内边距）。
+ *
+ * 基类**刻意不含 `hover:text-foreground`**：权限与思考两枚芯片的文字色跟随所选档位变化
+ * （配色表在 `@/lib/composer-levels`），若基类带 hover 变色，悬停瞬间会把状态色吃掉、
+ * 退回中性灰，看起来像「选中的档位丢了」。需要悬停变色的中性芯片各自补 `hoverInk`。
+ */
 const controlBtn = cn(
-  "h-8 min-w-0 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent hover:text-foreground",
+  "h-8 min-w-0 gap-1.5 rounded-md px-2 text-xs font-normal text-muted-foreground hover:bg-accent",
   compact,
 );
+
+/** 中性芯片（上下文、模型）的悬停文字色；**不套用到权限／思考**——它们必须保持当前档位的颜色 */
+const hoverInk = "hover:text-foreground";
 
 /**
  * 引擎未就绪期间（典型＝切对话的 1~2s，engineReady 被置 false 防 prompt 打进旧会话），
@@ -174,14 +180,21 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "permission"} onOpenChange={show("permission")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" disabled={!props.engineReady} className={cn(controlBtn, "text-warning hover:text-warning", !props.engineReady && keepEnabledLook)} aria-label="Agent 权限">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!props.engineReady}
+              aria-label="Agent 权限"
+              title={`Agent 权限：${permission.label} —— ${permission.detail}`}
+              className={cn(controlBtn, approvalAccent[props.approvalMode], !props.engineReady && keepEnabledLook)}
+            >
               <Icon name="shield" /><span className={cn("hidden max-w-[9rem] truncate", showAt.permission)}>{permission.label}</span><Icon name="chevronDown" className={cn("hidden", showIconAt.permission)} />
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="start" className="w-80 gap-0.5 p-1.5">
             <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Agent 权限</div>
             {approvalOptions.map((item) => (
-              <MenuRow key={item.mode} leading={<Icon name="shield" />} title={item.label} detail={item.detail} checked={props.approvalMode === item.mode} onClick={() => { close(); props.onApprovalChange(item.mode); }} />
+              <MenuRow key={item.mode} leading={<Icon name="shield" className={approvalAccent[item.mode]} />} title={item.label} detail={item.detail} checked={props.approvalMode === item.mode} onClick={() => { close(); props.onApprovalChange(item.mode); }} />
             ))}
           </PopoverContent>
         </Popover>
@@ -193,9 +206,12 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
           onClick={props.onToggleGoal}
           aria-pressed={props.goalArm}
           title="开启后，本次输入作为目标交给 agent 自主推进（小模型审计进度并自动续跑）"
-          className={cn(controlBtn, props.goalArm && "bg-primary/15 text-primary hover:text-primary", !props.engineReady && keepEnabledLook)}
+          className={cn(controlBtn, props.goalArm ? "bg-primary/15 text-primary" : hoverInk, !props.engineReady && keepEnabledLook)}
         >
-          <Icon name="brain" />
+          {/* 刻意不用 brain：思考级别已占用 brain，两者在同一行并排时同形无法区分。
+              也刻意不用靶心（target）：它与右侧「上下文」的 CircleGauge 都是同心圆，16px 下难分辨。
+              旗标是这行里唯一的角形图标，与左组 shield、右组 CircleGauge／brain 都不撞形。 */}
+          <Icon name="flag" />
           <span className={cn("hidden", showAt.goal)}>{props.goalArm ? "目标模式开" : "目标"}</span>
         </Button>
       </div>
@@ -203,7 +219,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
       <div className={cn("ml-auto flex min-w-0 items-center gap-1", compactGroup)}>
         <Popover open={open === "context"} onOpenChange={show("context")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady}>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, hoverInk, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady}>
               <Icon name="context" /><span className={cn("hidden", showAt.context)}>{usage?.percent == null ? "上下文" : `${Math.round(usage.percent)}%`}</span>
             </Button>
           </PopoverTrigger>
@@ -222,7 +238,7 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "model"} onOpenChange={show("model")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem] shrink", !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming}>
+            <Button variant="ghost" size="sm" className={cn(controlBtn, "max-w-[12rem] shrink", hoverInk, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming}>
               <span className="truncate">{currentModel}</span><Icon name="chevronDown" />
             </Button>
           </PopoverTrigger>
@@ -248,14 +264,20 @@ export function ComposerControls(props: ComposerControlsProps): React.JSX.Elemen
 
         <Popover open={open === "thinking"} onOpenChange={show("thinking")}>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className={cn(controlBtn, !props.engineReady && keepEnabledLook)} disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!props.engineReady || props.streaming || props.thinkingLevels.length <= 1}
+              title={`思考级别：${currentThinking}`}
+              className={cn(controlBtn, accentForThinking(props.runtime.thinkingLevel), !props.engineReady && keepEnabledLook)}
+            >
               <Icon name="brain" /><span className={cn("hidden", showAt.thinking)}>{currentThinking}</span><Icon name="chevronDown" className={cn("hidden", showIconAt.thinking)} />
             </Button>
           </PopoverTrigger>
           <PopoverContent side="top" align="end" className="w-44 gap-0.5 p-1.5">
             <div className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">思考级别</div>
             {props.thinkingLevels.map((level) => (
-              <MenuRow key={level} title={thinkingLabels[level] ?? level} checked={props.runtime.thinkingLevel === level} onClick={() => { close(); props.onThinkingChange(level); }} />
+              <MenuRow key={level} leading={<Icon name="brain" className={accentForThinking(level)} />} title={thinkingLabels[level] ?? level} checked={props.runtime.thinkingLevel === level} onClick={() => { close(); props.onThinkingChange(level); }} />
             ))}
           </PopoverContent>
         </Popover>

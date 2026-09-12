@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { ipcMain } from "electron";
 import { z } from "zod";
 import ignore from "ignore";
+import { FS_IMAGE_CHANNEL, isImagePath } from "@pi-wood/ipc-schema";
+import { readImagePreview } from "./image-thumb.ts";
 
 /**
  * 文件域 IPC（T2.1，方案 §3.2 fs:*）。
@@ -10,6 +12,7 @@ import ignore from "ignore";
  * - gitignore 感知：根 .gitignore + 内建忽略（node_modules/.git/dist/out）
  * - read/write：文本读写（大小上限 + 二进制检测）
  * - search：文件名子串搜索（有界遍历）
+ * - image（T8.3 后续）：图片原图 dataURL，右栏预览用（read 会以「二进制不支持预览」拒掉图片）
  */
 export interface FileEntry {
   name: string;
@@ -27,6 +30,7 @@ const TreeArgSchema = z.object({ dir: z.string().optional() });
 const ReadArgSchema = z.object({ path: z.string().min(1) });
 const WriteArgSchema = z.object({ path: z.string().min(1), content: z.string() });
 const SearchArgSchema = z.object({ query: z.string().min(1) });
+const ImageArgSchema = z.object({ path: z.string().min(1) });
 
 function loadIgnore(projectDir: string): ReturnType<typeof ignore> {
   const ig = ignore();
@@ -86,6 +90,20 @@ export function initFileIpc(getProjectDir: () => string): void {
     if (!full.startsWith(getProjectDir())) throw new Error("路径越界");
     writeFileSync(full, content, "utf-8");
     return true;
+  });
+
+  // 图片原图预览：fs:read 会把任何图片当二进制拒掉（「二进制文件不支持预览」），
+  // 故单开一条通道。绝对路径（附件 / 粘贴暂存目录，都在项目根之外）直接读——与 fs:thumb
+  // 同一信任模型（见 image-thumb.ts 头注：渲染进程无文件系统权限，范围由调用方路径决定）；
+  // 相对路径按项目根解析并做越界守卫，与 fs:read 口径一致。
+  ipcMain.handle(FS_IMAGE_CHANNEL, (_e, raw: unknown) => {
+    const { path } = ImageArgSchema.parse(raw);
+    const full = isAbsolute(path) ? path : join(getProjectDir(), path);
+    if (!isAbsolute(path) && !full.startsWith(getProjectDir())) throw new Error("路径越界");
+    // 渲染层判定「是不是图片」用的是同一份清单，走到这里还判非图片说明接线错了——
+    // 响亮失败，不要静默返回 undefined 让右栏白屏（先例：`sessionsDelete?.()` 把「没接线」伪装成「已成功」）。
+    if (!isImagePath(path)) throw new Error(`不是可预览的图片格式：${path}`);
+    return readImagePreview(full);
   });
 
   ipcMain.handle("fs:search", (_e, raw: unknown): Array<{ path: string; type: "dir" | "file" }> => {

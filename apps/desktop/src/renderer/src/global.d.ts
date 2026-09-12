@@ -141,6 +141,8 @@ declare global {
       fsRead(path: string): Promise<{ content: string; truncated: boolean }>;
       fsWrite(path: string, content: string): Promise<boolean>;
       fsSearch(query: string): Promise<unknown>;
+      /** 图片原图 dataURL（右栏预览）；非图片抛错、图片读不出来返回 undefined */
+      fsImage(path: string): Promise<string | undefined>;
       providerList(): Promise<unknown>;
       providerSetKey(provider: string, key: string): Promise<boolean>;
       providerRemoveKey(provider: string): Promise<boolean>;

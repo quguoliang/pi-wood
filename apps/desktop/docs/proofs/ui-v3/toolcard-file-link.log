@@ -1,0 +1,49 @@
+[harness] 使用构建产物 CSS: /Users/admin/Desktop/personal/pi-wood/apps/desktop/out/renderer/assets/index-B7afeZ_X.css
+[harness] esbuild: /Users/admin/Desktop/personal/pi-wood/node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/bin/esbuild
+
+  ../../../tmp/pw-filelink-harness/bundle.js  11.6mb ⚠️
+
+⚡ Done in 356ms
+(electron) 'console-message' arguments are deprecated and will be removed. Please use Event<WebContentsConsoleMessageEventParams> object instead.
+[renderer:1] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+You might need to use a local HTTP server (instead of file://): https://reactjs.org/link/react-devtools-faq font-weight:bold
+[renderer:2] %cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.
+[filelink] 已挂载 9 个用例
+[filelink] ✓ read-ok 链接数 1
+[filelink] ✓ read-offset 链接数 1
+[filelink] ✓ read-offset-open 链接数 2
+[filelink] ✓ edit-ok 链接数 1
+[filelink] ✓ write-ok 链接数 1
+[filelink] ✓ read-error 链接数 1
+[filelink] ✓ bash-neg 链接数 0（负向对照）
+[filelink] ✓ grep-neg 链接数 0（负向对照）
+[filelink] ✓ unknown-neg 链接数 0（负向对照）
+[filelink] ✓ 点链接未触发展开/收起
+[filelink] ✓ 事件载荷 {"path":"apps/desktop/src/renderer/src/components/center/MessageList.tsx"}
+[filelink] ✓ offset 透传为 line=120
+[filelink] ✓ Enter 键派发事件 {"path":"apps/desktop/src/renderer/src/components/center/MessageList.tsx"}
+[filelink] ✓ 负向对照：点击送达且生效（aria-expanded false→true）且零事件
+[filelink] dark -> /tmp/pw-filelink-harness/filelink-dark.png (250592 bytes)
+[filelink] light -> /tmp/pw-filelink-harness/filelink-light.png (239494 bytes)
+[filelink] 结论 ALL PASS
+
+  ../../../../../../../tmp/pw-filelink-harness/image-thumb.cjs  161.4kb
+
+⚡ Done in 56ms
+[image-check] small.png 77 B / big.png 200252 B（噪声图，用于跨过 153600 B 的重编码阈值）
+[image-check] ✓ small.png → data:image/png（未重编码）
+[image-check] ✓ big.png → 原图 267026 字符 data:image/png，缩略图 52863 字符 image/jpeg
+[image-check] ✓ 原图通道为缩略图通道的 5.1×（右栏清晰度确实更高）
+[image-check] ✓ 非图片（.ts） → undefined
+[image-check] ✓ 不存在的文件 → undefined
+[image-check] ✓ 空文件 → undefined
+[image-check] ✓ 同名目录 → undefined
+[image-check] ✓ imageMimeOf 判定（含大小写）一致
+[image-check] 结论 ALL PASS

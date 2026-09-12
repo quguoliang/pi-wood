@@ -244,6 +244,9 @@ const api = {
   fsWrite: (path: string, content: string): Promise<boolean> =>
     ipcRenderer.invoke("fs:write", { path, content }),
   fsSearch: (query: string): Promise<unknown> => ipcRenderer.invoke("fs:search", { query }),
+  // 图片原图预览（右栏）：通道常量见 @pi-wood/ipc-schema 的 FS_IMAGE_CHANNEL。
+  // 这里写裸串而非 import 常量——preload 刻意不把 zod 拉进构建图（同上文 unwrapEnginePayloadLite 的口径）。
+  fsImage: (path: string): Promise<string | undefined> => ipcRenderer.invoke("fs:image", { path }),
   // T2.3 终端 / T2.4 浏览器
   termCreate: (opts: { cwd: string; conversationId?: string; shell?: string }): Promise<string> =>
     ipcRenderer.invoke("term:create", opts),
